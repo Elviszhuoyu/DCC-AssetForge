@@ -123,6 +123,17 @@ def get_default_material_profile(name):
     return None
 
 
+def resolve_material_profile(profile=None):
+    """Return a profile dict from a dict, name, or default Props Opaque fallback."""
+    if isinstance(profile, dict):
+        return profile
+    if profile:
+        found = get_default_material_profile(profile)
+        if found:
+            return found
+    return get_default_material_profile("Props_Opaque_PainterUE_ARM")
+
+
 def write_material_profiles(path, profiles, pretty=True):
     indent = 2 if pretty else None
     with io.open(path, "w", encoding="utf-8") as stream:

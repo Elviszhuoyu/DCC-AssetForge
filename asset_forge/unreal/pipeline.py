@@ -143,6 +143,7 @@ class UnrealStaticMeshImportPipeline(object):
         report["material_binding_plan"] = self.material_binding_planner.plan(
             manifest,
             report.get("texture_import_plan", {}),
+            manifest.get("material_profile"),
         )
         return report
 

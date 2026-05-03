@@ -136,7 +136,9 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["textures"][0]["usage"], "base_color")
         self.assertEqual(report["package_validation"]["status"], "pass")
         self.assertEqual(report["texture_import_plan"]["target_dir"], "/Game/Props/Textures")
+        self.assertEqual(report["texture_import_plan"]["profile"], "Props_Opaque_PainterUE_ARM")
         self.assertEqual(report["material_binding_plan"]["target_dir"], "/Game/Props/Materials")
+        self.assertEqual(report["material_binding_plan"]["master_material"], "/Game/AssetForge/Materials/M_AF_Props_Opaque")
         self.assertEqual(report["material_binding_plan"]["materials"][0]["target_asset_path"], "/Game/Props/Materials/M_Crate")
         self.assertEqual(report["imported_textures"], [])
         self.assertEqual(report["texture_import_issues"], [])
@@ -192,6 +194,8 @@ class Phase2UnrealImportTest(unittest.TestCase):
 
         self.assertEqual(report["texture_import_plan"]["count"], 1)
         self.assertEqual(report["texture_import_plan"]["target_dir"], "/Game/Props/Textures")
+        self.assertEqual(report["texture_import_plan"]["textures"][0]["parameter"], "BaseColor")
+        self.assertTrue(report["texture_import_plan"]["textures"][0]["srgb"])
         self.assertEqual(
             report["texture_import_plan"]["textures"][0]["target_asset_path"],
             "/Game/Props/Textures/T_Crate_BaseColor",
@@ -200,6 +204,34 @@ class Phase2UnrealImportTest(unittest.TestCase):
             report["material_binding_plan"]["materials"][0]["slots"]["base_color"],
             "/Game/Props/Textures/T_Crate_BaseColor",
         )
+        self.assertEqual(
+            report["material_binding_plan"]["materials"][0]["texture_parameters"]["BaseColor"],
+            "/Game/Props/Textures/T_Crate_BaseColor",
+        )
+
+    def test_material_profile_selects_masked_parent_and_parameters(self):
+        texture_path = self._write_packaged_texture()
+        textured_manifest_path = self._write_textured_manifest(texture_path)
+        manifest = dict(self.manifest)
+        manifest["material_profile"] = "Props_Masked_PainterUE_ARM"
+        manifest["textures"] = [
+            {
+                "node": "file_basecolor",
+                "path": self.fbx_path.replace(".fbx", ".png"),
+                "package_path": texture_path,
+                "copied": True,
+                "usage": "base_color",
+            }
+        ]
+        manifest["materials"] = [{"name": "M_Crate", "textures": manifest["textures"]}]
+        write_manifest(textured_manifest_path, manifest)
+
+        report = UnrealStaticMeshImportPipeline(importer=FakeImporter()).dry_run_manifest(textured_manifest_path)
+
+        self.assertEqual(report["material_binding_plan"]["profile"], "Props_Masked_PainterUE_ARM")
+        self.assertEqual(report["material_binding_plan"]["master_material"], "/Game/AssetForge/Materials/M_AF_Props_Masked")
+        self.assertEqual(report["material_binding_plan"]["render_mode"], "masked")
+        self.assertEqual(report["material_binding_plan"]["materials"][0]["scalar_parameters"]["OpacityClipValue"], 0.333)
 
     def test_pipeline_imports_planned_textures_without_blocking_mesh(self):
         texture_path = self._write_packaged_texture()
