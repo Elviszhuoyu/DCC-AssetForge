@@ -7,6 +7,7 @@ import unittest
 
 from asset_forge.maya.adapter import MayaAdapter
 from asset_forge.maya.fbx_exporter import MayaFbxExporter
+from asset_forge.maya.package_opener import open_directory
 from asset_forge.maya.pipeline import MayaStaticPropPipeline
 from asset_forge.maya.manifest_writer import MayaManifestWriter
 from asset_forge.maya.scanner import MayaAssetScanner
@@ -132,6 +133,17 @@ class Phase1StaticPropTest(unittest.TestCase):
             self.assertEqual(report["stage"], "maya_export")
             self.assertEqual(report["asset_name"], "SM_Crate_01")
             self.assertEqual(report["validation"]["score"], result["validation"]["score"])
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_open_directory_uses_injected_launcher(self):
+        temp_dir = tempfile.mkdtemp()
+        opened = []
+        try:
+            result = open_directory(temp_dir, launcher=opened.append)
+
+            self.assertEqual(result.replace("\\", "/"), os.path.abspath(temp_dir).replace("\\", "/"))
+            self.assertEqual(opened, [os.path.abspath(temp_dir)])
         finally:
             shutil.rmtree(temp_dir)
 
