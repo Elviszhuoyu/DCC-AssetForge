@@ -3,6 +3,9 @@
 from __future__ import absolute_import
 
 ASSET_TYPE_STATIC_PROP = "static_prop"
+ASSET_TYPE_SKELETAL_MESH = "skeletal_mesh"
+ASSET_TYPE_ANIMATION = "animation"
+ASSET_TYPE_MORPH_TARGET = "morph_target"
 
 SOURCE_DCC_MAYA = "maya"
 SOURCE_DCC_BLENDER = "blender"
