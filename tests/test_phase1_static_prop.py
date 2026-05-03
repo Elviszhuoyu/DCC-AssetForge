@@ -11,6 +11,7 @@ from asset_forge.maya.package_opener import open_directory
 from asset_forge.maya.pipeline import MayaStaticPropPipeline
 from asset_forge.maya.manifest_writer import MayaManifestWriter
 from asset_forge.maya.scanner import MayaAssetScanner
+from asset_forge.maya.texture_packager import MayaTexturePackager
 from asset_forge.shared.report_schema import read_report
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.manifest_schema import read_manifest, validate_manifest
@@ -136,6 +137,44 @@ class Phase1StaticPropTest(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir)
 
+    def test_texture_packager_copies_existing_texture(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            texture_path = os.path.join(temp_dir, "T_Crate_BaseColor.png")
+            with open(texture_path, "wb") as stream:
+                stream.write(b"fake texture")
+            scan = MayaAssetScanner(FakeCmds()).scan("|SM_Crate_01")
+            scan["textures"][0]["path"] = texture_path
+
+            MayaTexturePackager().package_scan_textures(scan, temp_dir)
+
+            self.assertTrue(scan["textures"][0]["copied"])
+            self.assertTrue(scan["textures"][0]["package_path"].endswith("/Textures/T_Crate_BaseColor.png"))
+            self.assertTrue(os.path.exists(scan["textures"][0]["package_path"]))
+            self.assertEqual(scan["materials"][0]["textures"][0]["package_path"], scan["textures"][0]["package_path"])
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_pipeline_manifest_includes_packaged_texture_path(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            texture_path = os.path.join(temp_dir, "T_Crate_BaseColor.png")
+            with open(texture_path, "wb") as stream:
+                stream.write(b"fake texture")
+            scan = MayaAssetScanner(FakeCmds()).scan("|SM_Crate_01")
+            scan["textures"][0]["path"] = texture_path
+            adapter = FakeScanAdapter(scan)
+            pipeline = MayaStaticPropPipeline(adapter=adapter, exporter=FakeExporter())
+
+            result = pipeline.export_asset("|SM_Crate_01", os.path.join(temp_dir, "Exports"), target_platform="pc")
+
+            manifest_texture = result["manifest"]["textures"][0]
+            self.assertTrue(manifest_texture["copied"])
+            self.assertTrue(manifest_texture["package_path"].endswith("/Textures/T_Crate_BaseColor.png"))
+            self.assertTrue(os.path.exists(manifest_texture["package_path"]))
+        finally:
+            shutil.rmtree(temp_dir)
+
     def test_open_directory_uses_injected_launcher(self):
         temp_dir = tempfile.mkdtemp()
         opened = []
@@ -156,6 +195,14 @@ class FakeExporter(MayaFbxExporter):
         with open(output_path, "wb") as stream:
             stream.write(b"fake fbx")
         return output_path
+
+
+class FakeScanAdapter(object):
+    def __init__(self, scan_result):
+        self.scan_result = scan_result
+
+    def scan_asset(self, asset_root, rules):
+        return self.scan_result
 
 
 if __name__ == "__main__":
