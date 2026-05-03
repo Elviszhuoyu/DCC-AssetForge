@@ -17,7 +17,7 @@ from scripts.unreal_import_manifest import import_manifest as script_import_mani
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
 from asset_forge.unreal.manifest_reader import prepare_manifest_for_import
-from asset_forge.unreal.pipeline import UnrealStaticMeshImportPipeline
+from asset_forge.unreal.pipeline import UnrealStaticMeshImportPipeline, import_latest_manifest
 
 
 class FakeImporter(object):
@@ -183,6 +183,12 @@ class Phase2UnrealImportTest(unittest.TestCase):
 
     def test_script_entrypoint_supports_dry_run(self):
         report = script_import_manifest(self.manifest_path, dry_run=True)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SKIPPED)
+        self.assertEqual(report["asset_name"], "SM_Crate_01")
+
+    def test_import_latest_manifest_supports_dry_run(self):
+        report = import_latest_manifest(self.temp_dir, dry_run=True)
 
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SKIPPED)
         self.assertEqual(report["asset_name"], "SM_Crate_01")

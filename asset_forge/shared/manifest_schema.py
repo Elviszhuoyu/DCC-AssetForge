@@ -42,6 +42,7 @@ def create_manifest(asset_name, fbx_path, target_path, checks=None, score=0, **k
         "fbx_path": fbx_path,
         "target_path": target_path,
         "import_preset": kwargs.get("import_preset", "StaticProp_HighEndMobile"),
+        "package_dir": kwargs.get("package_dir", ""),
         "checks": checks or {},
         "score": score,
     }
@@ -81,4 +82,3 @@ def read_manifest(path):
     """Read a manifest JSON file using UTF-8."""
     with io.open(path, "r", encoding="utf-8") as stream:
         return json.load(stream)
-

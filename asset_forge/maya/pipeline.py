@@ -5,6 +5,7 @@ from __future__ import absolute_import
 import os
 
 from asset_forge.maya.adapter import MayaAdapter
+from asset_forge.maya.export_package import build_export_package
 from asset_forge.maya.fbx_exporter import MayaFbxExporter
 from asset_forge.maya.manifest_writer import MayaManifestWriter
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
@@ -36,18 +37,32 @@ class MayaStaticPropPipeline(object):
     def validate_scan(self, scan_result, target_platform=TARGET_PLATFORM_HIGH_END_MOBILE):
         return self.validator.validate(scan_result, target_platform)
 
-    def export_asset(self, asset_root, output_dir, target_platform=TARGET_PLATFORM_HIGH_END_MOBILE, target_path="/Game/Props"):
+    def export_asset(
+        self,
+        asset_root,
+        output_dir,
+        target_platform=TARGET_PLATFORM_HIGH_END_MOBILE,
+        target_path="/Game/Props",
+        use_asset_folder=True,
+    ):
         scan_result = self.scan_asset(asset_root)
         validation_result = self.validate_scan(scan_result, target_platform)
         if not validation_result.get("can_export", False):
             raise RuntimeError("Asset has blocking validation errors")
 
         asset_name = scan_result.get("asset_name", "Asset")
-        fbx_path = os.path.join(output_dir, asset_name + ".fbx")
-        manifest_path = os.path.join(output_dir, asset_name + "_manifest.json")
+        export_package = build_export_package(output_dir, asset_name, use_asset_folder)
+        fbx_path = export_package["fbx_path"]
+        manifest_path = export_package["manifest_path"]
 
         self.exporter.export_asset(asset_root, fbx_path)
-        manifest = self.manifest_writer.build(scan_result, validation_result, fbx_path, target_path)
+        manifest = self.manifest_writer.build(
+            scan_result,
+            validation_result,
+            fbx_path,
+            target_path,
+            package_dir=export_package["package_dir"],
+        )
         self.manifest_writer.write(manifest_path, manifest)
 
         return {
@@ -55,6 +70,7 @@ class MayaStaticPropPipeline(object):
             "validation": validation_result,
             "fbx_path": fbx_path,
             "manifest_path": manifest_path,
+            "package_dir": export_package["package_dir"],
             "manifest": manifest,
         }
 
