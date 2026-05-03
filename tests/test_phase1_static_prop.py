@@ -16,6 +16,7 @@ from asset_forge.shared.report_schema import read_report
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.manifest_schema import read_manifest, validate_manifest
 from asset_forge.shared.rule_validator import StaticPropRuleValidator
+from asset_forge.shared.rules_schema import get_default_rules
 
 
 class FakeCmds(object):
@@ -137,6 +138,40 @@ class Phase1StaticPropTest(unittest.TestCase):
             self.assertEqual(report["validation"]["score"], result["validation"]["score"])
         finally:
             shutil.rmtree(temp_dir)
+
+    def test_collision_naming_warns_for_loose_collision_prefix(self):
+        cmds = FakeCmds()
+        cmds.children["|SM_Crate_01"].append("|SM_Crate_01|COL_Crate")
+        cmds.types["|SM_Crate_01|COL_Crate"] = "transform"
+
+        scan = MayaAssetScanner(cmds).scan("|SM_Crate_01")
+        validation = StaticPropRuleValidator().validate(scan, TARGET_PLATFORM_HIGH_END_MOBILE)
+        checks = dict((item["id"], item) for item in validation["checks"])
+
+        self.assertEqual(scan["invalid_collision_nodes"], ["|SM_Crate_01|COL_Crate"])
+        self.assertEqual(checks["collision_naming"]["status"], "warning")
+        self.assertTrue(validation["can_export"])
+
+    def test_collision_naming_accepts_unreal_collision_prefix(self):
+        cmds = FakeCmds()
+        cmds.children["|SM_Crate_01"].append("|SM_Crate_01|UCX_SM_Crate_01_00")
+        cmds.types["|SM_Crate_01|UCX_SM_Crate_01_00"] = "transform"
+
+        scan = MayaAssetScanner(cmds).scan("|SM_Crate_01")
+        validation = StaticPropRuleValidator().validate(scan, TARGET_PLATFORM_HIGH_END_MOBILE)
+        checks = dict((item["id"], item) for item in validation["checks"])
+
+        self.assertEqual(scan["collision_nodes"], ["|SM_Crate_01|UCX_SM_Crate_01_00"])
+        self.assertEqual(checks["collision_naming"]["status"], "pass")
+
+    def test_scoring_penalties_are_configurable(self):
+        rules = get_default_rules()
+        rules["static_prop"]["scoring"]["warning_penalty"] = 5
+        scan = MayaAssetScanner(FakeCmds()).scan("|SM_Crate_01")
+
+        validation = StaticPropRuleValidator(rules).validate(scan, TARGET_PLATFORM_HIGH_END_MOBILE)
+
+        self.assertEqual(validation["score"], 95)
 
     def test_texture_packager_copies_existing_texture(self):
         temp_dir = tempfile.mkdtemp()

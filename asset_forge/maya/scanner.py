@@ -31,8 +31,10 @@ class MayaAssetScanner(object):
 
         meshes = self._find_meshes(asset_root)
         transforms = self._mesh_transforms(meshes)
+        descendants = self._descendants(asset_root)
         uv_sets = self._collect_uv_sets(meshes)
         material_data = self.material_scanner.scan_meshes(meshes) if self.material_scanner else {"materials": [], "textures": []}
+        collision_data = self._collision_nodes([asset_root] + descendants)
 
         return {
             "asset_root": asset_root,
@@ -53,6 +55,8 @@ class MayaAssetScanner(object):
             "has_lightmap_uv": self._has_lightmap_uv(uv_sets),
             "frozen_transform": self._all_transforms_frozen([asset_root] + transforms),
             "empty_meshes": self._empty_meshes(meshes),
+            "collision_nodes": collision_data["valid"],
+            "invalid_collision_nodes": collision_data["invalid"],
             "hidden_objects": self._hidden_objects(asset_root, meshes, transforms),
             "history_nodes": self._history_nodes(asset_root),
             "illegal_scale": self._has_illegal_scale([asset_root] + transforms),
@@ -61,8 +65,14 @@ class MayaAssetScanner(object):
     def _find_meshes(self, asset_root):
         if self.cmds.nodeType(asset_root) == "mesh":
             return [asset_root]
-        descendants = _safe_list(self.cmds.listRelatives(asset_root, allDescendents=True, fullPath=True))
+        descendants = self._descendants(asset_root)
         return [node for node in descendants if self.cmds.nodeType(node) == "mesh"]
+
+    def _descendants(self, asset_root):
+        try:
+            return _safe_list(self.cmds.listRelatives(asset_root, allDescendents=True, fullPath=True))
+        except RuntimeError:
+            return []
 
     def _mesh_transforms(self, meshes):
         transforms = []
@@ -203,6 +213,20 @@ class MayaAssetScanner(object):
             if not self._bool_attr(node, "visibility", True):
                 hidden.append(node)
         return hidden
+
+    def _collision_nodes(self, nodes):
+        valid = []
+        invalid = []
+        valid_prefixes = ("UCX_", "UBX_", "USP_", "UCP_")
+        loose_prefixes = ("COL_", "COLLISION_", "COLLIDER_")
+        for node in nodes:
+            name = node.split("|")[-1]
+            upper_name = name.upper()
+            if upper_name.startswith(valid_prefixes):
+                valid.append(node)
+            elif upper_name.startswith(loose_prefixes):
+                invalid.append(node)
+        return {"valid": valid, "invalid": invalid}
 
     def _history_nodes(self, asset_root):
         try:
