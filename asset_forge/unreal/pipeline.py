@@ -11,17 +11,19 @@ from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_logger import UnrealImportLogger
 from asset_forge.unreal.manifest_finder import find_latest_manifest, find_manifest_files
 from asset_forge.unreal.manifest_reader import UnrealManifestReader
+from asset_forge.unreal.package_validator import UnrealPackageValidator
 from asset_forge.unreal.post_import_validator import UnrealPostImportValidator
 
 
 class UnrealStaticMeshImportPipeline(object):
     """Read manifest, resolve preset, import FBX, and return a report."""
 
-    def __init__(self, reader=None, importer=None, logger=None, post_import_validator=None):
+    def __init__(self, reader=None, importer=None, logger=None, post_import_validator=None, package_validator=None):
         self.reader = reader or UnrealManifestReader()
         self.importer = importer or UnrealStaticMeshFbxImporter()
         self.logger = logger or UnrealImportLogger()
         self.post_import_validator = post_import_validator or UnrealPostImportValidator()
+        self.package_validator = package_validator or UnrealPackageValidator()
 
     def dry_run_manifest(self, manifest_path, log_path=None):
         prepared = self.reader.load(manifest_path, require_fbx_exists=True)
@@ -29,11 +31,13 @@ class UnrealStaticMeshImportPipeline(object):
         active_log_path = log_path or self._default_import_report_path(manifest, manifest_path)
         if not prepared["can_import"]:
             report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed", prepared.get("preset"))
+            self._attach_package_validation(report, manifest)
             self._write_log(active_log_path, report)
             self._write_end_to_end_report(manifest, manifest_path, report)
             return report
 
         report = self.logger.skipped(manifest, prepared["preset"], "Dry run passed")
+        self._attach_package_validation(report, manifest)
         self._write_log(active_log_path, report)
         self._write_end_to_end_report(manifest, manifest_path, report)
         return report
@@ -44,6 +48,7 @@ class UnrealStaticMeshImportPipeline(object):
         active_log_path = log_path or self._default_import_report_path(manifest, manifest_path)
         if not prepared["can_import"]:
             report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed", prepared.get("preset"))
+            self._attach_package_validation(report, manifest)
             self._write_log(active_log_path, report)
             self._write_end_to_end_report(manifest, manifest_path, report)
             return report
@@ -52,11 +57,13 @@ class UnrealStaticMeshImportPipeline(object):
             imported_assets = self.importer.import_static_mesh(manifest, prepared["preset"])
         except Exception as exc:
             report = self.logger.failed(manifest, [str(exc)], "Unreal import failed", prepared["preset"])
+            self._attach_package_validation(report, manifest)
             self._write_log(active_log_path, report)
             self._write_end_to_end_report(manifest, manifest_path, report)
             return report
 
         report = self.logger.success(manifest, imported_assets, preset=prepared["preset"])
+        self._attach_package_validation(report, manifest)
         report = self._attach_post_import_validation(report, manifest, imported_assets)
         self._write_log(active_log_path, report)
         self._write_end_to_end_report(manifest, manifest_path, report)
@@ -95,6 +102,10 @@ class UnrealStaticMeshImportPipeline(object):
             report["status"] = UNREAL_IMPORT_STATUS_FAILED
             report["message"] = "Imported with post-import validation errors"
             report["issues"] = report.get("issues", []) + issues
+        return report
+
+    def _attach_package_validation(self, report, manifest):
+        report["package_validation"] = self.package_validator.validate(manifest)
         return report
 
 

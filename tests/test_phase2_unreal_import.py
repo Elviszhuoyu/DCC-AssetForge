@@ -132,6 +132,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertNotIn("\\", report["fbx_path"])
         self.assertEqual(report["materials"][0]["name"], "M_Crate")
         self.assertEqual(report["textures"][0]["usage"], "base_color")
+        self.assertEqual(report["package_validation"]["status"], "pass")
         self.assertEqual(report["post_import_validation"]["status"], "pass")
 
     def test_pipeline_writes_default_import_and_end_to_end_reports(self):
@@ -157,6 +158,27 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["resolved_preset"]["name"], IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE)
         self.assertTrue(os.path.exists(log_path))
         self.assertNotIn("\\", report["fbx_path"])
+        self.assertEqual(report["package_validation"]["textures"]["total"], 1)
+
+    def test_package_validation_warns_for_missing_packaged_texture(self):
+        bad_texture_manifest_path = os.path.join(self.temp_dir, "bad_texture_manifest.json")
+        bad_texture_manifest = dict(self.manifest)
+        bad_texture_manifest["textures"] = [
+            {
+                "node": "file_basecolor",
+                "path": self.fbx_path.replace(".fbx", ".png"),
+                "package_path": os.path.join(self.temp_dir, "Textures", "Missing.png"),
+                "copied": True,
+                "usage": "base_color",
+            }
+        ]
+        write_manifest(bad_texture_manifest_path, bad_texture_manifest)
+
+        report = UnrealStaticMeshImportPipeline(importer=FakeImporter()).dry_run_manifest(bad_texture_manifest_path)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SKIPPED)
+        self.assertEqual(report["package_validation"]["status"], "warning")
+        self.assertEqual(len(report["package_validation"]["textures"]["missing_package_paths"]), 1)
 
     def test_fbx_importer_configures_unreal_task(self):
         prepared = prepare_manifest_for_import(self.manifest_path)
