@@ -1,0 +1,37 @@
+{
+  "import_presets": {
+    "StaticProp_PC": {
+      "asset_type": "static_mesh",
+      "import_mesh": true,
+      "import_materials": false,
+      "import_textures": false,
+      "generate_missing_collision": false,
+      "combine_meshes": false,
+      "normal_import_method": "import_normals_and_tangents",
+      "generate_lightmap_uvs": true,
+      "build_nanite": false
+    },
+    "StaticProp_HighEndMobile": {
+      "asset_type": "static_mesh",
+      "import_mesh": true,
+      "import_materials": false,
+      "import_textures": false,
+      "generate_missing_collision": false,
+      "combine_meshes": false,
+      "normal_import_method": "import_normals_and_tangents",
+      "generate_lightmap_uvs": true,
+      "build_nanite": false
+    },
+    "StaticProp_Mobile": {
+      "asset_type": "static_mesh",
+      "import_mesh": true,
+      "import_materials": false,
+      "import_textures": false,
+      "generate_missing_collision": false,
+      "combine_meshes": false,
+      "normal_import_method": "import_normals",
+      "generate_lightmap_uvs": true,
+      "build_nanite": false
+    }
+  }
+}
