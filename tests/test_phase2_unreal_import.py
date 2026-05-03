@@ -132,6 +132,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertNotIn("\\", report["fbx_path"])
         self.assertEqual(report["materials"][0]["name"], "M_Crate")
         self.assertEqual(report["textures"][0]["usage"], "base_color")
+        self.assertEqual(report["post_import_validation"]["status"], "pass")
 
     def test_pipeline_writes_default_import_and_end_to_end_reports(self):
         pipeline = UnrealStaticMeshImportPipeline(importer=FakeImporter())
@@ -189,6 +190,27 @@ class Phase2UnrealImportTest(unittest.TestCase):
 
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_FAILED)
         self.assertTrue(report["issues"])
+
+    def test_post_import_validation_blocks_wrong_target_path(self):
+        class WrongPathImporter(object):
+            def import_static_mesh(self, manifest, preset):
+                return ["/Game/Wrong/SM_Crate_01"]
+
+        report = UnrealStaticMeshImportPipeline(importer=WrongPathImporter()).import_from_manifest(self.manifest_path)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_FAILED)
+        self.assertEqual(report["post_import_validation"]["status"], "error")
+        self.assertTrue(report["issues"])
+
+    def test_post_import_validation_accepts_unreal_object_path(self):
+        class ObjectPathImporter(object):
+            def import_static_mesh(self, manifest, preset):
+                return ["/Game/Props/SM_Crate_01.SM_Crate_01"]
+
+        report = UnrealStaticMeshImportPipeline(importer=ObjectPathImporter()).import_from_manifest(self.manifest_path)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
+        self.assertEqual(report["post_import_validation"]["status"], "pass")
 
     def test_mixed_slash_fbx_path_is_normalized(self):
         mixed_manifest_path = os.path.join(self.temp_dir, "mixed_manifest.json")
