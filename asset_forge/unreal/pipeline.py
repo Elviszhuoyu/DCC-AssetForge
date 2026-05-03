@@ -14,6 +14,7 @@ from asset_forge.unreal.material_instance_creator import UnrealMaterialInstanceC
 from asset_forge.unreal.manifest_finder import find_latest_manifest, find_manifest_files
 from asset_forge.unreal.manifest_reader import UnrealManifestReader
 from asset_forge.unreal.package_validator import UnrealPackageValidator
+from asset_forge.unreal.plugin_content_bootstrap import UnrealPluginContentBootstrap
 from asset_forge.unreal.post_import_validator import UnrealPostImportValidator
 from asset_forge.unreal.texture_import_planner import UnrealTextureImportPlanner
 from asset_forge.unreal.texture_importer import UnrealTextureImporter
@@ -33,6 +34,7 @@ class UnrealStaticMeshImportPipeline(object):
         texture_importer=None,
         material_binding_planner=None,
         material_instance_creator=None,
+        plugin_content_bootstrap=None,
     ):
         self.reader = reader or UnrealManifestReader()
         self.importer = importer or UnrealStaticMeshFbxImporter()
@@ -43,6 +45,7 @@ class UnrealStaticMeshImportPipeline(object):
         self.texture_importer = texture_importer or UnrealTextureImporter()
         self.material_binding_planner = material_binding_planner or UnrealMaterialBindingPlanner()
         self.material_instance_creator = material_instance_creator or UnrealMaterialInstanceCreator()
+        self.plugin_content_bootstrap = plugin_content_bootstrap or UnrealPluginContentBootstrap()
 
     def dry_run_manifest(self, manifest_path, log_path=None):
         prepared = self.reader.load(manifest_path, require_fbx_exists=True)
@@ -51,6 +54,7 @@ class UnrealStaticMeshImportPipeline(object):
         if not prepared["can_import"]:
             report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed", prepared.get("preset"))
             self._attach_package_validation(report, manifest)
+            self._attach_plugin_content_validation(report)
             self._attach_texture_import_plan(report, manifest)
             self._attach_material_binding_plan(report, manifest)
             self._write_log(active_log_path, report)
@@ -59,6 +63,7 @@ class UnrealStaticMeshImportPipeline(object):
 
         report = self.logger.skipped(manifest, prepared["preset"], "Dry run passed")
         self._attach_package_validation(report, manifest)
+        self._attach_plugin_content_validation(report)
         self._attach_texture_import_plan(report, manifest)
         self._attach_material_binding_plan(report, manifest)
         self._write_log(active_log_path, report)
@@ -72,6 +77,7 @@ class UnrealStaticMeshImportPipeline(object):
         if not prepared["can_import"]:
             report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed", prepared.get("preset"))
             self._attach_package_validation(report, manifest)
+            self._attach_plugin_content_validation(report)
             self._attach_texture_import_plan(report, manifest)
             self._attach_material_binding_plan(report, manifest)
             self._write_log(active_log_path, report)
@@ -83,6 +89,7 @@ class UnrealStaticMeshImportPipeline(object):
         except Exception as exc:
             report = self.logger.failed(manifest, [str(exc)], "Unreal import failed", prepared["preset"])
             self._attach_package_validation(report, manifest)
+            self._attach_plugin_content_validation(report)
             self._attach_texture_import_plan(report, manifest)
             self._attach_material_binding_plan(report, manifest)
             self._write_log(active_log_path, report)
@@ -91,6 +98,7 @@ class UnrealStaticMeshImportPipeline(object):
 
         report = self.logger.success(manifest, imported_assets, preset=prepared["preset"])
         self._attach_package_validation(report, manifest)
+        self._attach_plugin_content_validation(report)
         self._attach_texture_import_plan(report, manifest)
         self._attach_material_binding_plan(report, manifest)
         self._import_planned_textures(report)
@@ -137,6 +145,10 @@ class UnrealStaticMeshImportPipeline(object):
 
     def _attach_package_validation(self, report, manifest):
         report["package_validation"] = self.package_validator.validate(manifest)
+        return report
+
+    def _attach_plugin_content_validation(self, report):
+        report["plugin_content_validation"] = self.plugin_content_bootstrap.validate()
         return report
 
     def _attach_texture_import_plan(self, report, manifest):
