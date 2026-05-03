@@ -20,6 +20,7 @@ from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
 from asset_forge.unreal.manifest_reader import prepare_manifest_for_import
 from asset_forge.unreal.pipeline import UnrealStaticMeshImportPipeline, import_latest_manifest
+from asset_forge.unreal.texture_importer import UnrealTextureImporter
 
 
 class FakeImporter(object):
@@ -56,7 +57,8 @@ class FakeAssetTools(object):
     def import_asset_tasks(self, tasks):
         self.tasks.extend(tasks)
         for task in tasks:
-            task.imported_object_paths = [task.destination_path + "/SM_Crate_01"]
+            name = getattr(task, "destination_name", "SM_Crate_01")
+            task.imported_object_paths = [task.destination_path + "/" + name]
 
 
 class FakeAssetToolsHelpers(object):
@@ -134,6 +136,8 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["textures"][0]["usage"], "base_color")
         self.assertEqual(report["package_validation"]["status"], "pass")
         self.assertEqual(report["texture_import_plan"]["target_dir"], "/Game/Props/Textures")
+        self.assertEqual(report["imported_textures"], [])
+        self.assertEqual(report["texture_import_issues"], [])
         self.assertEqual(report["post_import_validation"]["status"], "pass")
 
     def test_pipeline_writes_default_import_and_end_to_end_reports(self):
@@ -189,6 +193,55 @@ class Phase2UnrealImportTest(unittest.TestCase):
             report["texture_import_plan"]["textures"][0]["target_asset_path"],
             "/Game/Props/Textures/T_Crate_BaseColor",
         )
+
+    def test_pipeline_imports_planned_textures_without_blocking_mesh(self):
+        texture_path = self._write_packaged_texture()
+        textured_manifest_path = self._write_textured_manifest(texture_path)
+        texture_importer = FakeTextureImporter(["/Game/Props/Textures/T_Crate_BaseColor.T_Crate_BaseColor"])
+
+        report = UnrealStaticMeshImportPipeline(
+            importer=FakeImporter(),
+            texture_importer=texture_importer,
+        ).import_from_manifest(textured_manifest_path)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
+        self.assertEqual(report["imported_textures"], ["/Game/Props/Textures/T_Crate_BaseColor.T_Crate_BaseColor"])
+        self.assertEqual(texture_importer.plans[0]["count"], 1)
+
+    def test_texture_importer_configures_unreal_tasks(self):
+        fake_unreal = FakeUnreal()
+        fake_unreal.AssetToolsHelpers.asset_tools = FakeAssetTools()
+        plan = {
+            "textures": [
+                {
+                    "source_path": "C:/Exports/SM_Crate_01/Textures/T_Crate_BaseColor.png",
+                    "target_dir": "/Game/Props/Textures",
+                    "asset_name": "T_Crate_BaseColor",
+                }
+            ]
+        }
+
+        imported = UnrealTextureImporter(fake_unreal).import_textures(plan)
+
+        task = fake_unreal.AssetToolsHelpers.asset_tools.tasks[0]
+        self.assertEqual(imported, ["/Game/Props/Textures/T_Crate_BaseColor"])
+        self.assertEqual(task.filename, "C:/Exports/SM_Crate_01/Textures/T_Crate_BaseColor.png")
+        self.assertEqual(task.destination_path, "/Game/Props/Textures")
+        self.assertEqual(task.destination_name, "T_Crate_BaseColor")
+        self.assertTrue(task.automated)
+
+    def test_texture_import_error_does_not_fail_static_mesh_import(self):
+        texture_path = self._write_packaged_texture()
+        textured_manifest_path = self._write_textured_manifest(texture_path)
+
+        report = UnrealStaticMeshImportPipeline(
+            importer=FakeImporter(),
+            texture_importer=FailingTextureImporter(),
+        ).import_from_manifest(textured_manifest_path)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
+        self.assertEqual(report["imported_textures"], [])
+        self.assertTrue(report["texture_import_issues"])
 
     def test_package_validation_warns_for_missing_packaged_texture(self):
         bad_texture_manifest_path = os.path.join(self.temp_dir, "bad_texture_manifest.json")
@@ -297,6 +350,45 @@ class Phase2UnrealImportTest(unittest.TestCase):
 
         self.assertEqual(report["stage"], "batch_import")
         self.assertEqual(report["counts"]["skipped"], 1)
+
+    def _write_packaged_texture(self):
+        texture_dir = os.path.join(self.temp_dir, "Textures")
+        if not os.path.exists(texture_dir):
+            os.makedirs(texture_dir)
+        texture_path = os.path.join(texture_dir, "T_Crate_BaseColor.png")
+        with open(texture_path, "wb") as stream:
+            stream.write(b"fake texture")
+        return texture_path
+
+    def _write_textured_manifest(self, texture_path):
+        manifest_path = os.path.join(self.temp_dir, "textured_import_manifest.json")
+        manifest = dict(self.manifest)
+        manifest["textures"] = [
+            {
+                "node": "file_basecolor",
+                "path": self.fbx_path.replace(".fbx", ".png"),
+                "package_path": texture_path,
+                "copied": True,
+                "usage": "base_color",
+            }
+        ]
+        write_manifest(manifest_path, manifest)
+        return manifest_path
+
+
+class FakeTextureImporter(object):
+    def __init__(self, imported):
+        self.imported = imported
+        self.plans = []
+
+    def import_textures(self, texture_import_plan):
+        self.plans.append(texture_import_plan)
+        return self.imported
+
+
+class FailingTextureImporter(object):
+    def import_textures(self, texture_import_plan):
+        raise RuntimeError("texture import failed")
 
 
 if __name__ == "__main__":
