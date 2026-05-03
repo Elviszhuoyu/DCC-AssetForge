@@ -19,6 +19,7 @@ from scripts.unreal_import_manifest import import_manifest as script_import_mani
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
 from asset_forge.unreal.manifest_reader import prepare_manifest_for_import
+from asset_forge.unreal.material_instance_creator import UnrealMaterialInstanceCreator
 from asset_forge.unreal.pipeline import UnrealStaticMeshImportPipeline, import_latest_manifest
 from asset_forge.unreal.texture_importer import UnrealTextureImporter
 
@@ -53,12 +54,22 @@ class FakeFbxImportUI(FakeEditorObject):
 class FakeAssetTools(object):
     def __init__(self):
         self.tasks = []
+        self.assets = []
 
     def import_asset_tasks(self, tasks):
         self.tasks.extend(tasks)
         for task in tasks:
             name = getattr(task, "destination_name", "SM_Crate_01")
             task.imported_object_paths = [task.destination_path + "/" + name]
+
+    def create_asset(self, asset_name, package_path, asset_class, factory):
+        asset = FakeMaterialInstance()
+        asset.asset_name = asset_name
+        asset.package_path = package_path
+        asset.asset_class = asset_class
+        asset.factory = factory
+        self.assets.append(asset)
+        return asset
 
 
 class FakeAssetToolsHelpers(object):
@@ -80,6 +91,34 @@ class FakeUnreal(object):
     FbxImportUI = FakeFbxImportUI
     AssetToolsHelpers = FakeAssetToolsHelpers
     FBXNormalImportMethod = FakeNormalImportMethod
+    MaterialInstanceConstant = "MaterialInstanceConstant"
+
+    class MaterialInstanceConstantFactoryNew(object):
+        pass
+
+    class EditorAssetLibrary(object):
+        loaded = []
+
+        @classmethod
+        def load_asset(cls, asset_path):
+            cls.loaded.append(asset_path)
+            return "asset:" + asset_path
+
+    class MaterialEditingLibrary(object):
+        texture_calls = []
+        scalar_calls = []
+
+        @classmethod
+        def set_material_instance_texture_parameter_value(cls, material_instance, name, texture_asset):
+            cls.texture_calls.append((material_instance, name, texture_asset))
+
+        @classmethod
+        def set_material_instance_scalar_parameter_value(cls, material_instance, name, value):
+            cls.scalar_calls.append((material_instance, name, value))
+
+
+class FakeMaterialInstance(FakeEditorObject):
+    pass
 
 
 class Phase2UnrealImportTest(unittest.TestCase):
@@ -142,6 +181,8 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["material_binding_plan"]["materials"][0]["target_asset_path"], "/Game/Props/Materials/M_Crate")
         self.assertEqual(report["imported_textures"], [])
         self.assertEqual(report["texture_import_issues"], [])
+        self.assertEqual(report["created_material_instances"], [])
+        self.assertEqual(report["material_instance_issues"], [])
         self.assertEqual(report["post_import_validation"]["status"], "pass")
 
     def test_pipeline_writes_default_import_and_end_to_end_reports(self):
@@ -246,6 +287,63 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
         self.assertEqual(report["imported_textures"], ["/Game/Props/Textures/T_Crate_BaseColor.T_Crate_BaseColor"])
         self.assertEqual(texture_importer.plans[0]["count"], 1)
+
+    def test_pipeline_creates_material_instances_without_blocking_mesh(self):
+        texture_path = self._write_packaged_texture()
+        textured_manifest_path = self._write_textured_manifest(texture_path)
+        material_creator = FakeMaterialInstanceCreator(["/Game/Props/Materials/M_Crate"])
+
+        report = UnrealStaticMeshImportPipeline(
+            importer=FakeImporter(),
+            texture_importer=FakeTextureImporter([]),
+            material_instance_creator=material_creator,
+        ).import_from_manifest(textured_manifest_path)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
+        self.assertEqual(report["created_material_instances"], ["/Game/Props/Materials/M_Crate"])
+        self.assertEqual(material_creator.plans[0]["materials"][0]["parent_material"], "/Game/AssetForge/Materials/M_AF_Props_Opaque")
+
+    def test_material_instance_error_does_not_fail_static_mesh_import(self):
+        texture_path = self._write_packaged_texture()
+        textured_manifest_path = self._write_textured_manifest(texture_path)
+
+        report = UnrealStaticMeshImportPipeline(
+            importer=FakeImporter(),
+            texture_importer=FakeTextureImporter([]),
+            material_instance_creator=FailingMaterialInstanceCreator(),
+        ).import_from_manifest(textured_manifest_path)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
+        self.assertEqual(report["created_material_instances"], [])
+        self.assertTrue(report["material_instance_issues"])
+
+    def test_material_instance_creator_configures_unreal_asset(self):
+        fake_unreal = FakeUnreal()
+        fake_unreal.AssetToolsHelpers.asset_tools = FakeAssetTools()
+        fake_unreal.EditorAssetLibrary.loaded = []
+        fake_unreal.MaterialEditingLibrary.texture_calls = []
+        fake_unreal.MaterialEditingLibrary.scalar_calls = []
+        plan = {
+            "materials": [
+                {
+                    "material_name": "M_Crate",
+                    "parent_material": "/Game/AssetForge/Materials/M_AF_Props_Opaque",
+                    "target_asset_path": "/Game/Props/Materials/M_Crate",
+                    "texture_parameters": {"BaseColor": "/Game/Props/Textures/T_Crate_BaseColor"},
+                    "scalar_parameters": {"EmissiveIntensity": 1.0},
+                }
+            ]
+        }
+
+        created = UnrealMaterialInstanceCreator(fake_unreal).create_from_plan(plan)
+
+        asset = fake_unreal.AssetToolsHelpers.asset_tools.assets[0]
+        self.assertEqual(created, ["/Game/Props/Materials/M_Crate"])
+        self.assertEqual(asset.asset_name, "M_Crate")
+        self.assertEqual(asset.package_path, "/Game/Props/Materials")
+        self.assertEqual(asset.parent, "asset:/Game/AssetForge/Materials/M_AF_Props_Opaque")
+        self.assertEqual(fake_unreal.MaterialEditingLibrary.texture_calls[0][1], "BaseColor")
+        self.assertEqual(fake_unreal.MaterialEditingLibrary.scalar_calls[0][1], "EmissiveIntensity")
 
     def test_texture_importer_configures_unreal_tasks(self):
         fake_unreal = FakeUnreal()
@@ -429,6 +527,21 @@ class FakeTextureImporter(object):
 class FailingTextureImporter(object):
     def import_textures(self, texture_import_plan):
         raise RuntimeError("texture import failed")
+
+
+class FakeMaterialInstanceCreator(object):
+    def __init__(self, created):
+        self.created = created
+        self.plans = []
+
+    def create_from_plan(self, material_binding_plan):
+        self.plans.append(material_binding_plan)
+        return self.created
+
+
+class FailingMaterialInstanceCreator(object):
+    def create_from_plan(self, material_binding_plan):
+        raise RuntimeError("material instance creation failed")
 
 
 if __name__ == "__main__":
