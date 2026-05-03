@@ -12,6 +12,7 @@ from asset_forge.shared.constants import (
     UNREAL_IMPORT_STATUS_SUCCESS,
 )
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
+from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
 from asset_forge.unreal.manifest_reader import prepare_manifest_for_import
 from asset_forge.unreal.pipeline import UnrealStaticMeshImportPipeline
@@ -20,6 +21,59 @@ from asset_forge.unreal.pipeline import UnrealStaticMeshImportPipeline
 class FakeImporter(object):
     def import_static_mesh(self, manifest, preset):
         return [manifest["target_path"] + "/" + manifest["asset_name"]]
+
+
+class FakeEditorObject(object):
+    def set_editor_property(self, name, value):
+        setattr(self, name, value)
+
+    def get_editor_property(self, name):
+        return getattr(self, name)
+
+
+class FakeAssetImportTask(FakeEditorObject):
+    def __init__(self):
+        self.imported_object_paths = []
+
+
+class FakeStaticMeshImportData(FakeEditorObject):
+    pass
+
+
+class FakeFbxImportUI(FakeEditorObject):
+    def __init__(self):
+        self.static_mesh_import_data = FakeStaticMeshImportData()
+
+
+class FakeAssetTools(object):
+    def __init__(self):
+        self.tasks = []
+
+    def import_asset_tasks(self, tasks):
+        self.tasks.extend(tasks)
+        for task in tasks:
+            task.imported_object_paths = [task.destination_path + "/SM_Crate_01"]
+
+
+class FakeAssetToolsHelpers(object):
+    asset_tools = FakeAssetTools()
+
+    @classmethod
+    def get_asset_tools(cls):
+        return cls.asset_tools
+
+
+class FakeNormalImportMethod(object):
+    FBXNIM_IMPORT_NORMALS_AND_TANGENTS = "normals_and_tangents"
+    FBXNIM_IMPORT_NORMALS = "normals"
+    FBXNIM_COMPUTE_NORMALS = "compute"
+
+
+class FakeUnreal(object):
+    AssetImportTask = FakeAssetImportTask
+    FbxImportUI = FakeFbxImportUI
+    AssetToolsHelpers = FakeAssetToolsHelpers
+    FBXNormalImportMethod = FakeNormalImportMethod
 
 
 class Phase2UnrealImportTest(unittest.TestCase):
@@ -60,6 +114,28 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
         self.assertEqual(report["imported_assets"], ["/Game/Props/SM_Crate_01"])
         self.assertTrue(os.path.exists(log_path))
+
+    def test_fbx_importer_configures_unreal_task(self):
+        prepared = prepare_manifest_for_import(self.manifest_path)
+        fake_unreal = FakeUnreal()
+        fake_unreal.AssetToolsHelpers.asset_tools = FakeAssetTools()
+
+        imported = UnrealStaticMeshFbxImporter(fake_unreal).import_static_mesh(
+            prepared["manifest"],
+            prepared["preset"],
+        )
+
+        self.assertEqual(imported, ["/Game/Props/SM_Crate_01"])
+        task = fake_unreal.AssetToolsHelpers.asset_tools.tasks[0]
+        self.assertEqual(task.filename, self.fbx_path.replace("\\", "/"))
+        self.assertEqual(task.destination_path, "/Game/Props")
+        self.assertTrue(task.options.import_mesh)
+        self.assertFalse(task.options.import_as_skeletal)
+        self.assertTrue(task.options.static_mesh_import_data.generate_lightmap_u_vs)
+        self.assertEqual(
+            task.options.static_mesh_import_data.normal_import_method,
+            "normals_and_tangents",
+        )
 
     def test_invalid_target_path_blocks_import(self):
         bad_manifest_path = os.path.join(self.temp_dir, "bad_manifest.json")
