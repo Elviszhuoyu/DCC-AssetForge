@@ -15,5 +15,7 @@ def build_export_package(output_root, asset_name, use_asset_folder=True):
         "package_dir": normalize_path(package_dir),
         "fbx_path": normalize_path(os.path.join(package_dir, asset_name + ".fbx")),
         "manifest_path": normalize_path(os.path.join(package_dir, asset_name + "_manifest.json")),
+        "export_report_path": normalize_path(os.path.join(package_dir, asset_name + "_export_report.json")),
         "import_report_path": normalize_path(os.path.join(package_dir, asset_name + "_import_report.json")),
+        "end_to_end_report_path": normalize_path(os.path.join(package_dir, asset_name + "_end_to_end_report.json")),
     }

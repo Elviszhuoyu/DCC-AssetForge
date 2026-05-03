@@ -2,6 +2,9 @@
 
 from __future__ import absolute_import
 
+import os
+
+from asset_forge.shared.report_schema import create_end_to_end_report, read_report, write_report
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_logger import UnrealImportLogger
 from asset_forge.unreal.manifest_finder import find_latest_manifest
@@ -19,37 +22,65 @@ class UnrealStaticMeshImportPipeline(object):
     def dry_run_manifest(self, manifest_path, log_path=None):
         prepared = self.reader.load(manifest_path, require_fbx_exists=True)
         manifest = prepared["manifest"]
+        active_log_path = log_path or self._default_import_report_path(manifest, manifest_path)
         if not prepared["can_import"]:
             report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed", prepared.get("preset"))
-            self._write_log(log_path, report)
+            self._write_log(active_log_path, report)
+            self._write_end_to_end_report(manifest, manifest_path, report)
             return report
 
         report = self.logger.skipped(manifest, prepared["preset"], "Dry run passed")
-        self._write_log(log_path, report)
+        self._write_log(active_log_path, report)
+        self._write_end_to_end_report(manifest, manifest_path, report)
         return report
 
     def import_from_manifest(self, manifest_path, log_path=None):
         prepared = self.reader.load(manifest_path, require_fbx_exists=True)
         manifest = prepared["manifest"]
+        active_log_path = log_path or self._default_import_report_path(manifest, manifest_path)
         if not prepared["can_import"]:
             report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed", prepared.get("preset"))
-            self._write_log(log_path, report)
+            self._write_log(active_log_path, report)
+            self._write_end_to_end_report(manifest, manifest_path, report)
             return report
 
         try:
             imported_assets = self.importer.import_static_mesh(manifest, prepared["preset"])
         except Exception as exc:
             report = self.logger.failed(manifest, [str(exc)], "Unreal import failed", prepared["preset"])
-            self._write_log(log_path, report)
+            self._write_log(active_log_path, report)
+            self._write_end_to_end_report(manifest, manifest_path, report)
             return report
 
         report = self.logger.success(manifest, imported_assets, preset=prepared["preset"])
-        self._write_log(log_path, report)
+        self._write_log(active_log_path, report)
+        self._write_end_to_end_report(manifest, manifest_path, report)
         return report
 
     def _write_log(self, log_path, report):
         if log_path:
             self.logger.write(log_path, report)
+
+    def _default_import_report_path(self, manifest, manifest_path):
+        package_dir = manifest.get("package_dir") or os.path.dirname(os.path.abspath(manifest_path))
+        asset_name = manifest.get("asset_name", "asset")
+        return os.path.join(package_dir, asset_name + "_import_report.json")
+
+    def _default_export_report_path(self, manifest, manifest_path):
+        package_dir = manifest.get("package_dir") or os.path.dirname(os.path.abspath(manifest_path))
+        asset_name = manifest.get("asset_name", "asset")
+        return os.path.join(package_dir, asset_name + "_export_report.json")
+
+    def _default_end_to_end_report_path(self, manifest, manifest_path):
+        package_dir = manifest.get("package_dir") or os.path.dirname(os.path.abspath(manifest_path))
+        asset_name = manifest.get("asset_name", "asset")
+        return os.path.join(package_dir, asset_name + "_end_to_end_report.json")
+
+    def _write_end_to_end_report(self, manifest, manifest_path, import_report):
+        export_report_path = self._default_export_report_path(manifest, manifest_path)
+        export_report = read_report(export_report_path) if os.path.exists(export_report_path) else {}
+        report = create_end_to_end_report(export_report, import_report)
+        write_report(self._default_end_to_end_report_path(manifest, manifest_path), report)
 
 
 def import_manifest(manifest_path, log_path=None):
