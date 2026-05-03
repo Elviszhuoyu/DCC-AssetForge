@@ -14,6 +14,7 @@ from asset_forge.unreal.manifest_reader import UnrealManifestReader
 from asset_forge.unreal.package_validator import UnrealPackageValidator
 from asset_forge.unreal.post_import_validator import UnrealPostImportValidator
 from asset_forge.unreal.texture_import_planner import UnrealTextureImportPlanner
+from asset_forge.unreal.texture_importer import UnrealTextureImporter
 
 
 class UnrealStaticMeshImportPipeline(object):
@@ -27,6 +28,7 @@ class UnrealStaticMeshImportPipeline(object):
         post_import_validator=None,
         package_validator=None,
         texture_import_planner=None,
+        texture_importer=None,
     ):
         self.reader = reader or UnrealManifestReader()
         self.importer = importer or UnrealStaticMeshFbxImporter()
@@ -34,6 +36,7 @@ class UnrealStaticMeshImportPipeline(object):
         self.post_import_validator = post_import_validator or UnrealPostImportValidator()
         self.package_validator = package_validator or UnrealPackageValidator()
         self.texture_import_planner = texture_import_planner or UnrealTextureImportPlanner()
+        self.texture_importer = texture_importer or UnrealTextureImporter()
 
     def dry_run_manifest(self, manifest_path, log_path=None):
         prepared = self.reader.load(manifest_path, require_fbx_exists=True)
@@ -79,6 +82,7 @@ class UnrealStaticMeshImportPipeline(object):
         report = self.logger.success(manifest, imported_assets, preset=prepared["preset"])
         self._attach_package_validation(report, manifest)
         self._attach_texture_import_plan(report, manifest)
+        self._import_planned_textures(report)
         report = self._attach_post_import_validation(report, manifest, imported_assets)
         self._write_log(active_log_path, report)
         self._write_end_to_end_report(manifest, manifest_path, report)
@@ -125,6 +129,19 @@ class UnrealStaticMeshImportPipeline(object):
 
     def _attach_texture_import_plan(self, report, manifest):
         report["texture_import_plan"] = self.texture_import_planner.plan(manifest)
+        return report
+
+    def _import_planned_textures(self, report):
+        plan = report.get("texture_import_plan", {})
+        report["imported_textures"] = []
+        report["texture_import_issues"] = []
+        if not plan.get("count", 0):
+            return report
+
+        try:
+            report["imported_textures"] = self.texture_importer.import_textures(plan)
+        except Exception as exc:
+            report["texture_import_issues"].append(str(exc))
         return report
 
 
