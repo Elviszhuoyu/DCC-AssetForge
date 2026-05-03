@@ -94,6 +94,8 @@ class Phase2UnrealImportTest(unittest.TestCase):
             score=92,
             target_platform=TARGET_PLATFORM_HIGH_END_MOBILE,
             import_preset=IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE,
+            materials=[{"name": "M_Crate", "textures": []}],
+            textures=[{"node": "file_basecolor", "path": self.fbx_path.replace(".fbx", ".png"), "usage": "base_color"}],
         )
         write_manifest(self.manifest_path, self.manifest)
 
@@ -119,6 +121,8 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["target_platform"], TARGET_PLATFORM_HIGH_END_MOBILE)
         self.assertEqual(report["resolved_preset"]["name"], IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE)
         self.assertNotIn("\\", report["fbx_path"])
+        self.assertEqual(report["materials"][0]["name"], "M_Crate")
+        self.assertEqual(report["textures"][0]["usage"], "base_color")
 
     def test_dry_run_returns_skipped_report(self):
         pipeline = UnrealStaticMeshImportPipeline(importer=FakeImporter())

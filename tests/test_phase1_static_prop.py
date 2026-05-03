@@ -19,6 +19,9 @@ class FakeCmds(object):
             "|SM_Crate_01|meshTransform": "transform",
             "|SM_Crate_01|meshTransform|meshShape": "mesh",
             "polyBevel1": "polyBevel",
+            "initialShadingGroup": "shadingEngine",
+            "M_Crate": "lambert",
+            "file_basecolor": "file",
         }
         self.children = {
             "|SM_Crate_01": ["|SM_Crate_01|meshTransform", "|SM_Crate_01|meshTransform|meshShape"],
@@ -36,6 +39,7 @@ class FakeCmds(object):
             "|SM_Crate_01|meshTransform.scale": [(1.0, 1.0, 1.0)],
             "|SM_Crate_01|meshTransform.visibility": True,
             "|SM_Crate_01|meshTransform|meshShape.visibility": True,
+            "file_basecolor.fileTextureName": r"C:\Textures\T_Crate_BaseColor.png",
         }
 
     def ls(self, selection=False, long=False):
@@ -58,8 +62,14 @@ class FakeCmds(object):
             return 4120
         return 0
 
-    def listConnections(self, mesh, type=None):
-        return ["initialShadingGroup", "M_Crate"]
+    def listConnections(self, node, type=None, source=True, destination=True, plugs=False):
+        if type == "shadingEngine":
+            return ["initialShadingGroup"]
+        if node == "initialShadingGroup.surfaceShader":
+            return ["M_Crate"]
+        if node == "file_basecolor" and plugs:
+            return ["M_Crate.color"]
+        return []
 
     def polyUVSet(self, mesh, query=False, allUVSets=False):
         return ["map1", "lightmap"]
@@ -68,6 +78,8 @@ class FakeCmds(object):
         return self.attrs[attr]
 
     def listHistory(self, node, pruneDagObjects=False):
+        if node == "M_Crate":
+            return ["file_basecolor"]
         return ["polyBevel1"]
 
 
@@ -79,6 +91,8 @@ class Phase1StaticPropTest(unittest.TestCase):
         self.assertEqual(scan["asset_name"], "SM_Crate_01")
         self.assertEqual(scan["triangles"], 8240)
         self.assertTrue(scan["has_lightmap_uv"])
+        self.assertEqual(scan["materials"][0]["name"], "M_Crate")
+        self.assertEqual(scan["textures"][0]["usage"], "base_color")
 
         validation = StaticPropRuleValidator().validate(scan, TARGET_PLATFORM_HIGH_END_MOBILE)
         self.assertEqual(validation["status"], "warning")
@@ -95,6 +109,8 @@ class Phase1StaticPropTest(unittest.TestCase):
             self.assertEqual(validate_manifest(loaded), [])
             self.assertEqual(loaded["asset_name"], "SM_Crate_01")
             self.assertNotIn("\\", loaded["fbx_path"])
+            self.assertEqual(loaded["materials"][0]["name"], "M_Crate")
+            self.assertTrue(loaded["textures"][0]["path"].endswith("/T_Crate_BaseColor.png"))
         finally:
             shutil.rmtree(temp_dir)
 

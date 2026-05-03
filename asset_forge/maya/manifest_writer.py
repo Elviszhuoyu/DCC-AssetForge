@@ -41,6 +41,8 @@ class MayaManifestWriter(object):
             target_engine_version=target_engine_version,
             import_preset=IMPORT_PRESET_BY_PLATFORM.get(target_platform, IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE),
             package_dir=normalize_path(package_dir) if package_dir else "",
+            materials=scan_result.get("materials", []),
+            textures=scan_result.get("textures", []),
         )
 
     def write(self, manifest_path, manifest):
