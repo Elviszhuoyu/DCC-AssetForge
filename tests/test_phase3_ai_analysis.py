@@ -37,16 +37,16 @@ class Phase3AiAnalysisTest(unittest.TestCase):
                     "id": "lightmap_uv",
                     "label": "Lightmap UV",
                     "status": CHECK_STATUS_WARNING,
-                    "message": "缺少 Lightmap UV",
+                    "message": "?? Lightmap UV",
                 }
             ],
         }
 
         suggestion = analyze_validation(scan, validation)
 
-        self.assertIn("缺少 Lightmap UV", suggestion)
-        self.assertIn("第二套", suggestion)
-        self.assertIn("不参与通过 / 失败判定", suggestion)
+        self.assertIn("?? Lightmap UV", suggestion)
+        self.assertIn("???", suggestion)
+        self.assertIn("????? / ????", suggestion)
         self.assertTrue(validation["can_export"])
 
     def test_pass_result_outputs_pass_message(self):
@@ -62,8 +62,8 @@ class Phase3AiAnalysisTest(unittest.TestCase):
 
         suggestion = analyze_validation(scan, validation)
 
-        self.assertIn("检查结果为通过", suggestion)
-        self.assertIn("Unreal 导入流程", suggestion)
+        self.assertIn("???????", suggestion)
+        self.assertIn("Unreal ????", suggestion)
 
 
 if __name__ == "__main__":

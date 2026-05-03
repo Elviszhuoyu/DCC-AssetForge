@@ -4,10 +4,11 @@ from __future__ import absolute_import
 
 import os
 
-from asset_forge.shared.report_schema import create_end_to_end_report, read_report, write_report
+from asset_forge.shared.path_utils import normalize_path
+from asset_forge.shared.report_schema import create_batch_report, create_end_to_end_report, read_report, write_report
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_logger import UnrealImportLogger
-from asset_forge.unreal.manifest_finder import find_latest_manifest
+from asset_forge.unreal.manifest_finder import find_latest_manifest, find_manifest_files
 from asset_forge.unreal.manifest_reader import UnrealManifestReader
 
 
@@ -83,6 +84,30 @@ class UnrealStaticMeshImportPipeline(object):
         write_report(self._default_end_to_end_report_path(manifest, manifest_path), report)
 
 
+class UnrealBatchImportPipeline(object):
+    """Batch dry-run or import every manifest under an export root."""
+
+    def __init__(self, item_pipeline=None):
+        self.item_pipeline = item_pipeline or UnrealStaticMeshImportPipeline()
+
+    def run(self, export_root, dry_run=False, report_path=None):
+        manifests = find_manifest_files(export_root)
+        reports = []
+        for manifest_path in manifests:
+            if dry_run:
+                reports.append(self.item_pipeline.dry_run_manifest(manifest_path))
+            else:
+                reports.append(self.item_pipeline.import_from_manifest(manifest_path))
+
+        batch_report = create_batch_report(export_root, dry_run, reports)
+        write_report(report_path or self._default_batch_report_path(export_root, dry_run), batch_report)
+        return batch_report
+
+    def _default_batch_report_path(self, export_root, dry_run):
+        file_name = "batch_dry_run_report.json" if dry_run else "batch_import_report.json"
+        return normalize_path(os.path.join(export_root, file_name))
+
+
 def import_manifest(manifest_path, log_path=None):
     """Convenience entry point for Unreal Python Script Editor."""
     return UnrealStaticMeshImportPipeline().import_from_manifest(manifest_path, log_path)
@@ -102,3 +127,8 @@ def import_latest_manifest(export_root, log_path=None, dry_run=False):
     if dry_run:
         return pipeline.dry_run_manifest(manifest_path, log_path)
     return pipeline.import_from_manifest(manifest_path, log_path)
+
+
+def import_all_manifests(export_root, report_path=None, dry_run=False):
+    """Import or dry-run every manifest under an export root."""
+    return UnrealBatchImportPipeline().run(export_root, dry_run, report_path)

@@ -14,6 +14,7 @@ from asset_forge.shared.constants import (
 )
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
 from asset_forge.shared.report_schema import read_report, write_report
+from scripts.unreal_import_manifest import import_all_manifests as script_import_all_manifests
 from scripts.unreal_import_manifest import import_manifest as script_import_manifest
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
@@ -216,6 +217,12 @@ class Phase2UnrealImportTest(unittest.TestCase):
 
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SKIPPED)
         self.assertEqual(report["asset_name"], "SM_Crate_01")
+
+    def test_script_entrypoint_supports_batch_dry_run(self):
+        report = script_import_all_manifests(self.temp_dir, dry_run=True)
+
+        self.assertEqual(report["stage"], "batch_import")
+        self.assertEqual(report["counts"]["skipped"], 1)
 
 
 if __name__ == "__main__":
