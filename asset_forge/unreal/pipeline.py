@@ -4,6 +4,7 @@ from __future__ import absolute_import
 
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_logger import UnrealImportLogger
+from asset_forge.unreal.manifest_finder import find_latest_manifest
 from asset_forge.unreal.manifest_reader import UnrealManifestReader
 
 
@@ -59,3 +60,14 @@ def import_manifest(manifest_path, log_path=None):
 def dry_run_manifest(manifest_path, log_path=None):
     """Validate a manifest and resolve preset without importing."""
     return UnrealStaticMeshImportPipeline().dry_run_manifest(manifest_path, log_path)
+
+
+def import_latest_manifest(export_root, log_path=None, dry_run=False):
+    """Find and import the newest manifest under an export root."""
+    manifest_path = find_latest_manifest(export_root)
+    if not manifest_path:
+        raise RuntimeError("No Asset Forge manifest found under: {0}".format(export_root))
+    pipeline = UnrealStaticMeshImportPipeline()
+    if dry_run:
+        return pipeline.dry_run_manifest(manifest_path, log_path)
+    return pipeline.import_from_manifest(manifest_path, log_path)
