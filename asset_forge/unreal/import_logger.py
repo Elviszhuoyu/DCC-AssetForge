@@ -38,6 +38,8 @@ class UnrealImportLogger(object):
             "target_path": manifest.get("target_path", ""),
             "import_preset": manifest.get("import_preset", ""),
             "resolved_preset": preset,
+            "materials": manifest.get("materials", []),
+            "textures": manifest.get("textures", []),
             "imported_assets": imported_assets,
             "issues": issues,
         }

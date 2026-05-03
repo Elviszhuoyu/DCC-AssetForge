@@ -3,6 +3,7 @@
 from __future__ import absolute_import
 
 from asset_forge.maya.cmds_bridge import get_cmds
+from asset_forge.maya.material_scanner import MayaMaterialScanner
 
 
 def _safe_list(value):
@@ -14,6 +15,7 @@ class MayaAssetScanner(object):
 
     def __init__(self, cmds_module=None):
         self.cmds = cmds_module or get_cmds()
+        self.material_scanner = MayaMaterialScanner(self.cmds) if self.cmds is not None else None
 
     def is_available(self):
         return self.cmds is not None
@@ -30,6 +32,7 @@ class MayaAssetScanner(object):
         meshes = self._find_meshes(asset_root)
         transforms = self._mesh_transforms(meshes)
         uv_sets = self._collect_uv_sets(meshes)
+        material_data = self.material_scanner.scan_meshes(meshes) if self.material_scanner else {"materials": [], "textures": []}
 
         return {
             "asset_root": asset_root,
@@ -43,6 +46,8 @@ class MayaAssetScanner(object):
             "vertices": self._count_vertices(meshes),
             "faces": self._count_faces(meshes),
             "material_slots": self._count_material_slots(meshes),
+            "materials": material_data.get("materials", []),
+            "textures": material_data.get("textures", []),
             "uv_sets": uv_sets,
             "has_uv0": self._has_uv0(uv_sets),
             "has_lightmap_uv": self._has_lightmap_uv(uv_sets),
