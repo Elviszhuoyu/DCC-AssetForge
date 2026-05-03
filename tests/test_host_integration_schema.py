@@ -21,6 +21,8 @@ class HostIntegrationSchemaTest(unittest.TestCase):
 
         self.assertEqual(maya["package_type"], "maya_module")
         self.assertEqual(maya["official_descriptor"], ".mod")
+        self.assertEqual(maya["descriptor_path"], "integrations/maya/AssetForge.mod")
+        self.assertIn("integrations/maya/scripts", maya["expected_package_roots"])
         self.assertIn("maya.cmds", maya["runtime_api"])
         self.assertFalse(maya["adapter_is_package"])
 
