@@ -1,8 +1,8 @@
 """DCC adapter contract.
 
-Adapters hide DCC-specific APIs behind a small stable surface. The shared
-pipeline can call this interface without knowing whether the scene came from
-Maya, Blender, or a future DCC.
+Adapters hide DCC-specific business APIs behind a small stable surface. This
+contract is not a Maya module, Blender extension, or Unreal plugin package.
+Official host packaging is tracked separately in host_integration_schema.
 """
 
 from __future__ import absolute_import
@@ -28,4 +28,3 @@ class DccAdapter(object):
     def export_fbx(self, asset_root, output_path, preset=None):
         """Export one asset root as FBX and return the exported file path."""
         raise NotImplementedError
-
