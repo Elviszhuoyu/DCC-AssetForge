@@ -31,6 +31,7 @@ class HostIntegrationSchemaTest(unittest.TestCase):
 
         self.assertEqual(blender["package_type"], "blender_extension")
         self.assertEqual(blender["official_descriptor"], "blender_manifest.toml")
+        self.assertEqual(blender["descriptor_path"], "integrations/blender/asset_forge_extension/blender_manifest.toml")
         self.assertEqual(blender["status"], "planned")
         self.assertFalse(blender["adapter_is_package"])
 
