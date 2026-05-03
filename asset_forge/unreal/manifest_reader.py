@@ -16,6 +16,7 @@ class UnrealManifestReader(object):
 
     def load(self, path, require_fbx_exists=True):
         manifest = read_manifest(path)
+        manifest = self._normalize_manifest_paths(manifest)
         issues = validate_manifest(manifest)
         issues.extend(self._validate_paths(manifest, require_fbx_exists))
 
@@ -49,6 +50,13 @@ class UnrealManifestReader(object):
             issues.append("target_path must start with /Game: {0}".format(target_path))
 
         return issues
+
+    def _normalize_manifest_paths(self, manifest):
+        normalized = dict(manifest)
+        fbx_path = normalized.get("fbx_path")
+        if fbx_path:
+            normalized["fbx_path"] = os.path.abspath(fbx_path).replace("\\", "/")
+        return normalized
 
 
 def load_manifest_for_import(path, require_fbx_exists=True):
