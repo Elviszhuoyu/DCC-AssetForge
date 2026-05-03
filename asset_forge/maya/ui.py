@@ -5,6 +5,7 @@ from __future__ import absolute_import
 import os
 
 from asset_forge.maya.cmds_bridge import get_cmds
+from asset_forge.maya.package_opener import open_directory
 from asset_forge.maya.pipeline import MayaStaticPropPipeline
 from asset_forge.shared.constants import (
     TARGET_PLATFORM_HIGH_END_MOBILE,
@@ -24,6 +25,7 @@ class AssetForgeMayaWindow(object):
         self.pipeline = pipeline or MayaStaticPropPipeline()
         self.last_scan = None
         self.last_validation = None
+        self.last_package_dir = ""
         self.controls = {}
 
     def show(self):
@@ -64,6 +66,11 @@ class AssetForgeMayaWindow(object):
 
         self.controls["summary"] = self.cmds.text(label="????", align="left")
         self.controls["results"] = self.cmds.scrollField(editable=False, wordWrap=True, height=300)
+        self.controls["open_package"] = self.cmds.button(
+            label="Open Export Folder",
+            command=self._open_last_package,
+            enable=False,
+        )
         self.cmds.button(label="AI ??", command=self._analyze)
 
         self.cmds.showWindow(WINDOW_NAME)
@@ -120,8 +127,17 @@ class AssetForgeMayaWindow(object):
             )
             self.last_scan = result["scan"]
             self.last_validation = result["validation"]
+            self.last_package_dir = result.get("package_dir", "")
+            self.cmds.button(self.controls["open_package"], edit=True, enable=bool(self.last_package_dir))
             self._set_summary("????: {0}".format(result["manifest_path"]))
             self._set_results(self._format_validation(result["validation"]))
+        except Exception as exc:
+            self._show_error(exc)
+
+    def _open_last_package(self, *args):
+        try:
+            opened_path = open_directory(self.last_package_dir)
+            self._set_summary("Export folder opened: {0}".format(opened_path))
         except Exception as exc:
             self._show_error(exc)
 
