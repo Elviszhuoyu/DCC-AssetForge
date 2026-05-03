@@ -43,6 +43,7 @@ def create_manifest(asset_name, fbx_path, target_path, checks=None, score=0, **k
         "target_path": target_path,
         "import_preset": kwargs.get("import_preset", "StaticProp_HighEndMobile"),
         "package_dir": kwargs.get("package_dir", ""),
+        "material_profile": kwargs.get("material_profile", ""),
         "materials": kwargs.get("materials", []),
         "textures": kwargs.get("textures", []),
         "checks": checks or {},

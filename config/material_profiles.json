@@ -1,0 +1,196 @@
+{
+  "version": "0.1",
+  "profiles": [
+    {
+      "version": "0.1",
+      "name": "Props_Opaque_PainterUE_ARM",
+      "display_name": "Props Opaque - Painter UE ARM",
+      "asset_family": "props",
+      "render_mode": "opaque",
+      "master_material": "/Game/AssetForge/Materials/M_AF_Props_Opaque",
+      "material_instance_dir": "{target_path}/Materials",
+      "texture_dir": "{target_path}/Textures",
+      "texture_rules": [
+        {
+          "usage": "base_color",
+          "parameter": "BaseColor",
+          "suffixes": ["_BaseColor", "_BC", "_Albedo"],
+          "srgb": true,
+          "compression": "default",
+          "required": true
+        },
+        {
+          "usage": "normal",
+          "parameter": "Normal",
+          "suffixes": ["_Normal", "_N"],
+          "srgb": false,
+          "compression": "normalmap",
+          "required": true
+        },
+        {
+          "usage": "packed_arm",
+          "parameter": "ARM",
+          "suffixes": ["_ARM", "_ORM"],
+          "srgb": false,
+          "compression": "masks",
+          "required": false,
+          "channels": {
+            "r": "ao",
+            "g": "roughness",
+            "b": "metallic"
+          }
+        },
+        {
+          "usage": "emissive",
+          "parameter": "Emissive",
+          "suffixes": ["_Emissive", "_E"],
+          "srgb": true,
+          "compression": "default",
+          "required": false
+        }
+      ],
+      "scalar_parameters": {
+        "RoughnessIntensity": 1.0,
+        "MetallicIntensity": 1.0,
+        "EmissiveIntensity": 1.0
+      },
+      "supports": {
+        "emissive": true,
+        "opacity_mask": false,
+        "translucency": false
+      }
+    },
+    {
+      "version": "0.1",
+      "name": "Props_Masked_PainterUE_ARM",
+      "display_name": "Props Masked - Painter UE ARM",
+      "asset_family": "props",
+      "render_mode": "masked",
+      "master_material": "/Game/AssetForge/Materials/M_AF_Props_Masked",
+      "material_instance_dir": "{target_path}/Materials",
+      "texture_dir": "{target_path}/Textures",
+      "texture_rules": [
+        {
+          "usage": "base_color",
+          "parameter": "BaseColor",
+          "suffixes": ["_BaseColor", "_BC", "_Albedo"],
+          "srgb": true,
+          "compression": "default",
+          "required": true
+        },
+        {
+          "usage": "normal",
+          "parameter": "Normal",
+          "suffixes": ["_Normal", "_N"],
+          "srgb": false,
+          "compression": "normalmap",
+          "required": true
+        },
+        {
+          "usage": "packed_arm",
+          "parameter": "ARM",
+          "suffixes": ["_ARM", "_ORM"],
+          "srgb": false,
+          "compression": "masks",
+          "required": false,
+          "channels": {
+            "r": "ao",
+            "g": "roughness",
+            "b": "metallic"
+          }
+        },
+        {
+          "usage": "emissive",
+          "parameter": "Emissive",
+          "suffixes": ["_Emissive", "_E"],
+          "srgb": true,
+          "compression": "default",
+          "required": false
+        },
+        {
+          "usage": "opacity_mask",
+          "parameter": "OpacityMask",
+          "suffixes": ["_Mask", "_Opacity", "_OpacityMask"],
+          "srgb": false,
+          "compression": "masks",
+          "required": true
+        }
+      ],
+      "scalar_parameters": {
+        "OpacityClipValue": 0.333,
+        "EmissiveIntensity": 1.0
+      },
+      "supports": {
+        "emissive": true,
+        "opacity_mask": true,
+        "translucency": false
+      }
+    },
+    {
+      "version": "0.1",
+      "name": "Props_Translucent_PainterUE_ARM",
+      "display_name": "Props Translucent - Painter UE ARM",
+      "asset_family": "props",
+      "render_mode": "translucent",
+      "master_material": "/Game/AssetForge/Materials/M_AF_Props_Translucent",
+      "material_instance_dir": "{target_path}/Materials",
+      "texture_dir": "{target_path}/Textures",
+      "texture_rules": [
+        {
+          "usage": "base_color",
+          "parameter": "BaseColor",
+          "suffixes": ["_BaseColor", "_BC", "_Albedo"],
+          "srgb": true,
+          "compression": "default",
+          "required": true
+        },
+        {
+          "usage": "normal",
+          "parameter": "Normal",
+          "suffixes": ["_Normal", "_N"],
+          "srgb": false,
+          "compression": "normalmap",
+          "required": true
+        },
+        {
+          "usage": "packed_arm",
+          "parameter": "ARM",
+          "suffixes": ["_ARM", "_ORM"],
+          "srgb": false,
+          "compression": "masks",
+          "required": false,
+          "channels": {
+            "r": "ao",
+            "g": "roughness",
+            "b": "metallic"
+          }
+        },
+        {
+          "usage": "emissive",
+          "parameter": "Emissive",
+          "suffixes": ["_Emissive", "_E"],
+          "srgb": true,
+          "compression": "default",
+          "required": false
+        },
+        {
+          "usage": "opacity",
+          "parameter": "Opacity",
+          "suffixes": ["_Opacity", "_Alpha"],
+          "srgb": false,
+          "compression": "masks",
+          "required": false
+        }
+      ],
+      "scalar_parameters": {
+        "OpacityIntensity": 1.0,
+        "EmissiveIntensity": 1.0
+      },
+      "supports": {
+        "emissive": true,
+        "opacity_mask": false,
+        "translucency": true
+      }
+    }
+  ]
+}
