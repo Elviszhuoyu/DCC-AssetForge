@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from asset_forge.maya.adapter import MayaAdapter
-from asset_forge.maya.fbx_exporter import MayaFbxExporter
+from asset_forge.maya.fbx_exporter import DEFAULT_FBX_EXPORT_PRESET, MayaFbxExporter
 from asset_forge.maya.package_opener import open_directory
 from asset_forge.maya.pipeline import MayaStaticPropPipeline
 from asset_forge.maya.manifest_writer import MayaManifestWriter
@@ -223,6 +223,40 @@ class Phase1StaticPropTest(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir)
 
+    def test_fbx_exporter_applies_static_prop_default_preset(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            cmds = FakeExportCmds()
+            mel = FakeMel()
+            output_path = os.path.join(temp_dir, "SM_Crate_01.fbx")
+
+            MayaFbxExporter(cmds, mel).export_asset("|SM_Crate_01", output_path)
+
+            self.assertEqual(cmds.selected, "|SM_Crate_01")
+            self.assertTrue(cmds.loaded_plugin)
+            self.assertIn("FBXResetExport", mel.commands)
+            self.assertIn("FBXExportInAscii -v false", mel.commands)
+            self.assertIn("FBXExportAnimationOnly -v false", mel.commands)
+            self.assertIn("FBXExportBakeComplexAnimation -v false", mel.commands)
+            self.assertIn("FBXExportSkins -v false", mel.commands)
+            self.assertIn("FBXExportShapes -v false", mel.commands)
+            self.assertIn("FBXExportSmoothingGroups -v true", mel.commands)
+            self.assertIn("FBXExportTangents -v true", mel.commands)
+            self.assertIn("FBXExportTriangulate -v false", mel.commands)
+            self.assertIn("FBXExportConvertUnitString cm", mel.commands)
+            self.assertTrue(mel.commands[-1].startswith('FBXExport -f "'))
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_fbx_export_preset_documents_static_prop_defaults(self):
+        self.assertFalse(DEFAULT_FBX_EXPORT_PRESET["animation"])
+        self.assertFalse(DEFAULT_FBX_EXPORT_PRESET["skins"])
+        self.assertFalse(DEFAULT_FBX_EXPORT_PRESET["shapes"])
+        self.assertTrue(DEFAULT_FBX_EXPORT_PRESET["smoothing_groups"])
+        self.assertTrue(DEFAULT_FBX_EXPORT_PRESET["tangents_and_binormals"])
+        self.assertFalse(DEFAULT_FBX_EXPORT_PRESET["triangulate"])
+        self.assertEqual(DEFAULT_FBX_EXPORT_PRESET["units"], "cm")
+
 
 class FakeExporter(MayaFbxExporter):
     def __init__(self):
@@ -240,6 +274,32 @@ class FakeScanAdapter(object):
 
     def scan_asset(self, asset_root, rules):
         return self.scan_result
+
+
+class FakeExportCmds(object):
+    def __init__(self):
+        self.loaded_plugin = False
+        self.selected = ""
+
+    def pluginInfo(self, plugin, query=False, loaded=False):
+        return self.loaded_plugin
+
+    def loadPlugin(self, plugin):
+        self.loaded_plugin = True
+
+    def select(self, node, replace=False):
+        self.selected = node
+
+    def ls(self, selection=False, long=False):
+        return [self.selected] if selection and self.selected else []
+
+
+class FakeMel(object):
+    def __init__(self):
+        self.commands = []
+
+    def eval(self, command):
+        self.commands.append(command)
 
 
 if __name__ == "__main__":
