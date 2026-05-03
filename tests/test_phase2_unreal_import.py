@@ -225,6 +225,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
                 "path": self.fbx_path.replace(".fbx", ".png"),
                 "package_path": texture_path,
                 "copied": True,
+                "source_type": "texture_folder",
                 "usage": "base_color",
             }
         ]
@@ -237,6 +238,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["texture_import_plan"]["target_dir"], "/Game/Props/Textures")
         self.assertEqual(report["texture_import_plan"]["textures"][0]["parameter"], "BaseColor")
         self.assertTrue(report["texture_import_plan"]["textures"][0]["srgb"])
+        self.assertEqual(report["texture_import_plan"]["textures"][0]["source_type"], "texture_folder")
         self.assertEqual(
             report["texture_import_plan"]["textures"][0]["target_asset_path"],
             "/Game/Props/Textures/T_Crate_BaseColor",

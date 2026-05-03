@@ -99,6 +99,7 @@ class Phase1StaticPropTest(unittest.TestCase):
         self.assertTrue(scan["has_lightmap_uv"])
         self.assertEqual(scan["materials"][0]["name"], "M_Crate")
         self.assertEqual(scan["textures"][0]["usage"], "base_color")
+        self.assertEqual(scan["textures"][0]["source_type"], "maya_file_node")
 
         validation = StaticPropRuleValidator().validate(scan, TARGET_PLATFORM_HIGH_END_MOBILE)
         self.assertEqual(validation["status"], "warning")
@@ -151,6 +152,7 @@ class Phase1StaticPropTest(unittest.TestCase):
             self.assertTrue(scan["textures"][0]["copied"])
             self.assertTrue(scan["textures"][0]["package_path"].endswith("/Textures/T_Crate_BaseColor.png"))
             self.assertTrue(os.path.exists(scan["textures"][0]["package_path"]))
+            self.assertEqual(scan["textures"][0]["source_type"], "maya_file_node")
             self.assertEqual(scan["materials"][0]["textures"][0]["package_path"], scan["textures"][0]["package_path"])
         finally:
             shutil.rmtree(temp_dir)

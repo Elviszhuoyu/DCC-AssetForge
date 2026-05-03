@@ -46,6 +46,8 @@ class UnrealTextureImportPlanner(object):
             "srgb": rule.get("srgb", texture.get("srgb")),
             "compression": rule.get("compression", texture.get("compression", "")),
             "node": texture.get("node", ""),
+            "source_type": texture.get("source_type", ""),
+            "source_label": texture.get("source_label", ""),
         }
 
     def _target_texture_dir(self, manifest, profile):
