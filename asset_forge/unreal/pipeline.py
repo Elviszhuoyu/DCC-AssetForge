@@ -15,6 +15,18 @@ class UnrealStaticMeshImportPipeline(object):
         self.importer = importer or UnrealStaticMeshFbxImporter()
         self.logger = logger or UnrealImportLogger()
 
+    def dry_run_manifest(self, manifest_path, log_path=None):
+        prepared = self.reader.load(manifest_path, require_fbx_exists=True)
+        manifest = prepared["manifest"]
+        if not prepared["can_import"]:
+            report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed")
+            self._write_log(log_path, report)
+            return report
+
+        report = self.logger.skipped(manifest, prepared["preset"], "Dry run passed")
+        self._write_log(log_path, report)
+        return report
+
     def import_from_manifest(self, manifest_path, log_path=None):
         prepared = self.reader.load(manifest_path, require_fbx_exists=True)
         manifest = prepared["manifest"]
@@ -42,3 +54,8 @@ class UnrealStaticMeshImportPipeline(object):
 def import_manifest(manifest_path, log_path=None):
     """Convenience entry point for Unreal Python Script Editor."""
     return UnrealStaticMeshImportPipeline().import_from_manifest(manifest_path, log_path)
+
+
+def dry_run_manifest(manifest_path, log_path=None):
+    """Validate a manifest and resolve preset without importing."""
+    return UnrealStaticMeshImportPipeline().dry_run_manifest(manifest_path, log_path)

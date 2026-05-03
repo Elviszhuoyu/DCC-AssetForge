@@ -7,6 +7,7 @@ import json
 
 from asset_forge.shared.constants import (
     UNREAL_IMPORT_STATUS_FAILED,
+    UNREAL_IMPORT_STATUS_SKIPPED,
     UNREAL_IMPORT_STATUS_SUCCESS,
 )
 
@@ -20,14 +21,23 @@ class UnrealImportLogger(object):
     def failed(self, manifest, issues, message="Import failed"):
         return self._report(UNREAL_IMPORT_STATUS_FAILED, manifest, [], issues, message)
 
-    def _report(self, status, manifest, imported_assets, issues, message):
+    def skipped(self, manifest, preset, message="Dry run passed"):
+        return self._report(UNREAL_IMPORT_STATUS_SKIPPED, manifest, [], [], message, preset)
+
+    def _report(self, status, manifest, imported_assets, issues, message, preset=None):
+        preset = preset or {}
         return {
             "status": status,
             "message": message,
             "asset_name": manifest.get("asset_name", ""),
+            "asset_type": manifest.get("asset_type", ""),
+            "source_dcc": manifest.get("source_dcc", ""),
+            "target_engine": manifest.get("target_engine", ""),
+            "target_platform": manifest.get("target_platform", ""),
             "fbx_path": manifest.get("fbx_path", ""),
             "target_path": manifest.get("target_path", ""),
             "import_preset": manifest.get("import_preset", ""),
+            "resolved_preset": preset,
             "imported_assets": imported_assets,
             "issues": issues,
         }

@@ -9,9 +9,11 @@ from asset_forge.shared.constants import (
     IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE,
     TARGET_PLATFORM_HIGH_END_MOBILE,
     UNREAL_IMPORT_STATUS_FAILED,
+    UNREAL_IMPORT_STATUS_SKIPPED,
     UNREAL_IMPORT_STATUS_SUCCESS,
 )
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
+from scripts.unreal_import_manifest import import_manifest as script_import_manifest
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
 from asset_forge.unreal.manifest_reader import prepare_manifest_for_import
@@ -114,6 +116,18 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
         self.assertEqual(report["imported_assets"], ["/Game/Props/SM_Crate_01"])
         self.assertTrue(os.path.exists(log_path))
+        self.assertEqual(report["target_platform"], TARGET_PLATFORM_HIGH_END_MOBILE)
+
+    def test_dry_run_returns_skipped_report(self):
+        pipeline = UnrealStaticMeshImportPipeline(importer=FakeImporter())
+        log_path = os.path.join(self.temp_dir, "dry_run_report.json")
+        report = pipeline.dry_run_manifest(self.manifest_path, log_path)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SKIPPED)
+        self.assertEqual(report["message"], "Dry run passed")
+        self.assertEqual(report["imported_assets"], [])
+        self.assertEqual(report["resolved_preset"]["name"], IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE)
+        self.assertTrue(os.path.exists(log_path))
 
     def test_fbx_importer_configures_unreal_task(self):
         prepared = prepare_manifest_for_import(self.manifest_path)
@@ -152,6 +166,12 @@ class Phase2UnrealImportTest(unittest.TestCase):
         manager = UnrealImportPresetManager()
         with self.assertRaises(KeyError):
             manager.get_preset("MissingPreset")
+
+    def test_script_entrypoint_supports_dry_run(self):
+        report = script_import_manifest(self.manifest_path, dry_run=True)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SKIPPED)
+        self.assertEqual(report["asset_name"], "SM_Crate_01")
 
 
 if __name__ == "__main__":
