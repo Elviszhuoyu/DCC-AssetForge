@@ -1,0 +1,12 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "Asset Forge",
+  "Description": "Asset Forge Unreal bridge plugin for DCC asset import.",
+  "Category": "Pipeline",
+  "CreatedBy": "TA_MyTools",
+  "CanContainContent": true,
+  "EnabledByDefault": false,
+  "Modules": []
+}
