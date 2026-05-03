@@ -56,6 +56,24 @@ def create_end_to_end_report(export_report=None, import_report=None):
     }
 
 
+def create_batch_report(export_root, dry_run, reports):
+    counts = {"success": 0, "failed": 0, "skipped": 0}
+    for report in reports:
+        status = report.get("status", "")
+        if status in counts:
+            counts[status] += 1
+
+    return {
+        "version": REPORT_VERSION,
+        "stage": "batch_import",
+        "export_root": normalize_path(export_root),
+        "dry_run": bool(dry_run),
+        "total": len(reports),
+        "counts": counts,
+        "reports": reports,
+    }
+
+
 def write_report(path, report):
     with io.open(path, "w", encoding="utf-8") as stream:
         stream.write(json.dumps(report, ensure_ascii=False, indent=2))

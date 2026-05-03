@@ -9,7 +9,7 @@ import unittest
 from asset_forge.maya.export_package import build_export_package
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
 from asset_forge.unreal.manifest_finder import find_latest_manifest, find_manifest_files
-from asset_forge.unreal.pipeline import import_latest_manifest
+from asset_forge.unreal.pipeline import import_all_manifests, import_latest_manifest, UnrealBatchImportPipeline
 
 
 class FakeLatestImporter(object):
@@ -64,6 +64,55 @@ class ExportPackageAndLatestManifestTest(unittest.TestCase):
 
         self.assertEqual(len(manifests), 2)
         self.assertTrue(latest.endswith("/SM_New/SM_New_manifest.json"))
+
+    def test_batch_dry_run_writes_batch_report(self):
+        first = self._write_package("SM_A")
+        second = self._write_package("SM_B")
+
+        report = import_all_manifests(self.temp_dir, dry_run=True)
+
+        self.assertEqual(report["stage"], "batch_import")
+        self.assertTrue(report["dry_run"])
+        self.assertEqual(report["total"], 2)
+        self.assertEqual(report["counts"]["skipped"], 2)
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "batch_dry_run_report.json")))
+        self.assertTrue(os.path.exists(os.path.join(first["package_dir"], "SM_A_import_report.json")))
+        self.assertTrue(os.path.exists(os.path.join(second["package_dir"], "SM_B_import_report.json")))
+
+    def test_batch_import_uses_injected_item_pipeline(self):
+        self._write_package("SM_A")
+        self._write_package("SM_B")
+        item_pipeline = FakeItemPipeline()
+
+        report = UnrealBatchImportPipeline(item_pipeline=item_pipeline).run(self.temp_dir, dry_run=False)
+
+        self.assertEqual(report["counts"]["success"], 2)
+        self.assertEqual(len(item_pipeline.imported), 2)
+
+    def _write_package(self, asset_name):
+        package = build_export_package(self.temp_dir, asset_name)
+        with open(package["fbx_path"], "wb") as stream:
+            stream.write(b"fake")
+        manifest = create_manifest(
+            asset_name,
+            package["fbx_path"],
+            "/Game/Props",
+            package_dir=package["package_dir"],
+        )
+        write_manifest(package["manifest_path"], manifest)
+        return package
+
+
+class FakeItemPipeline(object):
+    def __init__(self):
+        self.imported = []
+
+    def import_from_manifest(self, manifest_path):
+        self.imported.append(manifest_path)
+        return {"status": "success", "asset_name": os.path.basename(manifest_path), "issues": []}
+
+    def dry_run_manifest(self, manifest_path):
+        return {"status": "skipped", "asset_name": os.path.basename(manifest_path), "issues": []}
 
 
 if __name__ == "__main__":
