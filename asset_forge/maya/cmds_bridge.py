@@ -14,3 +14,11 @@ def get_cmds():
         return None
     return cmds
 
+
+def get_mel():
+    """Return maya.mel or None when running outside Maya."""
+    try:
+        import maya.mel as mel
+    except ImportError:
+        return None
+    return mel

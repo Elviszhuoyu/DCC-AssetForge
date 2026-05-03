@@ -3,6 +3,7 @@
 from __future__ import absolute_import
 
 from asset_forge.maya.scanner import MayaAssetScanner
+from asset_forge.maya.fbx_exporter import MayaFbxExporter
 from asset_forge.shared.constants import SOURCE_DCC_MAYA
 from asset_forge.shared.dcc_adapter import DccAdapter
 
@@ -12,8 +13,9 @@ class MayaAdapter(DccAdapter):
 
     dcc_name = SOURCE_DCC_MAYA
 
-    def __init__(self, scanner=None):
+    def __init__(self, scanner=None, exporter=None):
         self.scanner = scanner or MayaAssetScanner()
+        self.exporter = exporter or MayaFbxExporter()
 
     def is_available(self):
         return self.scanner.is_available()
@@ -25,5 +27,4 @@ class MayaAdapter(DccAdapter):
         return self.scanner.scan(asset_root)
 
     def export_fbx(self, asset_root, output_path, preset=None):
-        raise NotImplementedError("Maya FBX export will be implemented after scanner validation")
-
+        return self.exporter.export_asset(asset_root, output_path, preset)
