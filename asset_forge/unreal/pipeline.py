@@ -4,21 +4,24 @@ from __future__ import absolute_import
 
 import os
 
+from asset_forge.shared.constants import UNREAL_IMPORT_STATUS_FAILED
 from asset_forge.shared.path_utils import normalize_path
 from asset_forge.shared.report_schema import create_batch_report, create_end_to_end_report, read_report, write_report
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_logger import UnrealImportLogger
 from asset_forge.unreal.manifest_finder import find_latest_manifest, find_manifest_files
 from asset_forge.unreal.manifest_reader import UnrealManifestReader
+from asset_forge.unreal.post_import_validator import UnrealPostImportValidator
 
 
 class UnrealStaticMeshImportPipeline(object):
     """Read manifest, resolve preset, import FBX, and return a report."""
 
-    def __init__(self, reader=None, importer=None, logger=None):
+    def __init__(self, reader=None, importer=None, logger=None, post_import_validator=None):
         self.reader = reader or UnrealManifestReader()
         self.importer = importer or UnrealStaticMeshFbxImporter()
         self.logger = logger or UnrealImportLogger()
+        self.post_import_validator = post_import_validator or UnrealPostImportValidator()
 
     def dry_run_manifest(self, manifest_path, log_path=None):
         prepared = self.reader.load(manifest_path, require_fbx_exists=True)
@@ -54,6 +57,7 @@ class UnrealStaticMeshImportPipeline(object):
             return report
 
         report = self.logger.success(manifest, imported_assets, preset=prepared["preset"])
+        report = self._attach_post_import_validation(report, manifest, imported_assets)
         self._write_log(active_log_path, report)
         self._write_end_to_end_report(manifest, manifest_path, report)
         return report
@@ -82,6 +86,16 @@ class UnrealStaticMeshImportPipeline(object):
         export_report = read_report(export_report_path) if os.path.exists(export_report_path) else {}
         report = create_end_to_end_report(export_report, import_report)
         write_report(self._default_end_to_end_report_path(manifest, manifest_path), report)
+
+    def _attach_post_import_validation(self, report, manifest, imported_assets):
+        validation = self.post_import_validator.validate(manifest, imported_assets)
+        report["post_import_validation"] = validation
+        if not validation.get("can_accept", False):
+            issues = [item["message"] for item in validation.get("checks", []) if item.get("status") == "error"]
+            report["status"] = UNREAL_IMPORT_STATUS_FAILED
+            report["message"] = "Imported with post-import validation errors"
+            report["issues"] = report.get("issues", []) + issues
+        return report
 
 
 class UnrealBatchImportPipeline(object):
