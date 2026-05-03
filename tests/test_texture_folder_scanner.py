@@ -28,6 +28,7 @@ class TextureFolderScannerTest(unittest.TestCase):
 
         self.assertEqual(result["issues"], [])
         self.assertEqual(result["profile"], "Props_Opaque_PainterUE_ARM")
+        self.assertEqual(textures_by_usage["base_color"]["source_type"], "texture_folder")
         self.assertEqual(textures_by_usage["base_color"]["parameter"], "BaseColor")
         self.assertTrue(textures_by_usage["base_color"]["srgb"])
         self.assertFalse(textures_by_usage["normal"]["srgb"])

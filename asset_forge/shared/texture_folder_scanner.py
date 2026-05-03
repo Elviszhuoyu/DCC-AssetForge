@@ -89,6 +89,8 @@ class TextureFolderScanner(object):
             "source_path": normalize_path(path),
             "package_path": "",
             "copied": False,
+            "source_type": "texture_folder",
+            "source_label": "Texture folder",
             "usage": rule.get("usage", "unknown"),
             "parameter": rule.get("parameter", ""),
             "srgb": bool(rule.get("srgb", False)),

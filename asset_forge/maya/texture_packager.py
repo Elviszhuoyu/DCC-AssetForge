@@ -22,6 +22,10 @@ class MayaTexturePackager(object):
         texture["source_path"] = source_path
         texture["package_path"] = ""
         texture["copied"] = False
+        if not texture.get("source_type"):
+            texture["source_type"] = "maya_file_node"
+        if not texture.get("source_label"):
+            texture["source_label"] = "Maya file node"
 
         if not source_path or not os.path.exists(source_path):
             return texture

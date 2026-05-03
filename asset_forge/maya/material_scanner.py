@@ -75,6 +75,8 @@ class MayaMaterialScanner(object):
                 {
                     "node": node,
                     "path": normalize_path(path) if path else "",
+                    "source_type": "maya_file_node",
+                    "source_label": "Maya file node",
                     "usage": self._guess_usage(node),
                 }
             )
