@@ -88,12 +88,13 @@ class Phase1StaticPropTest(unittest.TestCase):
         try:
             manifest_path = os.path.join(temp_dir, "manifest.json")
             writer = MayaManifestWriter()
-            manifest = writer.build(scan, validation, "D:/AssetForge/Exports/SM_Crate_01.fbx", "/Game/Props")
+            manifest = writer.build(scan, validation, r"<USER_HOME>/AssetForge/Exports\SM_Crate_01.fbx", "/Game/Props")
             writer.write(manifest_path, manifest)
 
             loaded = read_manifest(manifest_path)
             self.assertEqual(validate_manifest(loaded), [])
             self.assertEqual(loaded["asset_name"], "SM_Crate_01")
+            self.assertNotIn("\\", loaded["fbx_path"])
         finally:
             shutil.rmtree(temp_dir)
 
