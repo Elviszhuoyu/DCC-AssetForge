@@ -37,6 +37,13 @@ def import_all_manifests(export_root, report_path=None, dry_run=False):
     return run_all(export_root, report_path, dry_run)
 
 
+def get_editor_widget_action_plan():
+    _ensure_project_root()
+    from asset_forge.unreal.editor_widget_actions import get_action_plan
+
+    return get_action_plan()
+
+
 if __name__ == "__main__":
     _ensure_project_root()
     args = [item for item in sys.argv[1:] if item not in ("--dry-run", "--latest", "--all")]
