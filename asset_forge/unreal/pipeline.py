@@ -10,6 +10,7 @@ from asset_forge.shared.report_schema import create_batch_report, create_end_to_
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_logger import UnrealImportLogger
 from asset_forge.unreal.material_binding_planner import UnrealMaterialBindingPlanner
+from asset_forge.unreal.material_instance_creator import UnrealMaterialInstanceCreator
 from asset_forge.unreal.manifest_finder import find_latest_manifest, find_manifest_files
 from asset_forge.unreal.manifest_reader import UnrealManifestReader
 from asset_forge.unreal.package_validator import UnrealPackageValidator
@@ -31,6 +32,7 @@ class UnrealStaticMeshImportPipeline(object):
         texture_import_planner=None,
         texture_importer=None,
         material_binding_planner=None,
+        material_instance_creator=None,
     ):
         self.reader = reader or UnrealManifestReader()
         self.importer = importer or UnrealStaticMeshFbxImporter()
@@ -40,6 +42,7 @@ class UnrealStaticMeshImportPipeline(object):
         self.texture_import_planner = texture_import_planner or UnrealTextureImportPlanner()
         self.texture_importer = texture_importer or UnrealTextureImporter()
         self.material_binding_planner = material_binding_planner or UnrealMaterialBindingPlanner()
+        self.material_instance_creator = material_instance_creator or UnrealMaterialInstanceCreator()
 
     def dry_run_manifest(self, manifest_path, log_path=None):
         prepared = self.reader.load(manifest_path, require_fbx_exists=True)
@@ -91,6 +94,7 @@ class UnrealStaticMeshImportPipeline(object):
         self._attach_texture_import_plan(report, manifest)
         self._attach_material_binding_plan(report, manifest)
         self._import_planned_textures(report)
+        self._create_material_instances(report)
         report = self._attach_post_import_validation(report, manifest, imported_assets)
         self._write_log(active_log_path, report)
         self._write_end_to_end_report(manifest, manifest_path, report)
@@ -158,6 +162,21 @@ class UnrealStaticMeshImportPipeline(object):
             report["imported_textures"] = self.texture_importer.import_textures(plan)
         except Exception as exc:
             report["texture_import_issues"].append(str(exc))
+        return report
+
+    def _create_material_instances(self, report):
+        report["created_material_instances"] = []
+        report["material_instance_issues"] = []
+        plan = report.get("material_binding_plan", {})
+        if not plan.get("count", 0):
+            return report
+        if hasattr(self.material_instance_creator, "is_available") and not self.material_instance_creator.is_available():
+            return report
+
+        try:
+            report["created_material_instances"] = self.material_instance_creator.create_from_plan(plan)
+        except Exception as exc:
+            report["material_instance_issues"].append(str(exc))
         return report
 
 
