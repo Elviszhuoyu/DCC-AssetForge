@@ -8,6 +8,7 @@ from asset_forge.maya.adapter import MayaAdapter
 from asset_forge.maya.fbx_exporter import MayaFbxExporter
 from asset_forge.maya.manifest_writer import MayaManifestWriter
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
+from asset_forge.shared.ai_analysis import LocalChineseSuggestionClient, analyze_validation
 from asset_forge.shared.rule_validator import StaticPropRuleValidator
 from asset_forge.shared.rules_schema import get_default_rules
 
@@ -15,12 +16,13 @@ from asset_forge.shared.rules_schema import get_default_rules
 class MayaStaticPropPipeline(object):
     """Run scan, validate, export, and manifest generation for one asset."""
 
-    def __init__(self, adapter=None, exporter=None, validator=None, manifest_writer=None, rules=None):
+    def __init__(self, adapter=None, exporter=None, validator=None, manifest_writer=None, rules=None, ai_client=None):
         self.rules = rules or get_default_rules()
         self.adapter = adapter or MayaAdapter()
         self.exporter = exporter or MayaFbxExporter()
         self.validator = validator or StaticPropRuleValidator(self.rules)
         self.manifest_writer = manifest_writer or MayaManifestWriter()
+        self.ai_client = ai_client or LocalChineseSuggestionClient()
 
     def scan_selection(self):
         selection = self.adapter.get_current_selection()
@@ -55,3 +57,6 @@ class MayaStaticPropPipeline(object):
             "manifest_path": manifest_path,
             "manifest": manifest,
         }
+
+    def analyze(self, scan_result, validation_result):
+        return analyze_validation(scan_result, validation_result, self.rules, self.ai_client)

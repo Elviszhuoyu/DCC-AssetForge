@@ -64,7 +64,7 @@ class AssetForgeMayaWindow(object):
 
         self.controls["summary"] = self.cmds.text(label="等待扫描", align="left")
         self.controls["results"] = self.cmds.scrollField(editable=False, wordWrap=True, height=300)
-        self.cmds.button(label="AI 分析（占位）", enable=False)
+        self.cmds.button(label="AI 分析", command=self._analyze)
 
         self.cmds.showWindow(WINDOW_NAME)
         return WINDOW_NAME
@@ -122,6 +122,18 @@ class AssetForgeMayaWindow(object):
             self.last_validation = result["validation"]
             self._set_summary("导出完成: {0}".format(result["manifest_path"]))
             self._set_results(self._format_validation(result["validation"]))
+        except Exception as exc:
+            self._show_error(exc)
+
+    def _analyze(self, *args):
+        try:
+            if self.last_scan is None:
+                self.last_scan = self.pipeline.scan_selection()
+            if self.last_validation is None:
+                self.last_validation = self.pipeline.validate_scan(self.last_scan, self._target_platform())
+            suggestion = self.pipeline.analyze(self.last_scan, self.last_validation)
+            self._set_summary("AI 建议已生成")
+            self._set_results(suggestion)
         except Exception as exc:
             self._show_error(exc)
 
