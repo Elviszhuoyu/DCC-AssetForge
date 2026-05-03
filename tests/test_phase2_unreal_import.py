@@ -136,6 +136,8 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["textures"][0]["usage"], "base_color")
         self.assertEqual(report["package_validation"]["status"], "pass")
         self.assertEqual(report["texture_import_plan"]["target_dir"], "/Game/Props/Textures")
+        self.assertEqual(report["material_binding_plan"]["target_dir"], "/Game/Props/Materials")
+        self.assertEqual(report["material_binding_plan"]["materials"][0]["target_asset_path"], "/Game/Props/Materials/M_Crate")
         self.assertEqual(report["imported_textures"], [])
         self.assertEqual(report["texture_import_issues"], [])
         self.assertEqual(report["post_import_validation"]["status"], "pass")
@@ -183,6 +185,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
                 "usage": "base_color",
             }
         ]
+        textured_manifest["materials"] = [{"name": "M_Crate", "textures": textured_manifest["textures"]}]
         write_manifest(textured_manifest_path, textured_manifest)
 
         report = UnrealStaticMeshImportPipeline(importer=FakeImporter()).dry_run_manifest(textured_manifest_path)
@@ -191,6 +194,10 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["texture_import_plan"]["target_dir"], "/Game/Props/Textures")
         self.assertEqual(
             report["texture_import_plan"]["textures"][0]["target_asset_path"],
+            "/Game/Props/Textures/T_Crate_BaseColor",
+        )
+        self.assertEqual(
+            report["material_binding_plan"]["materials"][0]["slots"]["base_color"],
             "/Game/Props/Textures/T_Crate_BaseColor",
         )
 
@@ -372,6 +379,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
                 "usage": "base_color",
             }
         ]
+        manifest["materials"] = [{"name": "M_Crate", "textures": manifest["textures"]}]
         write_manifest(manifest_path, manifest)
         return manifest_path
 
