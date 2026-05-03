@@ -5,8 +5,12 @@ import shutil
 import tempfile
 import unittest
 
+from asset_forge.maya.adapter import MayaAdapter
+from asset_forge.maya.fbx_exporter import MayaFbxExporter
+from asset_forge.maya.pipeline import MayaStaticPropPipeline
 from asset_forge.maya.manifest_writer import MayaManifestWriter
 from asset_forge.maya.scanner import MayaAssetScanner
+from asset_forge.shared.report_schema import read_report
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.manifest_schema import read_manifest, validate_manifest
 from asset_forge.shared.rule_validator import StaticPropRuleValidator
@@ -113,6 +117,33 @@ class Phase1StaticPropTest(unittest.TestCase):
             self.assertTrue(loaded["textures"][0]["path"].endswith("/T_Crate_BaseColor.png"))
         finally:
             shutil.rmtree(temp_dir)
+
+    def test_pipeline_writes_export_report(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            scanner = MayaAssetScanner(FakeCmds())
+            adapter = MayaAdapter(scanner=scanner, exporter=FakeExporter())
+            pipeline = MayaStaticPropPipeline(adapter=adapter, exporter=FakeExporter())
+
+            result = pipeline.export_asset("|SM_Crate_01", temp_dir, target_platform="pc")
+
+            self.assertTrue(result["export_report_path"].endswith("/SM_Crate_01_export_report.json"))
+            report = read_report(result["export_report_path"])
+            self.assertEqual(report["stage"], "maya_export")
+            self.assertEqual(report["asset_name"], "SM_Crate_01")
+            self.assertEqual(report["validation"]["score"], result["validation"]["score"])
+        finally:
+            shutil.rmtree(temp_dir)
+
+
+class FakeExporter(MayaFbxExporter):
+    def __init__(self):
+        pass
+
+    def export_asset(self, asset_root, output_path, preset=None):
+        with open(output_path, "wb") as stream:
+            stream.write(b"fake fbx")
+        return output_path
 
 
 if __name__ == "__main__":

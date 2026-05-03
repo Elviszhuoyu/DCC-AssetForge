@@ -13,6 +13,7 @@ from asset_forge.shared.constants import (
     UNREAL_IMPORT_STATUS_SUCCESS,
 )
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
+from asset_forge.shared.report_schema import read_report, write_report
 from scripts.unreal_import_manifest import import_manifest as script_import_manifest
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
@@ -98,6 +99,13 @@ class Phase2UnrealImportTest(unittest.TestCase):
             textures=[{"node": "file_basecolor", "path": self.fbx_path.replace(".fbx", ".png"), "usage": "base_color"}],
         )
         write_manifest(self.manifest_path, self.manifest)
+        export_report = {
+            "version": "0.1",
+            "stage": "maya_export",
+            "asset_name": "SM_Crate_01",
+            "validation": {"status": "warning", "score": 92},
+        }
+        write_report(os.path.join(self.temp_dir, "SM_Crate_01_export_report.json"), export_report)
 
     def tearDown(self):
         shutil.rmtree(self.temp_dir)
@@ -123,6 +131,18 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertNotIn("\\", report["fbx_path"])
         self.assertEqual(report["materials"][0]["name"], "M_Crate")
         self.assertEqual(report["textures"][0]["usage"], "base_color")
+
+    def test_pipeline_writes_default_import_and_end_to_end_reports(self):
+        pipeline = UnrealStaticMeshImportPipeline(importer=FakeImporter())
+
+        report = pipeline.import_from_manifest(self.manifest_path)
+
+        import_report_path = os.path.join(self.temp_dir, "SM_Crate_01_import_report.json")
+        end_to_end_path = os.path.join(self.temp_dir, "SM_Crate_01_end_to_end_report.json")
+        self.assertTrue(os.path.exists(import_report_path))
+        self.assertTrue(os.path.exists(end_to_end_path))
+        self.assertEqual(read_report(import_report_path)["status"], report["status"])
+        self.assertEqual(read_report(end_to_end_path)["stage"], "end_to_end")
 
     def test_dry_run_returns_skipped_report(self):
         pipeline = UnrealStaticMeshImportPipeline(importer=FakeImporter())

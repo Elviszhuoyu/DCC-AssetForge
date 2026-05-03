@@ -30,6 +30,8 @@ class ExportPackageAndLatestManifestTest(unittest.TestCase):
         self.assertTrue(package["package_dir"].endswith("/SM_Crate_01"))
         self.assertTrue(package["fbx_path"].endswith("/SM_Crate_01/SM_Crate_01.fbx"))
         self.assertTrue(package["manifest_path"].endswith("/SM_Crate_01/SM_Crate_01_manifest.json"))
+        self.assertTrue(package["export_report_path"].endswith("/SM_Crate_01/SM_Crate_01_export_report.json"))
+        self.assertTrue(package["end_to_end_report_path"].endswith("/SM_Crate_01/SM_Crate_01_end_to_end_report.json"))
         self.assertNotIn("\\", package["fbx_path"])
 
     def test_find_latest_manifest_recurses_package_dirs(self):

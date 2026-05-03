@@ -10,6 +10,7 @@ from asset_forge.maya.fbx_exporter import MayaFbxExporter
 from asset_forge.maya.manifest_writer import MayaManifestWriter
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.ai_analysis import LocalChineseSuggestionClient, analyze_validation
+from asset_forge.shared.report_schema import create_export_report, write_report
 from asset_forge.shared.rule_validator import StaticPropRuleValidator
 from asset_forge.shared.rules_schema import get_default_rules
 
@@ -64,14 +65,18 @@ class MayaStaticPropPipeline(object):
             package_dir=export_package["package_dir"],
         )
         self.manifest_writer.write(manifest_path, manifest)
+        export_report = create_export_report(scan_result, validation_result, manifest, export_package)
+        write_report(export_package["export_report_path"], export_report)
 
         return {
             "scan": scan_result,
             "validation": validation_result,
             "fbx_path": fbx_path,
             "manifest_path": manifest_path,
+            "export_report_path": export_package["export_report_path"],
             "package_dir": export_package["package_dir"],
             "manifest": manifest,
+            "export_report": export_report,
         }
 
     def analyze(self, scan_result, validation_result):
