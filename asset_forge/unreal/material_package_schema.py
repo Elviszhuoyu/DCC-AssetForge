@@ -15,7 +15,7 @@ from asset_forge.shared.material_profile_schema import get_default_material_prof
 
 MATERIAL_PACKAGE_VERSION = "0.1"
 
-DEFAULT_PACKAGE_ROOT = "/Game/AssetForge"
+DEFAULT_PACKAGE_ROOT = "/AssetForge"
 
 
 def get_default_material_package_plan():
@@ -23,15 +23,17 @@ def get_default_material_package_plan():
     return {
         "version": MATERIAL_PACKAGE_VERSION,
         "root": DEFAULT_PACKAGE_ROOT,
+        "content_mount": DEFAULT_PACKAGE_ROOT,
+        "disk_content_root": "Plugins/AssetForge/Content",
         "directories": [
-            "/Game/AssetForge/Materials",
-            "/Game/AssetForge/MaterialFunctions",
-            "/Game/AssetForge/ParameterCollections",
+            "/AssetForge/Materials",
+            "/AssetForge/MaterialFunctions",
+            "/AssetForge/ParameterCollections",
         ],
         "materials": [
             _material(
                 "M_AF_Props_Opaque",
-                "/Game/AssetForge/Materials/M_AF_Props_Opaque",
+                "/AssetForge/Materials/M_AF_Props_Opaque",
                 ASSET_TYPE_PROPS,
                 RENDER_MODE_OPAQUE,
                 ["BaseColor", "Normal", "ARM", "Emissive"],
@@ -39,7 +41,7 @@ def get_default_material_package_plan():
             ),
             _material(
                 "M_AF_Props_Masked",
-                "/Game/AssetForge/Materials/M_AF_Props_Masked",
+                "/AssetForge/Materials/M_AF_Props_Masked",
                 ASSET_TYPE_PROPS,
                 RENDER_MODE_MASKED,
                 ["BaseColor", "Normal", "ARM", "Emissive", "OpacityMask"],
@@ -47,7 +49,7 @@ def get_default_material_package_plan():
             ),
             _material(
                 "M_AF_Props_Translucent",
-                "/Game/AssetForge/Materials/M_AF_Props_Translucent",
+                "/AssetForge/Materials/M_AF_Props_Translucent",
                 ASSET_TYPE_PROPS,
                 RENDER_MODE_TRANSLUCENT,
                 ["BaseColor", "Normal", "ARM", "Emissive", "Opacity"],
@@ -61,19 +63,19 @@ def get_default_material_package_plan():
         "functions": [
             {
                 "name": "MF_AF_UnpackARM",
-                "path": "/Game/AssetForge/MaterialFunctions/MF_AF_UnpackARM",
+                "path": "/AssetForge/MaterialFunctions/MF_AF_UnpackARM",
                 "purpose": "Unpack AO, Roughness, and Metallic channels from ARM or ORM textures.",
             },
             {
                 "name": "MF_AF_ApplyEmissive",
-                "path": "/Game/AssetForge/MaterialFunctions/MF_AF_ApplyEmissive",
+                "path": "/AssetForge/MaterialFunctions/MF_AF_ApplyEmissive",
                 "purpose": "Apply emissive texture and intensity controls.",
             },
         ],
         "parameter_collections": [
             {
                 "name": "MPC_AF_Global",
-                "path": "/Game/AssetForge/ParameterCollections/MPC_AF_Global",
+                "path": "/AssetForge/ParameterCollections/MPC_AF_Global",
                 "purpose": "Global project-wide controls only; per-asset textures stay on Material Instances.",
                 "parameters": ["GlobalEmissiveScale"],
             }

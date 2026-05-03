@@ -177,7 +177,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["texture_import_plan"]["target_dir"], "/Game/Props/Textures")
         self.assertEqual(report["texture_import_plan"]["profile"], "Props_Opaque_PainterUE_ARM")
         self.assertEqual(report["material_binding_plan"]["target_dir"], "/Game/Props/Materials")
-        self.assertEqual(report["material_binding_plan"]["master_material"], "/Game/AssetForge/Materials/M_AF_Props_Opaque")
+        self.assertEqual(report["material_binding_plan"]["master_material"], "/AssetForge/Materials/M_AF_Props_Opaque")
         self.assertEqual(report["material_binding_plan"]["materials"][0]["target_asset_path"], "/Game/Props/Materials/M_Crate")
         self.assertEqual(report["imported_textures"], [])
         self.assertEqual(report["texture_import_issues"], [])
@@ -272,7 +272,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         report = UnrealStaticMeshImportPipeline(importer=FakeImporter()).dry_run_manifest(textured_manifest_path)
 
         self.assertEqual(report["material_binding_plan"]["profile"], "Props_Masked_PainterUE_ARM")
-        self.assertEqual(report["material_binding_plan"]["master_material"], "/Game/AssetForge/Materials/M_AF_Props_Masked")
+        self.assertEqual(report["material_binding_plan"]["master_material"], "/AssetForge/Materials/M_AF_Props_Masked")
         self.assertEqual(report["material_binding_plan"]["render_mode"], "masked")
         self.assertEqual(report["material_binding_plan"]["materials"][0]["scalar_parameters"]["OpacityClipValue"], 0.333)
 
@@ -303,7 +303,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
 
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
         self.assertEqual(report["created_material_instances"], ["/Game/Props/Materials/M_Crate"])
-        self.assertEqual(material_creator.plans[0]["materials"][0]["parent_material"], "/Game/AssetForge/Materials/M_AF_Props_Opaque")
+        self.assertEqual(material_creator.plans[0]["materials"][0]["parent_material"], "/AssetForge/Materials/M_AF_Props_Opaque")
 
     def test_material_instance_error_does_not_fail_static_mesh_import(self):
         texture_path = self._write_packaged_texture()
@@ -329,7 +329,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
             "materials": [
                 {
                     "material_name": "M_Crate",
-                    "parent_material": "/Game/AssetForge/Materials/M_AF_Props_Opaque",
+                    "parent_material": "/AssetForge/Materials/M_AF_Props_Opaque",
                     "target_asset_path": "/Game/Props/Materials/M_Crate",
                     "texture_parameters": {"BaseColor": "/Game/Props/Textures/T_Crate_BaseColor"},
                     "scalar_parameters": {"EmissiveIntensity": 1.0},
@@ -343,7 +343,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(created, ["/Game/Props/Materials/M_Crate"])
         self.assertEqual(asset.asset_name, "M_Crate")
         self.assertEqual(asset.package_path, "/Game/Props/Materials")
-        self.assertEqual(asset.parent, "asset:/Game/AssetForge/Materials/M_AF_Props_Opaque")
+        self.assertEqual(asset.parent, "asset:/AssetForge/Materials/M_AF_Props_Opaque")
         self.assertEqual(fake_unreal.MaterialEditingLibrary.texture_calls[0][1], "BaseColor")
         self.assertEqual(fake_unreal.MaterialEditingLibrary.scalar_calls[0][1], "EmissiveIntensity")
 
