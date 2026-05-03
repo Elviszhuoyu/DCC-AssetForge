@@ -7,7 +7,7 @@
       "display_name": "Props Opaque - Painter UE ARM",
       "asset_family": "props",
       "render_mode": "opaque",
-      "master_material": "/Game/AssetForge/Materials/M_AF_Props_Opaque",
+      "master_material": "/AssetForge/Materials/M_AF_Props_Opaque",
       "material_instance_dir": "{target_path}/Materials",
       "texture_dir": "{target_path}/Textures",
       "texture_rules": [
@@ -66,7 +66,7 @@
       "display_name": "Props Masked - Painter UE ARM",
       "asset_family": "props",
       "render_mode": "masked",
-      "master_material": "/Game/AssetForge/Materials/M_AF_Props_Masked",
+      "master_material": "/AssetForge/Materials/M_AF_Props_Masked",
       "material_instance_dir": "{target_path}/Materials",
       "texture_dir": "{target_path}/Textures",
       "texture_rules": [
@@ -132,7 +132,7 @@
       "display_name": "Props Translucent - Painter UE ARM",
       "asset_family": "props",
       "render_mode": "translucent",
-      "master_material": "/Game/AssetForge/Materials/M_AF_Props_Translucent",
+      "master_material": "/AssetForge/Materials/M_AF_Props_Translucent",
       "material_instance_dir": "{target_path}/Materials",
       "texture_dir": "{target_path}/Textures",
       "texture_rules": [

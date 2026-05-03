@@ -35,7 +35,7 @@ class MaterialProfileSchemaTest(unittest.TestCase):
 
         self.assertEqual(profile["asset_family"], ASSET_TYPE_PROPS)
         self.assertEqual(profile["render_mode"], RENDER_MODE_OPAQUE)
-        self.assertEqual(profile["master_material"], "/Game/AssetForge/Materials/M_AF_Props_Opaque")
+        self.assertEqual(profile["master_material"], "/AssetForge/Materials/M_AF_Props_Opaque")
         self.assertTrue(profile["supports"]["emissive"])
         self.assertFalse(profile["supports"]["opacity_mask"])
         self.assertEqual(rules_by_usage["packed_arm"]["channels"]["r"], "ao")

@@ -17,9 +17,11 @@ class UnrealMaterialPackageSchemaTest(unittest.TestCase):
         material_paths = material_package_paths(plan)
 
         self.assertEqual(validate_material_package_plan(plan), [])
-        self.assertIn("/Game/AssetForge/Materials/M_AF_Props_Opaque", material_paths)
-        self.assertIn("/Game/AssetForge/Materials/M_AF_Props_Masked", material_paths)
-        self.assertIn("/Game/AssetForge/Materials/M_AF_Props_Translucent", material_paths)
+        self.assertEqual(plan["content_mount"], "/AssetForge")
+        self.assertEqual(plan["disk_content_root"], "Plugins/AssetForge/Content")
+        self.assertIn("/AssetForge/Materials/M_AF_Props_Opaque", material_paths)
+        self.assertIn("/AssetForge/Materials/M_AF_Props_Masked", material_paths)
+        self.assertIn("/AssetForge/Materials/M_AF_Props_Translucent", material_paths)
 
     def test_default_profiles_reference_planned_master_materials(self):
         issues = profile_master_material_issues(
