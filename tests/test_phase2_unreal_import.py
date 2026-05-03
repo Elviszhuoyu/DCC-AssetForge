@@ -174,6 +174,8 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["materials"][0]["name"], "M_Crate")
         self.assertEqual(report["textures"][0]["usage"], "base_color")
         self.assertEqual(report["package_validation"]["status"], "pass")
+        self.assertEqual(report["plugin_content_validation"]["content_mount"], "/AssetForge")
+        self.assertIn("/AssetForge/Materials/M_AF_Props_Opaque", report["plugin_content_validation"]["missing_assets"])
         self.assertEqual(report["texture_import_plan"]["target_dir"], "/Game/Props/Textures")
         self.assertEqual(report["texture_import_plan"]["profile"], "Props_Opaque_PainterUE_ARM")
         self.assertEqual(report["material_binding_plan"]["target_dir"], "/Game/Props/Materials")
