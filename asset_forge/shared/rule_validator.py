@@ -36,6 +36,7 @@ class StaticPropRuleValidator(object):
         checks.append(self._check_lightmap_uv(scan_result, rules))
         checks.append(self._check_hidden_objects(scan_result))
         checks.append(self._check_history_nodes(scan_result))
+        checks.append(self._check_collision_naming(scan_result))
 
         checks = [item for item in checks if self._is_check_enabled(item["id"], rules)]
         summary = self._summary(checks)
@@ -205,6 +206,18 @@ class StaticPropRuleValidator(object):
             "存在历史节点残留: {0}".format(", ".join(history_nodes[:8])),
         )
 
+    def _check_collision_naming(self, scan_result):
+        invalid_nodes = scan_result.get("invalid_collision_nodes", [])
+        return self._result(
+            "collision_naming",
+            "Collision naming",
+            not invalid_nodes,
+            SEVERITY_WARNING,
+            len(invalid_nodes),
+            0,
+            "Suspicious collision nodes should use UE prefixes: {0}".format(", ".join(invalid_nodes[:8])),
+        )
+
     def _result(self, check_id, label, passed, severity, value, limit, fail_message):
         status = CHECK_STATUS_PASS if passed else severity
         message = "通过" if passed else fail_message
@@ -231,12 +244,15 @@ class StaticPropRuleValidator(object):
 
     def _score(self, checks):
         score = 100
+        scoring = self.rules.get("scoring", {})
+        error_penalty = scoring.get("error_penalty", 20)
+        warning_penalty = scoring.get("warning_penalty", 8)
         for item in checks:
             if item["status"] == CHECK_STATUS_ERROR:
-                score -= 20
+                score -= error_penalty
             elif item["status"] == CHECK_STATUS_WARNING:
-                score -= 8
-        return max(score, 0)
+                score -= warning_penalty
+        return max(score, scoring.get("min_score", 0))
 
     def _can_export(self, summary, rules):
         if summary["errors"] and rules.get("block_export_on_error", True):

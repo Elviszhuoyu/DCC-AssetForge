@@ -31,6 +31,11 @@ DEFAULT_RULES = {
         "require_frozen_transform": True,
         "allow_warning_export": True,
         "block_export_on_error": True,
+        "scoring": {
+            "error_penalty": 20,
+            "warning_penalty": 8,
+            "min_score": 0,
+        },
         "checks": [
             {
                 "id": "name_prefix",
@@ -95,6 +100,12 @@ DEFAULT_RULES = {
             {
                 "id": "history_nodes",
                 "label": "历史节点",
+                "severity": SEVERITY_WARNING,
+                "enabled": True,
+            },
+            {
+                "id": "collision_naming",
+                "label": "Collision naming",
                 "severity": SEVERITY_WARNING,
                 "enabled": True,
             },
