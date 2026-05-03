@@ -31,7 +31,7 @@ class MayaManifestWriter(object):
         target_platform = validation_result.get("target_platform", TARGET_PLATFORM_HIGH_END_MOBILE)
         return create_manifest(
             scan_result.get("asset_name", ""),
-            fbx_path,
+            self._manifest_path(fbx_path),
             target_path,
             checks=checks_to_manifest_dict(validation_result),
             score=validation_result.get("score", 0),
@@ -47,3 +47,6 @@ class MayaManifestWriter(object):
             os.makedirs(parent)
         write_manifest(manifest_path, manifest, pretty=True)
         return manifest_path
+
+    def _manifest_path(self, path):
+        return os.path.abspath(path).replace("\\", "/")
