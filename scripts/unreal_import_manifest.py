@@ -14,16 +14,20 @@ def _ensure_project_root():
     return project_root
 
 
-def import_manifest(manifest_path, log_path=None):
+def import_manifest(manifest_path, log_path=None, dry_run=False):
     _ensure_project_root()
-    from asset_forge.unreal.pipeline import import_manifest as run_import
+    from asset_forge.unreal.pipeline import dry_run_manifest, import_manifest as run_import
 
+    if dry_run:
+        return dry_run_manifest(manifest_path, log_path)
     return run_import(manifest_path, log_path)
 
 
 if __name__ == "__main__":
     _ensure_project_root()
-    if len(sys.argv) < 2:
-        raise RuntimeError("Usage: unreal_import_manifest.py <manifest_path> [log_path]")
-    report = import_manifest(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
+    args = [item for item in sys.argv[1:] if item != "--dry-run"]
+    dry_run = "--dry-run" in sys.argv[1:]
+    if len(args) < 1:
+        raise RuntimeError("Usage: unreal_import_manifest.py <manifest_path> [log_path] [--dry-run]")
+    report = import_manifest(args[0], args[1] if len(args) > 1 else None, dry_run)
     print(report)
