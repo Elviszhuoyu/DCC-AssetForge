@@ -133,6 +133,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["materials"][0]["name"], "M_Crate")
         self.assertEqual(report["textures"][0]["usage"], "base_color")
         self.assertEqual(report["package_validation"]["status"], "pass")
+        self.assertEqual(report["texture_import_plan"]["target_dir"], "/Game/Props/Textures")
         self.assertEqual(report["post_import_validation"]["status"], "pass")
 
     def test_pipeline_writes_default_import_and_end_to_end_reports(self):
@@ -159,6 +160,35 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertTrue(os.path.exists(log_path))
         self.assertNotIn("\\", report["fbx_path"])
         self.assertEqual(report["package_validation"]["textures"]["total"], 1)
+        self.assertEqual(report["texture_import_plan"]["count"], 0)
+
+    def test_texture_import_plan_includes_packaged_texture(self):
+        texture_dir = os.path.join(self.temp_dir, "Textures")
+        os.makedirs(texture_dir)
+        texture_path = os.path.join(texture_dir, "T_Crate_BaseColor.png")
+        with open(texture_path, "wb") as stream:
+            stream.write(b"fake texture")
+        textured_manifest_path = os.path.join(self.temp_dir, "textured_manifest.json")
+        textured_manifest = dict(self.manifest)
+        textured_manifest["textures"] = [
+            {
+                "node": "file_basecolor",
+                "path": self.fbx_path.replace(".fbx", ".png"),
+                "package_path": texture_path,
+                "copied": True,
+                "usage": "base_color",
+            }
+        ]
+        write_manifest(textured_manifest_path, textured_manifest)
+
+        report = UnrealStaticMeshImportPipeline(importer=FakeImporter()).dry_run_manifest(textured_manifest_path)
+
+        self.assertEqual(report["texture_import_plan"]["count"], 1)
+        self.assertEqual(report["texture_import_plan"]["target_dir"], "/Game/Props/Textures")
+        self.assertEqual(
+            report["texture_import_plan"]["textures"][0]["target_asset_path"],
+            "/Game/Props/Textures/T_Crate_BaseColor",
+        )
 
     def test_package_validation_warns_for_missing_packaged_texture(self):
         bad_texture_manifest_path = os.path.join(self.temp_dir, "bad_texture_manifest.json")
