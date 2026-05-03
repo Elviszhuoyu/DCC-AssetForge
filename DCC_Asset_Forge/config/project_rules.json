@@ -1,0 +1,22 @@
+{
+  "static_prop": {
+    "name_prefix": "SM_",
+    "collision_prefixes": ["UCX_", "UBX_", "USP_", "UCP_"],
+    "max_triangles": {
+      "pc": 50000,
+      "high_end_mobile": 15000,
+      "mobile": 8000
+    },
+    "max_material_slots": {
+      "pc": 5,
+      "high_end_mobile": 3,
+      "mobile": 2
+    },
+    "require_uv0": true,
+    "require_lightmap_uv": true,
+    "require_frozen_transform": true,
+    "allow_warning_export": true,
+    "block_export_on_error": true
+  }
+}
+

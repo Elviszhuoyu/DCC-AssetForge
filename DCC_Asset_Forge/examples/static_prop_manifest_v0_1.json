@@ -1,0 +1,21 @@
+{
+  "version": "0.1",
+  "asset_name": "SM_Crate_01",
+  "asset_type": "static_prop",
+  "source_dcc": "maya",
+  "target_engine": "unreal",
+  "target_engine_version": "5.6",
+  "target_platform": "high_end_mobile",
+  "fbx_path": "D:/AssetForge/Exports/SM_Crate_01.fbx",
+  "target_path": "/Game/Props/Crate",
+  "import_preset": "StaticProp_HighEndMobile",
+  "checks": {
+    "triangles": 8240,
+    "material_slots": 2,
+    "has_uv0": true,
+    "has_lightmap_uv": true,
+    "frozen_transform": true
+  },
+  "score": 92
+}
+
