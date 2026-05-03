@@ -39,8 +39,26 @@ DEFAULT_RULES = {
                 "enabled": True,
             },
             {
+                "id": "mesh_exists",
+                "label": "Mesh 存在",
+                "severity": SEVERITY_ERROR,
+                "enabled": True,
+            },
+            {
+                "id": "empty_mesh",
+                "label": "空 Mesh",
+                "severity": SEVERITY_ERROR,
+                "enabled": True,
+            },
+            {
                 "id": "frozen_transform",
                 "label": "冻结变换",
+                "severity": SEVERITY_ERROR,
+                "enabled": True,
+            },
+            {
+                "id": "illegal_scale",
+                "label": "非法缩放",
                 "severity": SEVERITY_ERROR,
                 "enabled": True,
             },
@@ -68,6 +86,18 @@ DEFAULT_RULES = {
                 "severity": SEVERITY_WARNING,
                 "enabled": True,
             },
+            {
+                "id": "hidden_objects",
+                "label": "隐藏对象",
+                "severity": SEVERITY_WARNING,
+                "enabled": True,
+            },
+            {
+                "id": "history_nodes",
+                "label": "历史节点",
+                "severity": SEVERITY_WARNING,
+                "enabled": True,
+            },
         ],
     }
 }
@@ -87,4 +117,3 @@ def get_default_rules():
                 copied[key] = value
         rules[asset_type] = copied
     return rules
-
