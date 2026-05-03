@@ -15,11 +15,11 @@ from asset_forge.shared.constants import (
 class UnrealImportLogger(object):
     """Collect serializable Unreal import results."""
 
-    def success(self, manifest, imported_assets, message="Imported successfully"):
-        return self._report(UNREAL_IMPORT_STATUS_SUCCESS, manifest, imported_assets, [], message)
+    def success(self, manifest, imported_assets, message="Imported successfully", preset=None):
+        return self._report(UNREAL_IMPORT_STATUS_SUCCESS, manifest, imported_assets, [], message, preset)
 
-    def failed(self, manifest, issues, message="Import failed"):
-        return self._report(UNREAL_IMPORT_STATUS_FAILED, manifest, [], issues, message)
+    def failed(self, manifest, issues, message="Import failed", preset=None):
+        return self._report(UNREAL_IMPORT_STATUS_FAILED, manifest, [], issues, message, preset)
 
     def skipped(self, manifest, preset, message="Dry run passed"):
         return self._report(UNREAL_IMPORT_STATUS_SKIPPED, manifest, [], [], message, preset)

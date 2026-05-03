@@ -117,6 +117,8 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["imported_assets"], ["/Game/Props/SM_Crate_01"])
         self.assertTrue(os.path.exists(log_path))
         self.assertEqual(report["target_platform"], TARGET_PLATFORM_HIGH_END_MOBILE)
+        self.assertEqual(report["resolved_preset"]["name"], IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE)
+        self.assertNotIn("\\", report["fbx_path"])
 
     def test_dry_run_returns_skipped_report(self):
         pipeline = UnrealStaticMeshImportPipeline(importer=FakeImporter())
@@ -128,6 +130,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["imported_assets"], [])
         self.assertEqual(report["resolved_preset"]["name"], IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE)
         self.assertTrue(os.path.exists(log_path))
+        self.assertNotIn("\\", report["fbx_path"])
 
     def test_fbx_importer_configures_unreal_task(self):
         prepared = prepare_manifest_for_import(self.manifest_path)
@@ -161,6 +164,17 @@ class Phase2UnrealImportTest(unittest.TestCase):
 
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_FAILED)
         self.assertTrue(report["issues"])
+
+    def test_mixed_slash_fbx_path_is_normalized(self):
+        mixed_manifest_path = os.path.join(self.temp_dir, "mixed_manifest.json")
+        mixed_manifest = dict(self.manifest)
+        mixed_manifest["fbx_path"] = self.fbx_path.replace("\\", "/").replace("/", "\\", 1)
+        write_manifest(mixed_manifest_path, mixed_manifest)
+
+        prepared = prepare_manifest_for_import(mixed_manifest_path)
+
+        self.assertTrue(prepared["can_import"])
+        self.assertNotIn("\\", prepared["manifest"]["fbx_path"])
 
     def test_unknown_preset_raises(self):
         manager = UnrealImportPresetManager()

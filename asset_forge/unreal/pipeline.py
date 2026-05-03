@@ -19,7 +19,7 @@ class UnrealStaticMeshImportPipeline(object):
         prepared = self.reader.load(manifest_path, require_fbx_exists=True)
         manifest = prepared["manifest"]
         if not prepared["can_import"]:
-            report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed")
+            report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed", prepared.get("preset"))
             self._write_log(log_path, report)
             return report
 
@@ -31,18 +31,18 @@ class UnrealStaticMeshImportPipeline(object):
         prepared = self.reader.load(manifest_path, require_fbx_exists=True)
         manifest = prepared["manifest"]
         if not prepared["can_import"]:
-            report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed")
+            report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed", prepared.get("preset"))
             self._write_log(log_path, report)
             return report
 
         try:
             imported_assets = self.importer.import_static_mesh(manifest, prepared["preset"])
         except Exception as exc:
-            report = self.logger.failed(manifest, [str(exc)], "Unreal import failed")
+            report = self.logger.failed(manifest, [str(exc)], "Unreal import failed", prepared["preset"])
             self._write_log(log_path, report)
             return report
 
-        report = self.logger.success(manifest, imported_assets)
+        report = self.logger.success(manifest, imported_assets, preset=prepared["preset"])
         self._write_log(log_path, report)
         return report
 
