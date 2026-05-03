@@ -12,6 +12,7 @@ from asset_forge.shared.material_profile_schema import (
     get_default_material_profile,
     get_default_material_profiles,
     read_material_profiles,
+    resolve_material_profile,
     validate_material_profile,
     validate_material_profiles,
     write_material_profiles,
@@ -87,6 +88,11 @@ class MaterialProfileSchemaTest(unittest.TestCase):
 
         self.assertEqual(validate_manifest(manifest), [])
         self.assertEqual(manifest["material_profile"], "Props_Opaque_PainterUE_ARM")
+
+    def test_resolve_material_profile_falls_back_to_props_opaque(self):
+        profile = resolve_material_profile("Missing_Profile")
+
+        self.assertEqual(profile["name"], "Props_Opaque_PainterUE_ARM")
 
 
 if __name__ == "__main__":
