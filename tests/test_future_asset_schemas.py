@@ -15,6 +15,7 @@ from asset_forge.shared.constants import (
     TARGET_PLATFORM_HIGH_END_MOBILE,
 )
 from asset_forge.shared.manifest_schema import create_manifest, create_skeletal_mesh_manifest, validate_manifest
+from asset_forge.shared.skeletal_mesh_rule_baseline import get_skeletal_mesh_rule_baseline
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
 
 
@@ -70,6 +71,17 @@ class FutureAssetSchemaTest(unittest.TestCase):
         self.assertEqual(skeletal_manifest["max_influences"], 4)
         self.assertEqual(skeletal_manifest["lods"], [{"name": "LOD0"}])
         self.assertEqual(validate_manifest(skeletal_manifest), [])
+
+    def test_skeletal_mesh_rule_baseline_is_official_source_driven(self):
+        baseline = get_skeletal_mesh_rule_baseline()
+
+        self.assertEqual(baseline["status"], "planned")
+        self.assertEqual(baseline["fbx_version"], "2020.2")
+        self.assertIn("morph_targets", baseline["supported_fbx_features"])
+        self.assertIn("max_influences", baseline["planned_checks"])
+        self.assertTrue(baseline["maya_export_baseline"]["skins"])
+        self.assertTrue(baseline["unreal_import_baseline"]["import_as_skeletal"])
+        self.assertTrue(all(source.startswith("https://") for source in baseline["official_sources"]))
 
     def test_blender_adapter_is_explicitly_planned(self):
         adapter = BlenderAdapter()
