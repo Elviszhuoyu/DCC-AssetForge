@@ -35,6 +35,7 @@ def build_skeletal_export_package(output_root, asset_name, use_asset_folder=True
             "skeleton_dir": normalize_path(skeleton_dir),
             "animations_dir": normalize_path(animations_dir),
             "morph_targets_dir": normalize_path(morph_targets_dir),
+            "package_report_path": normalize_path(os.path.join(package["package_dir"], asset_name + "_package_report.json")),
             "skeleton_manifest_path": normalize_path(os.path.join(skeleton_dir, asset_name + "_skeleton.json")),
             "animation_manifest_path": normalize_path(os.path.join(animations_dir, asset_name + "_animations.json")),
             "morph_target_manifest_path": normalize_path(os.path.join(morph_targets_dir, asset_name + "_morph_targets.json")),

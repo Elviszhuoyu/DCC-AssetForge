@@ -89,6 +89,34 @@ def create_export_report(scan_result, validation_result, manifest, paths):
     }
 
 
+def create_skeletal_package_report(scan_result, validation_result, manifest, paths):
+    return {
+        "version": REPORT_VERSION,
+        "stage": "skeletal_package",
+        "asset_name": scan_result.get("asset_name", ""),
+        "asset_type": manifest.get("asset_type", "skeletal_mesh"),
+        "source_dcc": manifest.get("source_dcc", ""),
+        "target_engine": manifest.get("target_engine", ""),
+        "target_platform": manifest.get("target_platform", ""),
+        "package_dir": normalize_path(paths.get("package_dir", "")),
+        "fbx_path": normalize_path(paths.get("fbx_path", "")),
+        "manifest_path": normalize_path(paths.get("manifest_path", "")),
+        "skeleton_dir": normalize_path(paths.get("skeleton_dir", "")),
+        "animations_dir": normalize_path(paths.get("animations_dir", "")),
+        "morph_targets_dir": normalize_path(paths.get("morph_targets_dir", "")),
+        "skeleton_manifest_path": normalize_path(paths.get("skeleton_manifest_path", "")),
+        "animation_manifest_path": normalize_path(paths.get("animation_manifest_path", "")),
+        "morph_target_manifest_path": normalize_path(paths.get("morph_target_manifest_path", "")),
+        "root_joint": scan_result.get("root_joint", ""),
+        "joint_count": scan_result.get("joint_count", 0),
+        "skin_cluster_count": scan_result.get("skin_cluster_count", 0),
+        "max_influences": scan_result.get("max_influences", 0),
+        "lod_count": scan_result.get("lod_count", 0),
+        "material_slots": scan_result.get("material_slots", 0),
+        "validation": summarize_validation(validation_result),
+    }
+
+
 def create_end_to_end_report(export_report=None, import_report=None):
     export_report = export_report or {}
     import_report = import_report or {}
