@@ -49,6 +49,11 @@ ASSET_TYPE_SCHEMAS = {
         "default_import_presets": {},
         "manifest_fields": [
             "skeleton_path",
+            "root_joint",
+            "joint_count",
+            "skin_cluster_count",
+            "max_influences",
+            "lods",
             "physics_asset_path",
             "import_morph_targets",
             "create_physics_asset",
