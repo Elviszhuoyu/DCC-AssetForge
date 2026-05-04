@@ -43,6 +43,8 @@ class UnrealPluginSkeletonTest(unittest.TestCase):
         self.assertTrue(module.BOOTSTRAP_REPORT["repo_root"].endswith("DCC_Asset_Forge"))
         self.assertIn("import_package", module.BOOTSTRAP_REPORT["actions"])
         self.assertGreater(module.BOOTSTRAP_REPORT["action_count"], 0)
+        self.assertEqual(module.BOOTSTRAP_REPORT["widget_asset_path"], "/AssetForge/Editor/EUW_AssetForgeBridge")
+        self.assertEqual(module.BOOTSTRAP_REPORT["widget_launch_status"], "missing_asset")
 
     def test_bootstrap_reports_missing_plugin_assets_without_creating_project_content(self):
         report = UnrealPluginContentBootstrap(unreal_module=FakeUnreal(existing_assets=[])).validate()

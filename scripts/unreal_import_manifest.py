@@ -51,6 +51,20 @@ def get_editor_widget_action_plan():
     return get_action_plan()
 
 
+def get_editor_widget_launch_plan():
+    _ensure_project_root()
+    from asset_forge.unreal.editor_widget_launcher import get_widget_launch_plan
+
+    return get_widget_launch_plan()
+
+
+def launch_asset_forge_widget():
+    _ensure_project_root()
+    from asset_forge.unreal.editor_widget_launcher import launch_asset_forge_widget as run_launch
+
+    return run_launch()
+
+
 if __name__ == "__main__":
     _ensure_project_root()
     args = [item for item in sys.argv[1:] if item not in ("--dry-run", "--latest", "--all")]
