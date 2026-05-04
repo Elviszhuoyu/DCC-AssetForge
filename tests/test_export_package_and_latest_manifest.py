@@ -8,6 +8,9 @@ import unittest
 
 from asset_forge.maya.export_package import build_export_package, build_skeletal_export_package
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
+from asset_forge.shared.report_schema import create_skeletal_package_report, write_report, read_report
+from asset_forge.shared.skeletal_rule_validator import SkeletalMeshRuleValidator
+from asset_forge.shared.skeletal_scan_schema import create_skeletal_scan_result
 from asset_forge.unreal.manifest_finder import find_latest_manifest, find_manifest_files
 from asset_forge.unreal.pipeline import import_all_manifests, import_latest_manifest, UnrealBatchImportPipeline
 
@@ -43,10 +46,41 @@ class ExportPackageAndLatestManifestTest(unittest.TestCase):
         self.assertTrue(package["animations_dir"].endswith("/SK_Mannequin/Animations"))
         self.assertTrue(package["morph_targets_dir"].endswith("/SK_Mannequin/MorphTargets"))
         self.assertTrue(package["skeleton_manifest_path"].endswith("/Skeleton/SK_Mannequin_skeleton.json"))
+        self.assertTrue(package["package_report_path"].endswith("/SK_Mannequin/SK_Mannequin_package_report.json"))
         self.assertTrue(os.path.isdir(package["skeleton_dir"]))
         self.assertTrue(os.path.isdir(package["animations_dir"]))
         self.assertTrue(os.path.isdir(package["morph_targets_dir"]))
         self.assertNotIn("\\", package["skeleton_manifest_path"])
+
+    def test_skeletal_package_report_summarizes_reserved_paths_and_validation(self):
+        package = build_skeletal_export_package(self.temp_dir, "SK_Mannequin")
+        scan = create_skeletal_scan_result(
+            "SK_Mannequin",
+            root_joint="root",
+            joints=["root", "pelvis"],
+            skin_clusters=[{"name": "skinCluster1", "max_influences": 4}],
+            lods=[{"name": "LOD0"}],
+            materials=[{"name": "M_Body"}],
+        )
+        validation = SkeletalMeshRuleValidator().validate(scan)
+        manifest = create_manifest(
+            "SK_Mannequin",
+            package["fbx_path"],
+            "/Game/Characters",
+            asset_type="skeletal_mesh",
+            package_dir=package["package_dir"],
+        )
+
+        report = create_skeletal_package_report(scan, validation, manifest, package)
+        write_report(package["package_report_path"], report)
+        loaded = read_report(package["package_report_path"])
+
+        self.assertEqual(loaded["stage"], "skeletal_package")
+        self.assertEqual(loaded["validation"]["status"], "pass")
+        self.assertEqual(loaded["root_joint"], "root")
+        self.assertEqual(loaded["joint_count"], 2)
+        self.assertTrue(loaded["skeleton_dir"].endswith("/SK_Mannequin/Skeleton"))
+        self.assertNotIn("\\", loaded["skeleton_manifest_path"])
 
     def test_find_latest_manifest_recurses_package_dirs(self):
         old_dir = build_export_package(self.temp_dir, "SM_Old")
