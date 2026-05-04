@@ -22,6 +22,52 @@ def summarize_validation(validation_result):
     }
 
 
+def summarize_pipeline(export_report=None, import_report=None):
+    export_report = export_report or {}
+    import_report = import_report or {}
+    validation = export_report.get("validation", {})
+    plugin_content = import_report.get("plugin_content_validation", {})
+    texture_plan = import_report.get("texture_import_plan", {})
+    material_plan = import_report.get("material_binding_plan", {})
+    material_assignment = import_report.get("material_assignment_report", {})
+    post_import = import_report.get("post_import_validation", {})
+
+    warnings = []
+    errors = []
+    warnings.extend(_messages("maya_validation", validation.get("warnings", [])))
+    errors.extend(_messages("maya_validation", validation.get("errors", [])))
+
+    import_issues = _plain_messages("unreal_import", import_report.get("issues", []))
+    if import_report.get("status") == "failed":
+        errors.extend(import_issues)
+    else:
+        warnings.extend(import_issues)
+
+    _append_checks(plugin_content.get("checks", []), "plugin_content", warnings, errors)
+    warnings.extend(_plain_messages("texture_import", import_report.get("texture_import_issues", [])))
+    warnings.extend(_plain_messages("material_instance", import_report.get("material_instance_issues", [])))
+    warnings.extend(_plain_messages("material_assignment", material_assignment.get("issues", [])))
+    _append_checks(post_import.get("checks", []), "post_import", warnings, errors)
+
+    return {
+        "status": import_report.get("status") or validation.get("status", ""),
+        "export_status": validation.get("status", ""),
+        "import_status": import_report.get("status", ""),
+        "plugin_content_status": plugin_content.get("status", ""),
+        "texture_import_count": texture_plan.get("count", 0),
+        "imported_texture_count": len(import_report.get("imported_textures", [])),
+        "material_plan_count": material_plan.get("count", 0),
+        "created_material_instance_count": len(import_report.get("created_material_instances", [])),
+        "material_assignment_status": material_assignment.get("status", ""),
+        "material_assignment_count": len(material_assignment.get("assigned", [])),
+        "post_import_status": post_import.get("status", ""),
+        "warning_count": len(warnings),
+        "error_count": len(errors),
+        "warnings": warnings,
+        "errors": errors,
+    }
+
+
 def create_export_report(scan_result, validation_result, manifest, paths):
     return {
         "version": REPORT_VERSION,
@@ -46,12 +92,14 @@ def create_export_report(scan_result, validation_result, manifest, paths):
 def create_end_to_end_report(export_report=None, import_report=None):
     export_report = export_report or {}
     import_report = import_report or {}
+    pipeline_summary = summarize_pipeline(export_report, import_report)
     return {
         "version": REPORT_VERSION,
         "stage": "end_to_end",
         "asset_name": export_report.get("asset_name") or import_report.get("asset_name", ""),
         "export": export_report,
         "import": import_report,
+        "pipeline_summary": pipeline_summary,
         "status": import_report.get("status") or export_report.get("validation", {}).get("status", ""),
     }
 
@@ -84,3 +132,31 @@ def write_report(path, report):
 def read_report(path):
     with io.open(path, "r", encoding="utf-8") as stream:
         return json.load(stream)
+
+
+def _append_checks(checks, source, warnings, errors):
+    for item in checks:
+        status = item.get("status", "")
+        if status == "warning":
+            warnings.append(_message(source, item))
+        elif status == "error":
+            errors.append(_message(source, item))
+
+
+def _messages(source, items):
+    return [_message(source, item) for item in items]
+
+
+def _plain_messages(source, items):
+    return [{"source": source, "message": str(item)} for item in items]
+
+
+def _message(source, item):
+    if isinstance(item, dict):
+        return {
+            "source": source,
+            "id": item.get("id", ""),
+            "path": item.get("path", ""),
+            "message": item.get("message", item.get("name", "")),
+        }
+    return {"source": source, "message": str(item)}
