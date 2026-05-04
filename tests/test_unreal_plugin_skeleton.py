@@ -2,6 +2,7 @@ from __future__ import absolute_import
 
 import json
 import os
+import importlib.util
 import unittest
 
 from asset_forge.unreal.material_package_schema import get_default_material_package_plan
@@ -18,6 +19,8 @@ class UnrealPluginSkeletonTest(unittest.TestCase):
 
         self.assertEqual(descriptor["FriendlyName"], "Asset Forge")
         self.assertTrue(descriptor["CanContainContent"])
+        self.assertIn("PythonScriptPlugin", [item["Name"] for item in descriptor["Plugins"]])
+        self.assertIn("EditorScriptingUtilities", [item["Name"] for item in descriptor["Plugins"]])
         self.assertEqual(plan["content_mount"], "/AssetForge")
         self.assertEqual(plan["disk_content_root"], "Plugins/AssetForge/Content")
 
@@ -26,10 +29,20 @@ class UnrealPluginSkeletonTest(unittest.TestCase):
             os.path.join("Plugins", "AssetForge", "Content", "Materials"),
             os.path.join("Plugins", "AssetForge", "Content", "MaterialFunctions"),
             os.path.join("Plugins", "AssetForge", "Content", "ParameterCollections"),
+            os.path.join("Plugins", "AssetForge", "Content", "Python"),
         ]
 
         for directory in expected_dirs:
             self.assertTrue(os.path.isdir(directory), directory)
+
+    def test_plugin_python_bootstrap_exposes_editor_widget_actions(self):
+        init_path = os.path.join("Plugins", "AssetForge", "Content", "Python", "init_unreal.py")
+
+        module = self._load_module(init_path)
+
+        self.assertTrue(module.BOOTSTRAP_REPORT["repo_root"].endswith("DCC_Asset_Forge"))
+        self.assertIn("import_package", module.BOOTSTRAP_REPORT["actions"])
+        self.assertGreater(module.BOOTSTRAP_REPORT["action_count"], 0)
 
     def test_bootstrap_reports_missing_plugin_assets_without_creating_project_content(self):
         report = UnrealPluginContentBootstrap(unreal_module=FakeUnreal(existing_assets=[])).validate()
@@ -50,6 +63,12 @@ class UnrealPluginSkeletonTest(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["missing_assets"], [])
+
+    def _load_module(self, path):
+        spec = importlib.util.spec_from_file_location("asset_forge_test_init_unreal", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
 
 
 class FakeUnreal(object):

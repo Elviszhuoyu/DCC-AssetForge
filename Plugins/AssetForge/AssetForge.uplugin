@@ -8,5 +8,15 @@
   "CreatedBy": "TA_MyTools",
   "CanContainContent": true,
   "EnabledByDefault": false,
+  "Plugins": [
+    {
+      "Name": "PythonScriptPlugin",
+      "Enabled": true
+    },
+    {
+      "Name": "EditorScriptingUtilities",
+      "Enabled": true
+    }
+  ],
   "Modules": []
 }
