@@ -14,6 +14,7 @@ from asset_forge.shared.constants import (
     TARGET_ENGINE_UNREAL,
     TARGET_PLATFORM_HIGH_END_MOBILE,
 )
+from asset_forge.shared.manifest_schema import create_manifest, create_skeletal_mesh_manifest, validate_manifest
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
 
 
@@ -47,6 +48,28 @@ class FutureAssetSchemaTest(unittest.TestCase):
         }
 
         self.assertEqual(manager.preset_name_for_manifest(manifest), IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE)
+
+    def test_skeletal_mesh_manifest_adds_planned_fields_without_changing_static_prop(self):
+        static_manifest = create_manifest("SM_Crate_01", "C:/Exports/SM_Crate_01.fbx", "/Game/Props")
+        skeletal_manifest = create_skeletal_mesh_manifest(
+            "SK_Mannequin",
+            "C:/Exports/SK_Mannequin.fbx",
+            "/Game/Characters",
+            root_joint="root",
+            joint_count=86,
+            skin_cluster_count=1,
+            max_influences=4,
+            lods=[{"name": "LOD0"}],
+        )
+
+        self.assertEqual(static_manifest["asset_type"], ASSET_TYPE_STATIC_PROP)
+        self.assertNotIn("root_joint", static_manifest)
+        self.assertEqual(skeletal_manifest["asset_type"], ASSET_TYPE_SKELETAL_MESH)
+        self.assertEqual(skeletal_manifest["root_joint"], "root")
+        self.assertEqual(skeletal_manifest["joint_count"], 86)
+        self.assertEqual(skeletal_manifest["max_influences"], 4)
+        self.assertEqual(skeletal_manifest["lods"], [{"name": "LOD0"}])
+        self.assertEqual(validate_manifest(skeletal_manifest), [])
 
     def test_blender_adapter_is_explicitly_planned(self):
         adapter = BlenderAdapter()

@@ -6,6 +6,7 @@ import io
 import json
 
 from asset_forge.shared.constants import (
+    ASSET_TYPE_SKELETAL_MESH,
     ASSET_TYPE_STATIC_PROP,
     SOURCE_DCC_MAYA,
     TARGET_ENGINE_UNREAL,
@@ -49,6 +50,41 @@ def create_manifest(asset_name, fbx_path, target_path, checks=None, score=0, **k
         "checks": checks or {},
         "score": score,
     }
+
+
+def create_skeletal_mesh_manifest(asset_name, fbx_path, target_path, checks=None, score=0, **kwargs):
+    """Create a planned Skeletal Mesh manifest without enabling import support yet."""
+    manifest = create_manifest(
+        asset_name,
+        fbx_path,
+        target_path,
+        checks=checks,
+        score=score,
+        asset_type=ASSET_TYPE_SKELETAL_MESH,
+        import_preset=kwargs.get("import_preset", ""),
+        source_dcc=kwargs.get("source_dcc", SOURCE_DCC_MAYA),
+        target_engine=kwargs.get("target_engine", TARGET_ENGINE_UNREAL),
+        target_platform=kwargs.get("target_platform", TARGET_PLATFORM_HIGH_END_MOBILE),
+        version=kwargs.get("version", MANIFEST_VERSION),
+        package_dir=kwargs.get("package_dir", ""),
+        material_profile=kwargs.get("material_profile", ""),
+        materials=kwargs.get("materials", []),
+        textures=kwargs.get("textures", []),
+    )
+    manifest.update(
+        {
+            "skeleton_path": kwargs.get("skeleton_path", ""),
+            "root_joint": kwargs.get("root_joint", ""),
+            "joint_count": kwargs.get("joint_count", 0),
+            "skin_cluster_count": kwargs.get("skin_cluster_count", 0),
+            "max_influences": kwargs.get("max_influences", 0),
+            "lods": kwargs.get("lods", []),
+            "physics_asset_path": kwargs.get("physics_asset_path", ""),
+            "import_morph_targets": bool(kwargs.get("import_morph_targets", False)),
+            "create_physics_asset": bool(kwargs.get("create_physics_asset", True)),
+        }
+    )
+    return manifest
 
 
 def validate_manifest(manifest):
