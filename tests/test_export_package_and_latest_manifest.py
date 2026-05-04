@@ -6,7 +6,7 @@ import tempfile
 import time
 import unittest
 
-from asset_forge.maya.export_package import build_export_package
+from asset_forge.maya.export_package import build_export_package, build_skeletal_export_package
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
 from asset_forge.unreal.manifest_finder import find_latest_manifest, find_manifest_files
 from asset_forge.unreal.pipeline import import_all_manifests, import_latest_manifest, UnrealBatchImportPipeline
@@ -33,6 +33,20 @@ class ExportPackageAndLatestManifestTest(unittest.TestCase):
         self.assertTrue(package["export_report_path"].endswith("/SM_Crate_01/SM_Crate_01_export_report.json"))
         self.assertTrue(package["end_to_end_report_path"].endswith("/SM_Crate_01/SM_Crate_01_end_to_end_report.json"))
         self.assertNotIn("\\", package["fbx_path"])
+
+    def test_skeletal_export_package_adds_planned_subdirectories(self):
+        package = build_skeletal_export_package(self.temp_dir, "SK_Mannequin")
+
+        self.assertEqual(package["asset_type"], "skeletal_mesh")
+        self.assertTrue(package["package_dir"].endswith("/SK_Mannequin"))
+        self.assertTrue(package["skeleton_dir"].endswith("/SK_Mannequin/Skeleton"))
+        self.assertTrue(package["animations_dir"].endswith("/SK_Mannequin/Animations"))
+        self.assertTrue(package["morph_targets_dir"].endswith("/SK_Mannequin/MorphTargets"))
+        self.assertTrue(package["skeleton_manifest_path"].endswith("/Skeleton/SK_Mannequin_skeleton.json"))
+        self.assertTrue(os.path.isdir(package["skeleton_dir"]))
+        self.assertTrue(os.path.isdir(package["animations_dir"]))
+        self.assertTrue(os.path.isdir(package["morph_targets_dir"]))
+        self.assertNotIn("\\", package["skeleton_manifest_path"])
 
     def test_find_latest_manifest_recurses_package_dirs(self):
         old_dir = build_export_package(self.temp_dir, "SM_Old")
