@@ -15,13 +15,14 @@ from asset_forge.shared.constants import (
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
 from asset_forge.shared.report_schema import read_report, write_report
 from scripts.unreal_import_manifest import import_all_manifests as script_import_all_manifests
+from scripts.unreal_import_manifest import import_asset_forge_package as script_import_asset_forge_package
 from scripts.unreal_import_manifest import import_manifest as script_import_manifest
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
 from asset_forge.unreal.manifest_reader import prepare_manifest_for_import
 from asset_forge.unreal.material_instance_creator import UnrealMaterialInstanceCreator
 from asset_forge.unreal.material_slot_assigner import UnrealMaterialSlotAssigner
-from asset_forge.unreal.pipeline import UnrealStaticMeshImportPipeline, import_latest_manifest
+from asset_forge.unreal.pipeline import UnrealStaticMeshImportPipeline, import_asset_forge_package, import_latest_manifest
 from asset_forge.unreal.texture_importer import UnrealTextureImporter
 
 
@@ -567,6 +568,21 @@ class Phase2UnrealImportTest(unittest.TestCase):
 
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SKIPPED)
         self.assertEqual(report["asset_name"], "SM_Crate_01")
+
+    def test_import_asset_forge_package_supports_dry_run_and_default_report_path(self):
+        report = import_asset_forge_package(self.temp_dir, dry_run=True)
+        report_path = os.path.join(self.temp_dir, "package_import_report.json")
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SKIPPED)
+        self.assertEqual(report["asset_name"], "SM_Crate_01")
+        self.assertTrue(os.path.exists(report_path))
+        self.assertEqual(read_report(report_path)["asset_name"], "SM_Crate_01")
+
+    def test_script_entrypoint_supports_package_dry_run(self):
+        report = script_import_asset_forge_package(self.temp_dir, dry_run=True)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SKIPPED)
+        self.assertIn("plugin_content_validation", report)
 
     def test_script_entrypoint_supports_batch_dry_run(self):
         report = script_import_all_manifests(self.temp_dir, dry_run=True)

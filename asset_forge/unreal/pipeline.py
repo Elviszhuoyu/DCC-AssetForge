@@ -258,6 +258,19 @@ def import_latest_manifest(export_root, log_path=None, dry_run=False):
     return pipeline.import_from_manifest(manifest_path, log_path)
 
 
+def import_asset_forge_package(package_dir, dry_run=False, report_path=None):
+    """Import or dry-run the newest manifest in one Asset Forge package folder."""
+    manifest_path = find_latest_manifest(package_dir)
+    if not manifest_path:
+        raise RuntimeError("No Asset Forge manifest found under package: {0}".format(package_dir))
+
+    active_report_path = report_path or os.path.join(os.path.abspath(package_dir), "package_import_report.json")
+    pipeline = UnrealStaticMeshImportPipeline()
+    if dry_run:
+        return pipeline.dry_run_manifest(manifest_path, active_report_path)
+    return pipeline.import_from_manifest(manifest_path, active_report_path)
+
+
 def import_all_manifests(export_root, report_path=None, dry_run=False):
     """Import or dry-run every manifest under an export root."""
     return UnrealBatchImportPipeline().run(export_root, dry_run, report_path)
