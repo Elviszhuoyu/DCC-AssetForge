@@ -14,8 +14,11 @@ class UnrealEditorWidgetActionsTest(unittest.TestCase):
             action_ids,
             [
                 "select_manifest",
+                "select_package",
                 "dry_run_manifest",
                 "import_manifest",
+                "dry_run_package",
+                "import_package",
                 "import_latest",
                 "dry_run_all",
                 "import_all",
@@ -28,6 +31,8 @@ class UnrealEditorWidgetActionsTest(unittest.TestCase):
 
         self.assertEqual(actions.dry_run_selected_manifest("manifest.json"), {"method": "dry_run_manifest"})
         self.assertEqual(actions.import_selected_manifest("manifest.json"), {"method": "import_manifest"})
+        self.assertEqual(actions.dry_run_selected_package("Package"), {"method": "import_asset_forge_package", "dry_run": True})
+        self.assertEqual(actions.import_selected_package("Package"), {"method": "import_asset_forge_package", "dry_run": False})
         self.assertEqual(actions.import_latest_export("Exports"), {"method": "import_latest_manifest"})
         self.assertEqual(actions.dry_run_all_exports("Exports"), {"method": "import_all_manifests", "dry_run": True})
         self.assertEqual(actions.import_all_exports("Exports"), {"method": "import_all_manifests", "dry_run": False})
@@ -36,6 +41,8 @@ class UnrealEditorWidgetActionsTest(unittest.TestCase):
             [
                 ("dry_run_manifest", "manifest.json", None),
                 ("import_manifest", "manifest.json", None),
+                ("import_asset_forge_package", "Package", True, None),
+                ("import_asset_forge_package", "Package", False, None),
                 ("import_latest_manifest", "Exports", None, False),
                 ("import_all_manifests", "Exports", None, True),
                 ("import_all_manifests", "Exports", None, False),
@@ -59,6 +66,10 @@ class FakePipeline(object):
     def import_manifest(self, manifest_path, log_path=None):
         self.calls.append(("import_manifest", manifest_path, log_path))
         return {"method": "import_manifest"}
+
+    def import_asset_forge_package(self, package_dir, dry_run=False, report_path=None):
+        self.calls.append(("import_asset_forge_package", package_dir, dry_run, report_path))
+        return {"method": "import_asset_forge_package", "dry_run": dry_run}
 
     def import_latest_manifest(self, export_root, log_path=None, dry_run=False):
         self.calls.append(("import_latest_manifest", export_root, log_path, dry_run))

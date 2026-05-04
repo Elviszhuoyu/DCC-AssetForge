@@ -13,6 +13,12 @@ ACTION_PLAN = (
         "callable": "",
     },
     {
+        "id": "select_package",
+        "label": "Select Package",
+        "description": "Let the widget choose one Asset Forge package directory.",
+        "callable": "",
+    },
+    {
         "id": "dry_run_manifest",
         "label": "Dry Run Manifest",
         "description": "Validate one manifest and resolve its import preset without importing.",
@@ -23,6 +29,18 @@ ACTION_PLAN = (
         "label": "Import Manifest",
         "description": "Import one selected manifest.",
         "callable": "import_selected_manifest",
+    },
+    {
+        "id": "dry_run_package",
+        "label": "Dry Run Package",
+        "description": "Validate the newest manifest in one Asset Forge package directory.",
+        "callable": "dry_run_selected_package",
+    },
+    {
+        "id": "import_package",
+        "label": "Import Package",
+        "description": "Import the newest manifest in one Asset Forge package directory.",
+        "callable": "import_selected_package",
     },
     {
         "id": "import_latest",
@@ -60,6 +78,12 @@ class UnrealEditorWidgetActions(object):
     def import_selected_manifest(self, manifest_path, log_path=None):
         return self.pipeline.import_manifest(manifest_path, log_path)
 
+    def dry_run_selected_package(self, package_dir, report_path=None):
+        return self.pipeline.import_asset_forge_package(package_dir, dry_run=True, report_path=report_path)
+
+    def import_selected_package(self, package_dir, report_path=None):
+        return self.pipeline.import_asset_forge_package(package_dir, dry_run=False, report_path=report_path)
+
     def import_latest_export(self, export_root, log_path=None, dry_run=False):
         return self.pipeline.import_latest_manifest(export_root, log_path, dry_run)
 
@@ -80,6 +104,14 @@ def dry_run_selected_manifest(manifest_path, log_path=None):
 
 def import_selected_manifest(manifest_path, log_path=None):
     return UnrealEditorWidgetActions().import_selected_manifest(manifest_path, log_path)
+
+
+def dry_run_selected_package(package_dir, report_path=None):
+    return UnrealEditorWidgetActions().dry_run_selected_package(package_dir, report_path)
+
+
+def import_selected_package(package_dir, report_path=None):
+    return UnrealEditorWidgetActions().import_selected_package(package_dir, report_path)
 
 
 def import_latest_export(export_root, log_path=None, dry_run=False):
