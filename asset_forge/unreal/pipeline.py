@@ -11,6 +11,7 @@ from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_logger import UnrealImportLogger
 from asset_forge.unreal.material_binding_planner import UnrealMaterialBindingPlanner
 from asset_forge.unreal.material_instance_creator import UnrealMaterialInstanceCreator
+from asset_forge.unreal.material_slot_assigner import UnrealMaterialSlotAssigner
 from asset_forge.unreal.manifest_finder import find_latest_manifest, find_manifest_files
 from asset_forge.unreal.manifest_reader import UnrealManifestReader
 from asset_forge.unreal.package_validator import UnrealPackageValidator
@@ -34,6 +35,7 @@ class UnrealStaticMeshImportPipeline(object):
         texture_importer=None,
         material_binding_planner=None,
         material_instance_creator=None,
+        material_slot_assigner=None,
         plugin_content_bootstrap=None,
     ):
         self.reader = reader or UnrealManifestReader()
@@ -45,6 +47,7 @@ class UnrealStaticMeshImportPipeline(object):
         self.texture_importer = texture_importer or UnrealTextureImporter()
         self.material_binding_planner = material_binding_planner or UnrealMaterialBindingPlanner()
         self.material_instance_creator = material_instance_creator or UnrealMaterialInstanceCreator()
+        self.material_slot_assigner = material_slot_assigner or UnrealMaterialSlotAssigner()
         self.plugin_content_bootstrap = plugin_content_bootstrap or UnrealPluginContentBootstrap()
 
     def dry_run_manifest(self, manifest_path, log_path=None):
@@ -103,6 +106,7 @@ class UnrealStaticMeshImportPipeline(object):
         self._attach_material_binding_plan(report, manifest)
         self._import_planned_textures(report)
         self._create_material_instances(report)
+        self._assign_material_slots(report)
         report = self._attach_post_import_validation(report, manifest, imported_assets)
         self._write_log(active_log_path, report)
         self._write_end_to_end_report(manifest, manifest_path, report)
@@ -189,6 +193,23 @@ class UnrealStaticMeshImportPipeline(object):
             report["created_material_instances"] = self.material_instance_creator.create_from_plan(plan)
         except Exception as exc:
             report["material_instance_issues"].append(str(exc))
+        return report
+
+    def _assign_material_slots(self, report):
+        report["material_assignment_report"] = {
+            "status": "skipped",
+            "assigned": [],
+            "issues": [],
+        }
+        if hasattr(self.material_slot_assigner, "is_available") and not self.material_slot_assigner.is_available():
+            report["material_assignment_report"]["issues"].append("unreal module is not available")
+            return report
+
+        try:
+            report["material_assignment_report"] = self.material_slot_assigner.assign_from_report(report)
+        except Exception as exc:
+            report["material_assignment_report"]["status"] = "warning"
+            report["material_assignment_report"]["issues"].append(str(exc))
         return report
 
 

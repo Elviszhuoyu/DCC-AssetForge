@@ -20,6 +20,7 @@ from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
 from asset_forge.unreal.manifest_reader import prepare_manifest_for_import
 from asset_forge.unreal.material_instance_creator import UnrealMaterialInstanceCreator
+from asset_forge.unreal.material_slot_assigner import UnrealMaterialSlotAssigner
 from asset_forge.unreal.pipeline import UnrealStaticMeshImportPipeline, import_latest_manifest
 from asset_forge.unreal.texture_importer import UnrealTextureImporter
 
@@ -98,10 +99,13 @@ class FakeUnreal(object):
 
     class EditorAssetLibrary(object):
         loaded = []
+        assets = {}
 
         @classmethod
         def load_asset(cls, asset_path):
             cls.loaded.append(asset_path)
+            if asset_path in cls.assets:
+                return cls.assets[asset_path]
             return "asset:" + asset_path
 
     class MaterialEditingLibrary(object):
@@ -119,6 +123,20 @@ class FakeUnreal(object):
 
 class FakeMaterialInstance(FakeEditorObject):
     pass
+
+
+class FakeStaticMaterial(FakeEditorObject):
+    def __init__(self, slot_name):
+        self.material_slot_name = slot_name
+
+
+class FakeStaticMesh(FakeEditorObject):
+    def __init__(self, slot_names=None):
+        self.static_materials = [FakeStaticMaterial(slot_name) for slot_name in (slot_names or [])]
+        self.assigned_materials = {}
+
+    def set_material(self, index, material):
+        self.assigned_materials[index] = material
 
 
 class Phase2UnrealImportTest(unittest.TestCase):
@@ -185,6 +203,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["texture_import_issues"], [])
         self.assertEqual(report["created_material_instances"], [])
         self.assertEqual(report["material_instance_issues"], [])
+        self.assertEqual(report["material_assignment_report"]["status"], "skipped")
         self.assertEqual(report["post_import_validation"]["status"], "pass")
 
     def test_pipeline_writes_default_import_and_end_to_end_reports(self):
@@ -307,6 +326,42 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["created_material_instances"], ["/Game/Props/Materials/M_Crate"])
         self.assertEqual(material_creator.plans[0]["materials"][0]["parent_material"], "/AssetForge/Materials/M_AF_Props_Opaque")
 
+    def test_pipeline_assigns_created_material_instances_to_static_mesh_slots(self):
+        texture_path = self._write_packaged_texture()
+        textured_manifest_path = self._write_textured_manifest(texture_path)
+        material_creator = FakeMaterialInstanceCreator(["/Game/Props/Materials/M_Crate"])
+        material_assigner = FakeMaterialSlotAssigner()
+
+        report = UnrealStaticMeshImportPipeline(
+            importer=FakeImporter(),
+            texture_importer=FakeTextureImporter([]),
+            material_instance_creator=material_creator,
+            material_slot_assigner=material_assigner,
+        ).import_from_manifest(textured_manifest_path)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
+        self.assertEqual(report["material_assignment_report"]["status"], "success")
+        self.assertEqual(report["material_assignment_report"]["assigned"][0]["slot_index"], 0)
+        self.assertEqual(
+            report["material_assignment_report"]["assigned"][0]["material_instance"],
+            "/Game/Props/Materials/M_Crate",
+        )
+
+    def test_material_assignment_warning_does_not_fail_static_mesh_import(self):
+        texture_path = self._write_packaged_texture()
+        textured_manifest_path = self._write_textured_manifest(texture_path)
+
+        report = UnrealStaticMeshImportPipeline(
+            importer=FakeImporter(),
+            texture_importer=FakeTextureImporter([]),
+            material_instance_creator=FakeMaterialInstanceCreator(["/Game/Props/Materials/M_Crate"]),
+            material_slot_assigner=FailingMaterialSlotAssigner(),
+        ).import_from_manifest(textured_manifest_path)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
+        self.assertEqual(report["material_assignment_report"]["status"], "warning")
+        self.assertTrue(report["material_assignment_report"]["issues"])
+
     def test_material_instance_error_does_not_fail_static_mesh_import(self):
         texture_path = self._write_packaged_texture()
         textured_manifest_path = self._write_textured_manifest(texture_path)
@@ -348,6 +403,33 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(asset.parent, "asset:/AssetForge/Materials/M_AF_Props_Opaque")
         self.assertEqual(fake_unreal.MaterialEditingLibrary.texture_calls[0][1], "BaseColor")
         self.assertEqual(fake_unreal.MaterialEditingLibrary.scalar_calls[0][1], "EmissiveIntensity")
+
+    def test_material_slot_assigner_configures_unreal_static_mesh(self):
+        fake_unreal = FakeUnreal()
+        static_mesh = FakeStaticMesh(["M_Crate"])
+        material_instance = FakeMaterialInstance()
+        fake_unreal.EditorAssetLibrary.assets = {
+            "/Game/Props/SM_Crate_01": static_mesh,
+            "/Game/Props/Materials/M_Crate": material_instance,
+        }
+        report = {
+            "imported_assets": ["/Game/Props/SM_Crate_01"],
+            "created_material_instances": ["/Game/Props/Materials/M_Crate"],
+            "material_binding_plan": {
+                "materials": [
+                    {
+                        "material_name": "M_Crate",
+                        "target_asset_path": "/Game/Props/Materials/M_Crate",
+                    }
+                ]
+            },
+        }
+
+        result = UnrealMaterialSlotAssigner(fake_unreal).assign_from_report(report)
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(static_mesh.assigned_materials[0], material_instance)
+        self.assertEqual(result["assigned"][0]["material_name"], "M_Crate")
 
     def test_texture_importer_configures_unreal_tasks(self):
         fake_unreal = FakeUnreal()
@@ -546,6 +628,32 @@ class FakeMaterialInstanceCreator(object):
 class FailingMaterialInstanceCreator(object):
     def create_from_plan(self, material_binding_plan):
         raise RuntimeError("material instance creation failed")
+
+
+class FakeMaterialSlotAssigner(object):
+    def __init__(self):
+        self.reports = []
+
+    def assign_from_report(self, report):
+        self.reports.append(report)
+        material = report["material_binding_plan"]["materials"][0]
+        return {
+            "status": "success",
+            "assigned": [
+                {
+                    "static_mesh": report["imported_assets"][0],
+                    "slot_index": 0,
+                    "material_name": material["material_name"],
+                    "material_instance": material["target_asset_path"],
+                }
+            ],
+            "issues": [],
+        }
+
+
+class FailingMaterialSlotAssigner(object):
+    def assign_from_report(self, report):
+        raise RuntimeError("material assignment failed")
 
 
 if __name__ == "__main__":
