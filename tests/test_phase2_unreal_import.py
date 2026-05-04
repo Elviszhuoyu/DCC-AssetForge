@@ -13,7 +13,7 @@ from asset_forge.shared.constants import (
     UNREAL_IMPORT_STATUS_SUCCESS,
 )
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
-from asset_forge.shared.report_schema import read_report, write_report
+from asset_forge.shared.report_schema import read_report, summarize_pipeline, write_report
 from scripts.unreal_import_manifest import import_all_manifests as script_import_all_manifests
 from scripts.unreal_import_manifest import import_asset_forge_package as script_import_asset_forge_package
 from scripts.unreal_import_manifest import import_manifest as script_import_manifest
@@ -217,7 +217,11 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertTrue(os.path.exists(import_report_path))
         self.assertTrue(os.path.exists(end_to_end_path))
         self.assertEqual(read_report(import_report_path)["status"], report["status"])
-        self.assertEqual(read_report(end_to_end_path)["stage"], "end_to_end")
+        end_to_end_report = read_report(end_to_end_path)
+        self.assertEqual(end_to_end_report["stage"], "end_to_end")
+        self.assertEqual(end_to_end_report["pipeline_summary"]["import_status"], report["status"])
+        self.assertEqual(end_to_end_report["pipeline_summary"]["plugin_content_status"], "warning")
+        self.assertEqual(end_to_end_report["pipeline_summary"]["material_assignment_status"], "skipped")
 
     def test_dry_run_returns_skipped_report(self):
         pipeline = UnrealStaticMeshImportPipeline(importer=FakeImporter())
@@ -362,6 +366,11 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
         self.assertEqual(report["material_assignment_report"]["status"], "warning")
         self.assertTrue(report["material_assignment_report"]["issues"])
+
+        summary = summarize_pipeline(import_report=report)
+        self.assertEqual(summary["material_assignment_status"], "warning")
+        self.assertGreater(summary["warning_count"], 0)
+        self.assertEqual(summary["error_count"], 0)
 
     def test_material_instance_error_does_not_fail_static_mesh_import(self):
         texture_path = self._write_packaged_texture()
