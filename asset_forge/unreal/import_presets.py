@@ -2,14 +2,11 @@
 
 from __future__ import absolute_import
 
+from asset_forge.shared.asset_type_schema import get_default_import_preset
 from asset_forge.shared.constants import (
-    ASSET_TYPE_STATIC_PROP,
     IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE,
     IMPORT_PRESET_STATIC_PROP_MOBILE,
     IMPORT_PRESET_STATIC_PROP_PC,
-    TARGET_PLATFORM_HIGH_END_MOBILE,
-    TARGET_PLATFORM_MOBILE,
-    TARGET_PLATFORM_PC,
 )
 
 
@@ -50,15 +47,6 @@ STATIC_PROP_IMPORT_PRESETS = {
 }
 
 
-PRESET_BY_ASSET_TYPE_AND_PLATFORM = {
-    ASSET_TYPE_STATIC_PROP: {
-        TARGET_PLATFORM_PC: IMPORT_PRESET_STATIC_PROP_PC,
-        TARGET_PLATFORM_HIGH_END_MOBILE: IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE,
-        TARGET_PLATFORM_MOBILE: IMPORT_PRESET_STATIC_PROP_MOBILE,
-    }
-}
-
-
 class UnrealImportPresetManager(object):
     """Resolve import presets from manifest metadata."""
 
@@ -71,7 +59,7 @@ class UnrealImportPresetManager(object):
         explicit_name = manifest.get("import_preset")
         if explicit_name:
             return explicit_name
-        return PRESET_BY_ASSET_TYPE_AND_PLATFORM.get(asset_type, {}).get(target_platform)
+        return get_default_import_preset(asset_type, target_platform)
 
     def get_preset(self, preset_name):
         if preset_name not in self.presets:

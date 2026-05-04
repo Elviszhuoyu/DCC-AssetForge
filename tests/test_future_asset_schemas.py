@@ -3,13 +3,18 @@ from __future__ import absolute_import
 import unittest
 
 from asset_forge.blender.adapter import BlenderAdapter
-from asset_forge.shared.asset_type_schema import get_asset_type_schema
+from asset_forge.shared.asset_type_schema import get_asset_type_schema, get_default_import_preset
 from asset_forge.shared.constants import (
     ASSET_TYPE_ANIMATION,
     ASSET_TYPE_MORPH_TARGET,
     ASSET_TYPE_SKELETAL_MESH,
     ASSET_TYPE_STATIC_PROP,
+    IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE,
+    SOURCE_DCC_MAYA,
+    TARGET_ENGINE_UNREAL,
+    TARGET_PLATFORM_HIGH_END_MOBILE,
 )
+from asset_forge.unreal.import_presets import UnrealImportPresetManager
 
 
 class FutureAssetSchemaTest(unittest.TestCase):
@@ -17,7 +22,13 @@ class FutureAssetSchemaTest(unittest.TestCase):
         schema = get_asset_type_schema(ASSET_TYPE_STATIC_PROP)
 
         self.assertEqual(schema["status"], "implemented")
+        self.assertIn(SOURCE_DCC_MAYA, schema["source_dcc"])
+        self.assertEqual(schema["target_engine"], TARGET_ENGINE_UNREAL)
         self.assertIn("lightmap_uv", schema["planned_checks"])
+        self.assertEqual(
+            get_default_import_preset(ASSET_TYPE_STATIC_PROP, TARGET_PLATFORM_HIGH_END_MOBILE),
+            IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE,
+        )
 
     def test_future_asset_types_have_manifest_fields(self):
         for asset_type in [ASSET_TYPE_SKELETAL_MESH, ASSET_TYPE_ANIMATION, ASSET_TYPE_MORPH_TARGET]:
@@ -25,6 +36,17 @@ class FutureAssetSchemaTest(unittest.TestCase):
             self.assertEqual(schema["status"], "planned")
             self.assertTrue(schema["manifest_fields"])
             self.assertTrue(schema["planned_checks"])
+            self.assertIn("default_import_presets", schema)
+
+    def test_unreal_import_preset_manager_uses_asset_type_registry(self):
+        manager = UnrealImportPresetManager()
+        manifest = {
+            "asset_type": ASSET_TYPE_STATIC_PROP,
+            "target_platform": TARGET_PLATFORM_HIGH_END_MOBILE,
+            "import_preset": "",
+        }
+
+        self.assertEqual(manager.preset_name_for_manifest(manifest), IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE)
 
     def test_blender_adapter_is_explicitly_planned(self):
         adapter = BlenderAdapter()
