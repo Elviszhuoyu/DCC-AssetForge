@@ -19,3 +19,25 @@ def build_export_package(output_root, asset_name, use_asset_folder=True):
         "import_report_path": normalize_path(os.path.join(package_dir, asset_name + "_import_report.json")),
         "end_to_end_report_path": normalize_path(os.path.join(package_dir, asset_name + "_end_to_end_report.json")),
     }
+
+
+def build_skeletal_export_package(output_root, asset_name, use_asset_folder=True):
+    """Return planned package paths for a future Skeletal Mesh export."""
+    package = build_export_package(output_root, asset_name, use_asset_folder)
+    skeleton_dir = os.path.join(package["package_dir"], "Skeleton")
+    animations_dir = os.path.join(package["package_dir"], "Animations")
+    morph_targets_dir = os.path.join(package["package_dir"], "MorphTargets")
+    for directory in [skeleton_dir, animations_dir, morph_targets_dir]:
+        ensure_dir(directory)
+    package.update(
+        {
+            "asset_type": "skeletal_mesh",
+            "skeleton_dir": normalize_path(skeleton_dir),
+            "animations_dir": normalize_path(animations_dir),
+            "morph_targets_dir": normalize_path(morph_targets_dir),
+            "skeleton_manifest_path": normalize_path(os.path.join(skeleton_dir, asset_name + "_skeleton.json")),
+            "animation_manifest_path": normalize_path(os.path.join(animations_dir, asset_name + "_animations.json")),
+            "morph_target_manifest_path": normalize_path(os.path.join(morph_targets_dir, asset_name + "_morph_targets.json")),
+        }
+    )
+    return package
