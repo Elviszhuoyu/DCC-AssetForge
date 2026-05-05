@@ -12,6 +12,7 @@ from asset_forge.shared.constants import (
     TARGET_PLATFORM_MOBILE,
     TARGET_PLATFORM_PC,
 )
+from asset_forge.shared.material_profile_schema import get_default_material_profiles
 
 
 WINDOW_NAME = "assetForgePhase1Window"
@@ -45,6 +46,11 @@ class AssetForgeMayaWindow(object):
         self.cmds.menuItem(label=TARGET_PLATFORM_MOBILE)
         self.cmds.optionMenu(self.controls["platform"], edit=True, value=TARGET_PLATFORM_HIGH_END_MOBILE)
 
+        self.controls["material_profile"] = self.cmds.optionMenu(label="材质配置")
+        for profile in get_default_material_profiles()["profiles"]:
+            self.cmds.menuItem(label=profile["name"])
+        self.cmds.optionMenu(self.controls["material_profile"], edit=True, value="Props_Opaque_PainterUE_ARM")
+
         self.controls["target_path"] = self.cmds.textFieldGrp(
             label="UE 路径",
             text="/Game/Props",
@@ -55,6 +61,13 @@ class AssetForgeMayaWindow(object):
             text=os.path.expanduser("~/AssetForge/Exports"),
             buttonLabel="...",
             buttonCommand=self._choose_output_dir,
+            adjustableColumn=2,
+        )
+        self.controls["texture_folder"] = self.cmds.textFieldButtonGrp(
+            label="贴图目录",
+            text="",
+            buttonLabel="...",
+            buttonCommand=self._choose_texture_folder,
             adjustableColumn=2,
         )
 
@@ -82,13 +95,24 @@ class AssetForgeMayaWindow(object):
     def _target_path(self):
         return self.cmds.textFieldGrp(self.controls["target_path"], query=True, text=True)
 
+    def _material_profile(self):
+        return self.cmds.optionMenu(self.controls["material_profile"], query=True, value=True)
+
     def _output_dir(self):
         return self.cmds.textFieldButtonGrp(self.controls["output_dir"], query=True, text=True)
+
+    def _texture_folder(self):
+        return self.cmds.textFieldButtonGrp(self.controls["texture_folder"], query=True, text=True)
 
     def _choose_output_dir(self, *args):
         paths = self.cmds.fileDialog2(fileMode=3, caption="选择 Asset Forge 导出目录") or []
         if paths:
             self.cmds.textFieldButtonGrp(self.controls["output_dir"], edit=True, text=paths[0])
+
+    def _choose_texture_folder(self, *args):
+        paths = self.cmds.fileDialog2(fileMode=3, caption="选择 Painter / Designer 贴图目录") or []
+        if paths:
+            self.cmds.textFieldButtonGrp(self.controls["texture_folder"], edit=True, text=paths[0])
 
     def _scan(self, *args):
         try:
@@ -118,12 +142,14 @@ class AssetForgeMayaWindow(object):
         try:
             selection = self.pipeline.adapter.get_current_selection()
             if not selection:
-                raise RuntimeError("No selected asset")
+                raise RuntimeError("没有选中资产")
             result = self.pipeline.export_asset(
                 selection[0],
                 self._output_dir(),
                 self._target_platform(),
                 self._target_path(),
+                material_profile=self._material_profile(),
+                texture_folder=self._texture_folder(),
             )
             self.last_scan = result["scan"]
             self.last_validation = result["validation"]

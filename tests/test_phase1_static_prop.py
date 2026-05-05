@@ -119,6 +119,7 @@ class Phase1StaticPropTest(unittest.TestCase):
             self.assertNotIn("\\", loaded["fbx_path"])
             self.assertEqual(loaded["materials"][0]["name"], "M_Crate")
             self.assertTrue(loaded["textures"][0]["path"].endswith("/T_Crate_BaseColor.png"))
+            self.assertEqual(loaded["material_profile"], "")
         finally:
             shutil.rmtree(temp_dir)
 
@@ -132,10 +133,64 @@ class Phase1StaticPropTest(unittest.TestCase):
             result = pipeline.export_asset("|SM_Crate_01", temp_dir, target_platform="pc")
 
             self.assertTrue(result["export_report_path"].endswith("/SM_Crate_01_export_report.json"))
+            self.assertEqual(result["manifest"]["material_profile"], "Props_Opaque_PainterUE_ARM")
             report = read_report(result["export_report_path"])
             self.assertEqual(report["stage"], "maya_export")
             self.assertEqual(report["asset_name"], "SM_Crate_01")
             self.assertEqual(report["validation"]["score"], result["validation"]["score"])
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_pipeline_manifest_can_select_material_profile(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            pipeline = MayaStaticPropPipeline(
+                adapter=FakeScanAdapter(MayaAssetScanner(FakeCmds()).scan("|SM_Crate_01")),
+                exporter=FakeExporter(),
+            )
+
+            result = pipeline.export_asset(
+                "|SM_Crate_01",
+                temp_dir,
+                target_platform="pc",
+                material_profile="Props_Masked_PainterUE_ARM",
+            )
+
+            self.assertEqual(result["manifest"]["material_profile"], "Props_Masked_PainterUE_ARM")
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_pipeline_can_package_textures_from_external_folder(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            texture_folder = os.path.join(temp_dir, "Painter")
+            os.makedirs(texture_folder)
+            base_color = os.path.join(texture_folder, "SM_Crate_01_BaseColor.png")
+            normal = os.path.join(texture_folder, "SM_Crate_01_Normal.png")
+            with open(base_color, "wb") as stream:
+                stream.write(b"fake base color")
+            with open(normal, "wb") as stream:
+                stream.write(b"fake normal")
+            scan = MayaAssetScanner(FakeCmds()).scan("|SM_Crate_01")
+            scan["textures"] = []
+            scan["materials"][0]["textures"] = []
+            pipeline = MayaStaticPropPipeline(
+                adapter=FakeScanAdapter(scan),
+                exporter=FakeExporter(),
+            )
+
+            result = pipeline.export_asset(
+                "|SM_Crate_01",
+                os.path.join(temp_dir, "Exports"),
+                target_platform="pc",
+                texture_folder=texture_folder,
+            )
+
+            usages = [texture["usage"] for texture in result["manifest"]["textures"]]
+            self.assertEqual(usages, ["base_color", "normal"])
+            self.assertEqual(result["scan"]["texture_folder_scan"]["issues"], [])
+            self.assertTrue(result["manifest"]["textures"][0]["copied"])
+            self.assertEqual(result["manifest"]["materials"][0]["textures"][0]["source_type"], "texture_folder")
         finally:
             shutil.rmtree(temp_dir)
 

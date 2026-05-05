@@ -199,8 +199,14 @@ class UnrealStaticMeshImportPipeline(object):
 
         try:
             report["imported_textures"] = self.texture_importer.import_textures(plan)
+            report["texture_configuration_report"] = getattr(
+                self.texture_importer,
+                "last_configuration_report",
+                {"status": "skipped", "configured": [], "issues": []},
+            )
         except Exception as exc:
             report["texture_import_issues"].append("贴图导入失败：{0}".format(exc))
+            report["texture_configuration_report"] = {"status": "skipped", "configured": [], "issues": []}
         return report
 
     def _create_material_instances(self, report):

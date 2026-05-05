@@ -28,6 +28,7 @@ def summarize_pipeline(export_report=None, import_report=None):
     validation = export_report.get("validation", {})
     plugin_content = import_report.get("plugin_content_validation", {})
     texture_plan = import_report.get("texture_import_plan", {})
+    texture_configuration = import_report.get("texture_configuration_report", {})
     material_plan = import_report.get("material_binding_plan", {})
     material_assignment = import_report.get("material_assignment_report", {})
     post_import = import_report.get("post_import_validation", {})
@@ -45,6 +46,7 @@ def summarize_pipeline(export_report=None, import_report=None):
 
     _append_checks(plugin_content.get("checks", []), "plugin_content", warnings, errors)
     warnings.extend(_plain_messages("texture_import", import_report.get("texture_import_issues", [])))
+    warnings.extend(_plain_messages("texture_configuration", texture_configuration.get("issues", [])))
     warnings.extend(_plain_messages("material_instance", import_report.get("material_instance_issues", [])))
     warnings.extend(_plain_messages("material_assignment", material_assignment.get("issues", [])))
     _append_checks(post_import.get("checks", []), "post_import", warnings, errors)
@@ -56,6 +58,8 @@ def summarize_pipeline(export_report=None, import_report=None):
         "plugin_content_status": plugin_content.get("status", ""),
         "texture_import_count": texture_plan.get("count", 0),
         "imported_texture_count": len(import_report.get("imported_textures", [])),
+        "texture_configuration_status": texture_configuration.get("status", ""),
+        "configured_texture_count": len(texture_configuration.get("configured", [])),
         "material_plan_count": material_plan.get("count", 0),
         "created_material_instance_count": len(import_report.get("created_material_instances", [])),
         "material_assignment_status": material_assignment.get("status", ""),

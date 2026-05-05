@@ -63,6 +63,7 @@ class FakeAssetTools(object):
         for task in tasks:
             name = getattr(task, "destination_name", "SM_Crate_01")
             task.imported_object_paths = [task.destination_path + "/" + name]
+            FakeUnreal.EditorAssetLibrary.assets[task.destination_path + "/" + name] = FakeTexture()
 
     def create_asset(self, asset_name, package_path, asset_class, factory):
         asset = FakeMaterialInstance()
@@ -101,6 +102,7 @@ class FakeUnreal(object):
     class EditorAssetLibrary(object):
         loaded = []
         assets = {}
+        saved = []
 
         @classmethod
         def load_asset(cls, asset_path):
@@ -108,6 +110,15 @@ class FakeUnreal(object):
             if asset_path in cls.assets:
                 return cls.assets[asset_path]
             return "asset:" + asset_path
+
+        @classmethod
+        def save_asset(cls, asset_path):
+            cls.saved.append(asset_path)
+
+    class TextureCompressionSettings(object):
+        TC_DEFAULT = "default"
+        TC_NORMALMAP = "normalmap"
+        TC_MASKS = "masks"
 
     class MaterialEditingLibrary(object):
         texture_calls = []
@@ -123,6 +134,10 @@ class FakeUnreal(object):
 
 
 class FakeMaterialInstance(FakeEditorObject):
+    pass
+
+
+class FakeTexture(FakeEditorObject):
     pass
 
 
@@ -307,6 +322,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         texture_path = self._write_packaged_texture()
         textured_manifest_path = self._write_textured_manifest(texture_path)
         texture_importer = FakeTextureImporter(["/Game/Props/Textures/T_Crate_BaseColor.T_Crate_BaseColor"])
+        texture_importer.last_configuration_report = {"status": "success", "configured": [{"asset_path": "/Game/Props/Textures/T_Crate_BaseColor"}], "issues": []}
 
         report = UnrealStaticMeshImportPipeline(
             importer=FakeImporter(),
@@ -316,6 +332,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
         self.assertEqual(report["imported_textures"], ["/Game/Props/Textures/T_Crate_BaseColor.T_Crate_BaseColor"])
         self.assertEqual(texture_importer.plans[0]["count"], 1)
+        self.assertEqual(report["texture_configuration_report"]["status"], "success")
 
     def test_pipeline_creates_material_instances_without_blocking_mesh(self):
         texture_path = self._write_packaged_texture()
@@ -372,6 +389,23 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(summary["material_assignment_status"], "warning")
         self.assertGreater(summary["warning_count"], 0)
         self.assertEqual(summary["error_count"], 0)
+
+    def test_summary_includes_texture_configuration_warnings(self):
+        summary = summarize_pipeline(
+            import_report={
+                "status": UNREAL_IMPORT_STATUS_SUCCESS,
+                "texture_configuration_report": {
+                    "status": "warning",
+                    "configured": [{"asset_path": "/Game/Props/Textures/T_Crate_BaseColor"}],
+                    "issues": ["无法加载导入后的贴图资产：/Game/Props/Textures/T_Crate_Normal"],
+                },
+            }
+        )
+
+        self.assertEqual(summary["texture_configuration_status"], "warning")
+        self.assertEqual(summary["configured_texture_count"], 1)
+        self.assertEqual(summary["warning_count"], 1)
+        self.assertEqual(summary["warnings"][0]["source"], "texture_configuration")
 
     def test_material_instance_error_does_not_fail_static_mesh_import(self):
         texture_path = self._write_packaged_texture()
@@ -483,24 +517,37 @@ class Phase2UnrealImportTest(unittest.TestCase):
     def test_texture_importer_configures_unreal_tasks(self):
         fake_unreal = FakeUnreal()
         fake_unreal.AssetToolsHelpers.asset_tools = FakeAssetTools()
+        fake_unreal.EditorAssetLibrary.assets = {}
+        fake_unreal.EditorAssetLibrary.saved = []
         plan = {
             "textures": [
                 {
                     "source_path": "C:/Exports/SM_Crate_01/Textures/T_Crate_BaseColor.png",
                     "target_dir": "/Game/Props/Textures",
                     "asset_name": "T_Crate_BaseColor",
+                    "target_asset_path": "/Game/Props/Textures/T_Crate_BaseColor",
+                    "usage": "base_color",
+                    "srgb": True,
+                    "compression": "default",
                 }
             ]
         }
 
-        imported = UnrealTextureImporter(fake_unreal).import_textures(plan)
+        importer = UnrealTextureImporter(fake_unreal)
+        imported = importer.import_textures(plan)
 
         task = fake_unreal.AssetToolsHelpers.asset_tools.tasks[0]
+        texture = fake_unreal.EditorAssetLibrary.assets["/Game/Props/Textures/T_Crate_BaseColor"]
         self.assertEqual(imported, ["/Game/Props/Textures/T_Crate_BaseColor"])
         self.assertEqual(task.filename, "C:/Exports/SM_Crate_01/Textures/T_Crate_BaseColor.png")
         self.assertEqual(task.destination_path, "/Game/Props/Textures")
         self.assertEqual(task.destination_name, "T_Crate_BaseColor")
         self.assertTrue(task.automated)
+        self.assertTrue(texture.srgb)
+        self.assertEqual(texture.compression_settings, "default")
+        self.assertEqual(importer.last_configuration_report["status"], "success")
+        self.assertEqual(importer.last_configuration_report["configured"][0]["usage"], "base_color")
+        self.assertIn("/Game/Props/Textures/T_Crate_BaseColor", fake_unreal.EditorAssetLibrary.saved)
 
     def test_texture_import_error_does_not_fail_static_mesh_import(self):
         texture_path = self._write_packaged_texture()

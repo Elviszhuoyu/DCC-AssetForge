@@ -28,7 +28,16 @@ IMPORT_PRESET_BY_PLATFORM = {
 class MayaManifestWriter(object):
     """Build and write manifest.json after Maya export."""
 
-    def build(self, scan_result, validation_result, fbx_path, target_path, target_engine_version="", package_dir=""):
+    def build(
+        self,
+        scan_result,
+        validation_result,
+        fbx_path,
+        target_path,
+        target_engine_version="",
+        package_dir="",
+        material_profile="",
+    ):
         target_platform = validation_result.get("target_platform", TARGET_PLATFORM_HIGH_END_MOBILE)
         return create_manifest(
             scan_result.get("asset_name", ""),
@@ -43,6 +52,7 @@ class MayaManifestWriter(object):
             package_dir=normalize_path(package_dir) if package_dir else "",
             materials=scan_result.get("materials", []),
             textures=scan_result.get("textures", []),
+            material_profile=material_profile,
         )
 
     def write(self, manifest_path, manifest):

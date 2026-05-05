@@ -17,10 +17,23 @@ def scan_selection():
     return MayaStaticPropPipeline().scan_selection()
 
 
-def export_selected(output_dir, target_platform=TARGET_PLATFORM_HIGH_END_MOBILE, target_path="/Game/Props"):
+def export_selected(
+    output_dir,
+    target_platform=TARGET_PLATFORM_HIGH_END_MOBILE,
+    target_path="/Game/Props",
+    material_profile="Props_Opaque_PainterUE_ARM",
+    texture_folder="",
+):
     """Export the current Maya selection as an Asset Forge package."""
     pipeline = MayaStaticPropPipeline()
     selection = pipeline.adapter.get_current_selection()
     if not selection:
-        raise RuntimeError("No selected asset")
-    return pipeline.export_asset(selection[0], output_dir, target_platform, target_path)
+        raise RuntimeError("没有选中资产")
+    return pipeline.export_asset(
+        selection[0],
+        output_dir,
+        target_platform,
+        target_path,
+        material_profile=material_profile,
+        texture_folder=texture_folder,
+    )

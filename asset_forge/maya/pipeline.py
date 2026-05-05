@@ -11,9 +11,11 @@ from asset_forge.maya.manifest_writer import MayaManifestWriter
 from asset_forge.maya.texture_packager import MayaTexturePackager
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.ai_analysis import LocalChineseSuggestionClient, analyze_validation
+from asset_forge.shared.material_profile_schema import resolve_material_profile
 from asset_forge.shared.report_schema import create_export_report, write_report
 from asset_forge.shared.rule_validator import StaticPropRuleValidator
 from asset_forge.shared.rules_schema import get_default_rules
+from asset_forge.shared.texture_folder_scanner import TextureFolderScanner
 
 
 class MayaStaticPropPipeline(object):
@@ -28,6 +30,7 @@ class MayaStaticPropPipeline(object):
         rules=None,
         ai_client=None,
         texture_packager=None,
+        texture_folder_scanner=None,
     ):
         self.rules = rules or get_default_rules()
         self.adapter = adapter or MayaAdapter()
@@ -36,6 +39,7 @@ class MayaStaticPropPipeline(object):
         self.manifest_writer = manifest_writer or MayaManifestWriter()
         self.ai_client = ai_client or LocalChineseSuggestionClient()
         self.texture_packager = texture_packager or MayaTexturePackager()
+        self.texture_folder_scanner = texture_folder_scanner or TextureFolderScanner()
 
     def scan_selection(self):
         selection = self.adapter.get_current_selection()
@@ -56,8 +60,11 @@ class MayaStaticPropPipeline(object):
         target_platform=TARGET_PLATFORM_HIGH_END_MOBILE,
         target_path="/Game/Props",
         use_asset_folder=True,
+        material_profile="Props_Opaque_PainterUE_ARM",
+        texture_folder="",
     ):
         scan_result = self.scan_asset(asset_root)
+        scan_result = self._apply_texture_folder(scan_result, texture_folder, material_profile)
         validation_result = self.validate_scan(scan_result, target_platform)
         if not validation_result.get("can_export", False):
             raise RuntimeError("资产存在阻断级校验错误，已停止导出")
@@ -75,6 +82,7 @@ class MayaStaticPropPipeline(object):
             fbx_path,
             target_path,
             package_dir=export_package["package_dir"],
+            material_profile=material_profile,
         )
         self.manifest_writer.write(manifest_path, manifest)
         export_report = create_export_report(scan_result, validation_result, manifest, export_package)
@@ -90,6 +98,37 @@ class MayaStaticPropPipeline(object):
             "manifest": manifest,
             "export_report": export_report,
         }
+
+    def _apply_texture_folder(self, scan_result, texture_folder, material_profile):
+        if not texture_folder:
+            return scan_result
+
+        profile = resolve_material_profile(material_profile)
+        folder_scan = self.texture_folder_scanner.scan(texture_folder, scan_result.get("asset_name", ""), profile)
+        result = dict(scan_result)
+        result["textures"] = self._merged_textures(scan_result.get("textures", []), folder_scan.get("textures", []))
+        result["texture_folder_scan"] = folder_scan
+        result["materials"] = self._attach_folder_textures_to_materials(scan_result.get("materials", []), folder_scan.get("textures", []), scan_result.get("asset_name", ""))
+        return result
+
+    def _merged_textures(self, existing, incoming):
+        result = list(existing or [])
+        seen = set(texture.get("path", "") for texture in result)
+        for texture in incoming:
+            if texture.get("path", "") in seen:
+                continue
+            result.append(texture)
+            seen.add(texture.get("path", ""))
+        return result
+
+    def _attach_folder_textures_to_materials(self, materials, textures, asset_name):
+        result = [dict(material, textures=list(material.get("textures", []))) for material in (materials or [])]
+        if not textures:
+            return result
+        if not result:
+            result.append({"name": "M_{0}".format(asset_name or "Asset"), "textures": []})
+        result[0]["textures"] = self._merged_textures(result[0].get("textures", []), textures)
+        return result
 
     def analyze(self, scan_result, validation_result):
         return analyze_validation(scan_result, validation_result, self.rules, self.ai_client)
