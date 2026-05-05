@@ -15,25 +15,30 @@ class UnrealMaterialSlotAssigner(object):
         return self.unreal is not None
 
     def assign_from_report(self, report):
+        material_plan = report.get("material_binding_plan", {})
+        planned_materials = material_plan.get("materials", [])
         result = {
             "status": "skipped",
+            "planned_count": len(planned_materials),
+            "assigned_count": 0,
             "assigned": [],
+            "unassigned_materials": [],
             "issues": [],
         }
         if not self.is_available():
-            result["issues"].append("当前环境不可用 Unreal Python 模块")
+            result["issues"].append("当前环境不可用 Unreal Python 模块，已跳过材质槽绑定")
             return result
 
         imported_meshes = report.get("imported_assets", [])
-        material_plan = report.get("material_binding_plan", {})
         created_materials = set(report.get("created_material_instances", []))
         if not imported_meshes:
             result["issues"].append("没有可绑定材质的 Static Mesh 导入结果")
             return result
-        if not material_plan.get("materials"):
+        if not planned_materials:
             result["issues"].append("没有材质绑定计划")
             return result
         if not created_materials:
+            result["unassigned_materials"] = self._planned_material_paths(planned_materials)
             result["issues"].append("没有可绑定的材质实例，已跳过材质槽绑定")
             return result
 
@@ -42,16 +47,18 @@ class UnrealMaterialSlotAssigner(object):
             if not static_mesh:
                 result["issues"].append("无法加载 Static Mesh：{0}".format(mesh_path))
                 continue
-            self._assign_materials(static_mesh, mesh_path, material_plan, created_materials, result)
+            self._assign_materials(static_mesh, mesh_path, planned_materials, created_materials, result)
 
-        if result["issues"]:
+        result["assigned_count"] = len(result["assigned"])
+        result["unassigned_materials"] = self._unassigned_materials(planned_materials, result["assigned"])
+        if result["issues"] or result["unassigned_materials"]:
             result["status"] = "warning" if result["assigned"] else "skipped"
         else:
             result["status"] = "success" if result["assigned"] else "skipped"
         return result
 
-    def _assign_materials(self, static_mesh, mesh_path, material_plan, created_materials, result):
-        for index, material in enumerate(material_plan.get("materials", [])):
+    def _assign_materials(self, static_mesh, mesh_path, planned_materials, created_materials, result):
+        for index, material in enumerate(planned_materials):
             material_path = material.get("target_asset_path", "")
             if created_materials and material_path not in created_materials:
                 result["issues"].append("材质实例未创建：{0}".format(material_path))
@@ -77,6 +84,13 @@ class UnrealMaterialSlotAssigner(object):
                     "material_instance": material_path,
                 }
             )
+
+    def _planned_material_paths(self, planned_materials):
+        return [material.get("target_asset_path", "") for material in planned_materials if material.get("target_asset_path", "")]
+
+    def _unassigned_materials(self, planned_materials, assigned):
+        assigned_paths = set(item.get("material_instance", "") for item in assigned)
+        return [path for path in self._planned_material_paths(planned_materials) if path not in assigned_paths]
 
     def _slot_index(self, static_mesh, material_name, fallback_index):
         static_materials = self._static_materials(static_mesh)

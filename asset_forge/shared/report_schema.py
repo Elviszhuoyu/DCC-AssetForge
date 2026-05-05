@@ -57,6 +57,8 @@ def summarize_pipeline(export_report=None, import_report=None):
     warnings.extend(_plain_messages("material_assignment", material_assignment.get("issues", [])))
     _append_checks(post_import.get("checks", []), "post_import", warnings, errors)
 
+    blocking_error_count = len(errors)
+    non_blocking_warning_count = len(warnings)
     return {
         "status": import_report.get("status") or validation.get("status", ""),
         "export_status": validation.get("status", ""),
@@ -73,8 +75,11 @@ def summarize_pipeline(export_report=None, import_report=None):
         "material_assignment_status": material_assignment.get("status", ""),
         "material_assignment_count": len(material_assignment.get("assigned", [])),
         "post_import_status": post_import.get("status", ""),
-        "warning_count": len(warnings),
-        "error_count": len(errors),
+        "warning_count": non_blocking_warning_count,
+        "error_count": blocking_error_count,
+        "can_accept": blocking_error_count == 0,
+        "blocking_error_count": blocking_error_count,
+        "non_blocking_warning_count": non_blocking_warning_count,
         "warnings": warnings,
         "errors": errors,
     }
@@ -92,6 +97,7 @@ def create_export_report(scan_result, validation_result, manifest, paths):
         "package_dir": normalize_path(paths.get("package_dir", "")),
         "fbx_path": normalize_path(paths.get("fbx_path", "")),
         "manifest_path": normalize_path(paths.get("manifest_path", "")),
+        "material_profiles_snapshot_path": normalize_path(paths.get("material_profiles_snapshot_path", "")),
         "mesh_count": scan_result.get("mesh_count", 0),
         "triangles": scan_result.get("triangles", 0),
         "material_slots": scan_result.get("material_slots", 0),
@@ -148,10 +154,21 @@ def create_end_to_end_report(export_report=None, import_report=None):
 
 def create_batch_report(export_root, dry_run, reports):
     counts = {"success": 0, "failed": 0, "skipped": 0}
+    warning_count = 0
+    error_count = 0
+    blocked_assets = []
+    warning_assets = []
     for report in reports:
         status = report.get("status", "")
         if status in counts:
             counts[status] += 1
+        summary = summarize_pipeline(import_report=report)
+        warning_count += summary.get("warning_count", 0)
+        error_count += summary.get("error_count", 0)
+        if summary.get("error_count", 0):
+            blocked_assets.append(report.get("asset_name", ""))
+        elif summary.get("warning_count", 0):
+            warning_assets.append(report.get("asset_name", ""))
 
     return {
         "version": REPORT_VERSION,
@@ -160,6 +177,13 @@ def create_batch_report(export_root, dry_run, reports):
         "dry_run": bool(dry_run),
         "total": len(reports),
         "counts": counts,
+        "summary": {
+            "can_accept": error_count == 0,
+            "warning_count": warning_count,
+            "error_count": error_count,
+            "blocked_assets": [asset for asset in blocked_assets if asset],
+            "warning_assets": [asset for asset in warning_assets if asset],
+        },
         "reports": reports,
     }
 
@@ -190,7 +214,13 @@ def _messages(source, items):
 
 
 def _plain_messages(source, items):
-    return [{"source": source, "message": str(item)} for item in items]
+    result = []
+    for item in items:
+        if isinstance(item, dict):
+            result.append(_message(source, item))
+        else:
+            result.append({"source": source, "message": str(item)})
+    return result
 
 
 def _message(source, item):

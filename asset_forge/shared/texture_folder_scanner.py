@@ -13,11 +13,13 @@ DEFAULT_TEXTURE_EXTENSIONS = [".png", ".tga", ".jpg", ".jpeg", ".tif", ".tiff", 
 class TextureFolderScanner(object):
     """Match texture files to profile rules by asset name and suffix."""
 
-    def __init__(self, extensions=None):
+    def __init__(self, extensions=None, recursive=False):
         self.extensions = [item.lower() for item in (extensions or DEFAULT_TEXTURE_EXTENSIONS)]
+        self.recursive = bool(recursive)
 
-    def scan(self, texture_folder, asset_name, material_profile):
-        files = self._texture_files(texture_folder)
+    def scan(self, texture_folder, asset_name, material_profile, recursive=None):
+        active_recursive = self.recursive if recursive is None else bool(recursive)
+        files = self._texture_files(texture_folder, active_recursive)
         matched_paths = set()
         textures = []
         issues = []
@@ -53,15 +55,24 @@ class TextureFolderScanner(object):
             "asset_name": asset_name,
             "profile": material_profile.get("name", ""),
             "texture_folder": normalize_path(texture_folder),
+            "recursive": active_recursive,
             "textures": textures,
             "issues": issues,
             "unrecognized": [normalize_path(path) for path in files if path not in matched_paths],
         }
 
-    def _texture_files(self, texture_folder):
+    def _texture_files(self, texture_folder, recursive=False):
         if not texture_folder or not os.path.isdir(texture_folder):
             return []
         result = []
+        if recursive:
+            for root, _, file_names in os.walk(texture_folder):
+                for file_name in sorted(file_names):
+                    path = os.path.join(root, file_name)
+                    if os.path.isfile(path) and os.path.splitext(file_name)[1].lower() in self.extensions:
+                        result.append(path)
+            return sorted(result)
+
         for file_name in sorted(os.listdir(texture_folder)):
             path = os.path.join(texture_folder, file_name)
             if os.path.isfile(path) and os.path.splitext(file_name)[1].lower() in self.extensions:
@@ -70,12 +81,14 @@ class TextureFolderScanner(object):
 
     def _matches_for_rule(self, files, asset_name, rule):
         matches = []
-        suffixes = rule.get("suffixes", [])
+        suffixes = [suffix.lower() for suffix in rule.get("suffixes", [])]
+        active_asset_name = (asset_name or "").lower()
         for path in files:
             stem = os.path.splitext(os.path.basename(path))[0]
-            if not self._belongs_to_asset(stem, asset_name):
+            normalized_stem = stem.lower()
+            if not self._belongs_to_asset(normalized_stem, active_asset_name):
                 continue
-            if any(stem.endswith(suffix) for suffix in suffixes):
+            if any(normalized_stem.endswith(suffix) for suffix in suffixes):
                 matches.append(path)
         return matches
 

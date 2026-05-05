@@ -134,10 +134,13 @@ class Phase1StaticPropTest(unittest.TestCase):
 
             self.assertTrue(result["export_report_path"].endswith("/SM_Crate_01_export_report.json"))
             self.assertEqual(result["manifest"]["material_profile"], "Props_Opaque_PainterUE_ARM")
+            self.assertTrue(result["manifest"]["material_profiles_snapshot_path"].endswith("/material_profiles_snapshot.json"))
+            self.assertTrue(os.path.exists(result["manifest"]["material_profiles_snapshot_path"]))
             report = read_report(result["export_report_path"])
             self.assertEqual(report["stage"], "maya_export")
             self.assertEqual(report["asset_name"], "SM_Crate_01")
             self.assertEqual(report["validation"]["score"], result["validation"]["score"])
+            self.assertTrue(report["material_profiles_snapshot_path"].endswith("/material_profiles_snapshot.json"))
         finally:
             shutil.rmtree(temp_dir)
 

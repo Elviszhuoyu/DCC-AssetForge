@@ -35,6 +35,7 @@ class ExportPackageAndLatestManifestTest(unittest.TestCase):
         self.assertTrue(package["manifest_path"].endswith("/SM_Crate_01/SM_Crate_01_manifest.json"))
         self.assertTrue(package["export_report_path"].endswith("/SM_Crate_01/SM_Crate_01_export_report.json"))
         self.assertTrue(package["end_to_end_report_path"].endswith("/SM_Crate_01/SM_Crate_01_end_to_end_report.json"))
+        self.assertTrue(package["material_profiles_snapshot_path"].endswith("/SM_Crate_01/material_profiles_snapshot.json"))
         self.assertNotIn("\\", package["fbx_path"])
 
     def test_skeletal_export_package_adds_planned_subdirectories(self):
@@ -123,6 +124,8 @@ class ExportPackageAndLatestManifestTest(unittest.TestCase):
         self.assertTrue(report["dry_run"])
         self.assertEqual(report["total"], 2)
         self.assertEqual(report["counts"]["skipped"], 2)
+        self.assertTrue(report["summary"]["can_accept"])
+        self.assertEqual(report["summary"]["error_count"], 0)
         self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "batch_dry_run_report.json")))
         self.assertTrue(os.path.exists(os.path.join(first["package_dir"], "SM_A_import_report.json")))
         self.assertTrue(os.path.exists(os.path.join(second["package_dir"], "SM_B_import_report.json")))
@@ -136,6 +139,19 @@ class ExportPackageAndLatestManifestTest(unittest.TestCase):
 
         self.assertEqual(report["counts"]["success"], 2)
         self.assertEqual(len(item_pipeline.imported), 2)
+
+    def test_batch_report_aggregates_warning_and_error_counts(self):
+        self._write_package("SM_A")
+        self._write_package("SM_B")
+        item_pipeline = MixedResultItemPipeline()
+
+        report = UnrealBatchImportPipeline(item_pipeline=item_pipeline).run(self.temp_dir, dry_run=False)
+
+        self.assertFalse(report["summary"]["can_accept"])
+        self.assertEqual(report["summary"]["warning_count"], 1)
+        self.assertEqual(report["summary"]["error_count"], 1)
+        self.assertEqual(report["summary"]["blocked_assets"], ["SM_B_manifest.json"])
+        self.assertEqual(report["summary"]["warning_assets"], ["SM_A_manifest.json"])
 
     def _write_package(self, asset_name):
         package = build_export_package(self.temp_dir, asset_name)
@@ -161,6 +177,29 @@ class FakeItemPipeline(object):
 
     def dry_run_manifest(self, manifest_path):
         return {"status": "skipped", "asset_name": os.path.basename(manifest_path), "issues": []}
+
+
+class MixedResultItemPipeline(object):
+    def import_from_manifest(self, manifest_path):
+        asset_name = os.path.basename(manifest_path)
+        if asset_name.startswith("SM_B"):
+            return {
+                "status": "failed",
+                "asset_name": asset_name,
+                "post_import_validation": {
+                    "checks": [
+                        {"id": "target_path", "status": "error", "message": "导入路径不符合 Manifest"}
+                    ]
+                },
+            }
+        return {
+            "status": "success",
+            "asset_name": asset_name,
+            "material_assignment_report": {"issues": ["材质槽未完全绑定"]},
+        }
+
+    def dry_run_manifest(self, manifest_path):
+        return self.import_from_manifest(manifest_path)
 
 
 if __name__ == "__main__":

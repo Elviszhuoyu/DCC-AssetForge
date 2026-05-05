@@ -5,11 +5,11 @@ from __future__ import absolute_import
 import os
 
 from asset_forge.shared.constants import UNREAL_IMPORT_STATUS_FAILED
+from asset_forge.shared.material_profile_validator import validate_material_texture_coverage
 from asset_forge.shared.path_utils import normalize_path
 from asset_forge.shared.report_schema import create_batch_report, create_end_to_end_report, read_report, write_report
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_logger import UnrealImportLogger
-from asset_forge.shared.material_profile_validator import validate_material_texture_coverage
 from asset_forge.unreal.material_asset_bootstrap import UnrealMaterialAssetBootstrap
 from asset_forge.unreal.material_binding_planner import UnrealMaterialBindingPlanner
 from asset_forge.unreal.material_instance_creator import UnrealMaterialInstanceCreator
@@ -62,21 +62,13 @@ class UnrealStaticMeshImportPipeline(object):
         active_log_path = log_path or self._default_import_report_path(manifest, manifest_path)
         if not prepared["can_import"]:
             report = self.logger.failed(manifest, prepared["issues"], "Manifest 校验失败", prepared.get("preset"))
-            self._attach_package_validation(report, manifest)
-            self._attach_plugin_content_validation(report)
-            self._attach_texture_import_plan(report, manifest)
-            self._attach_material_binding_plan(report, manifest)
-            self._attach_material_profile_validation(report, manifest)
+            self._attach_common_preflight(report, manifest)
             self._write_log(active_log_path, report)
             self._write_end_to_end_report(manifest, manifest_path, report)
             return report
 
         report = self.logger.skipped(manifest, prepared["preset"], "预检查通过，未执行导入")
-        self._attach_package_validation(report, manifest)
-        self._attach_plugin_content_validation(report)
-        self._attach_texture_import_plan(report, manifest)
-        self._attach_material_binding_plan(report, manifest)
-        self._attach_material_profile_validation(report, manifest)
+        self._attach_common_preflight(report, manifest)
         self._write_log(active_log_path, report)
         self._write_end_to_end_report(manifest, manifest_path, report)
         return report
@@ -87,11 +79,7 @@ class UnrealStaticMeshImportPipeline(object):
         active_log_path = log_path or self._default_import_report_path(manifest, manifest_path)
         if not prepared["can_import"]:
             report = self.logger.failed(manifest, prepared["issues"], "Manifest 校验失败", prepared.get("preset"))
-            self._attach_package_validation(report, manifest)
-            self._attach_plugin_content_validation(report)
-            self._attach_texture_import_plan(report, manifest)
-            self._attach_material_binding_plan(report, manifest)
-            self._attach_material_profile_validation(report, manifest)
+            self._attach_common_preflight(report, manifest)
             self._write_log(active_log_path, report)
             self._write_end_to_end_report(manifest, manifest_path, report)
             return report
@@ -100,21 +88,13 @@ class UnrealStaticMeshImportPipeline(object):
             imported_assets = self.importer.import_static_mesh(manifest, prepared["preset"])
         except Exception as exc:
             report = self.logger.failed(manifest, [str(exc)], "Unreal 导入失败", prepared["preset"])
-            self._attach_package_validation(report, manifest)
-            self._attach_plugin_content_validation(report)
-            self._attach_texture_import_plan(report, manifest)
-            self._attach_material_binding_plan(report, manifest)
-            self._attach_material_profile_validation(report, manifest)
+            self._attach_common_preflight(report, manifest)
             self._write_log(active_log_path, report)
             self._write_end_to_end_report(manifest, manifest_path, report)
             return report
 
         report = self.logger.success(manifest, imported_assets, preset=prepared["preset"])
-        self._attach_package_validation(report, manifest)
-        self._attach_plugin_content_validation(report)
-        self._attach_texture_import_plan(report, manifest)
-        self._attach_material_binding_plan(report, manifest)
-        self._attach_material_profile_validation(report, manifest)
+        self._attach_common_preflight(report, manifest)
         self._auto_bootstrap_material_assets(report)
         self._import_planned_textures(report)
         self._create_material_instances(report)
@@ -122,6 +102,14 @@ class UnrealStaticMeshImportPipeline(object):
         report = self._attach_post_import_validation(report, manifest, imported_assets)
         self._write_log(active_log_path, report)
         self._write_end_to_end_report(manifest, manifest_path, report)
+        return report
+
+    def _attach_common_preflight(self, report, manifest):
+        self._attach_package_validation(report, manifest)
+        self._attach_plugin_content_validation(report)
+        self._attach_texture_import_plan(report, manifest)
+        self._attach_material_binding_plan(report, manifest)
+        self._attach_material_profile_validation(report, manifest)
         return report
 
     def _write_log(self, log_path, report):
@@ -272,11 +260,14 @@ class UnrealStaticMeshImportPipeline(object):
     def _assign_material_slots(self, report):
         report["material_assignment_report"] = {
             "status": "skipped",
+            "planned_count": len(report.get("material_binding_plan", {}).get("materials", [])),
+            "assigned_count": 0,
             "assigned": [],
+            "unassigned_materials": [],
             "issues": [],
         }
         if hasattr(self.material_slot_assigner, "is_available") and not self.material_slot_assigner.is_available():
-            report["material_assignment_report"]["issues"].append("当前环境不可用 Unreal Python 模块，跳过材质槽绑定")
+            report["material_assignment_report"]["issues"].append("当前环境不可用 Unreal Python 模块，已跳过材质槽绑定")
             return report
 
         try:

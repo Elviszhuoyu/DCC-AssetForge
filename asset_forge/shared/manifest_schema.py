@@ -45,6 +45,7 @@ def create_manifest(asset_name, fbx_path, target_path, checks=None, score=0, **k
         "import_preset": kwargs.get("import_preset", "StaticProp_HighEndMobile"),
         "package_dir": kwargs.get("package_dir", ""),
         "material_profile": kwargs.get("material_profile", ""),
+        "material_profiles_snapshot_path": kwargs.get("material_profiles_snapshot_path", ""),
         "materials": kwargs.get("materials", []),
         "textures": kwargs.get("textures", []),
         "checks": checks or {},
@@ -68,6 +69,7 @@ def create_skeletal_mesh_manifest(asset_name, fbx_path, target_path, checks=None
         version=kwargs.get("version", MANIFEST_VERSION),
         package_dir=kwargs.get("package_dir", ""),
         material_profile=kwargs.get("material_profile", ""),
+        material_profiles_snapshot_path=kwargs.get("material_profiles_snapshot_path", ""),
         materials=kwargs.get("materials", []),
         textures=kwargs.get("textures", []),
     )

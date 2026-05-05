@@ -37,6 +37,7 @@ class MayaManifestWriter(object):
         target_engine_version="",
         package_dir="",
         material_profile="",
+        material_profiles_snapshot_path="",
     ):
         target_platform = validation_result.get("target_platform", TARGET_PLATFORM_HIGH_END_MOBILE)
         return create_manifest(
@@ -53,6 +54,7 @@ class MayaManifestWriter(object):
             materials=scan_result.get("materials", []),
             textures=scan_result.get("textures", []),
             material_profile=material_profile,
+            material_profiles_snapshot_path=normalize_path(material_profiles_snapshot_path) if material_profiles_snapshot_path else "",
         )
 
     def write(self, manifest_path, manifest):

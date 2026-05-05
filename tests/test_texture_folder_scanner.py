@@ -77,8 +77,34 @@ class TextureFolderScannerTest(unittest.TestCase):
         self.assertEqual(result["issues"][0]["usage"], "base_color")
         self.assertEqual(result["textures"][0]["usage"], "base_color")
 
+    def test_matches_suffixes_case_insensitively(self):
+        self._write_texture("sm_crate_01_basecolor.PNG")
+        self._write_texture("sm_crate_01_normal.TGA")
+
+        result = TextureFolderScanner().scan(self.temp_dir, "SM_Crate_01", self.profile)
+        usages = [texture["usage"] for texture in result["textures"]]
+
+        self.assertEqual(result["issues"], [])
+        self.assertEqual(usages, ["base_color", "normal"])
+
+    def test_recursive_scan_finds_nested_painter_textures(self):
+        nested = os.path.join(self.temp_dir, "PainterExport", "Textures")
+        os.makedirs(nested)
+        self._write_texture("README.txt")
+        self._write_texture_at(nested, "SM_Crate_01_BaseColor.png")
+        self._write_texture_at(nested, "SM_Crate_01_Normal.png")
+
+        result = TextureFolderScanner(recursive=True).scan(self.temp_dir, "SM_Crate_01", self.profile)
+
+        self.assertTrue(result["recursive"])
+        self.assertEqual([texture["usage"] for texture in result["textures"]], ["base_color", "normal"])
+
     def _write_texture(self, file_name):
         path = os.path.join(self.temp_dir, file_name)
+        return self._write_texture_at(self.temp_dir, file_name)
+
+    def _write_texture_at(self, directory, file_name):
+        path = os.path.join(directory, file_name)
         with open(path, "wb") as stream:
             stream.write(b"fake texture")
         return path

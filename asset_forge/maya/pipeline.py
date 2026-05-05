@@ -11,7 +11,7 @@ from asset_forge.maya.manifest_writer import MayaManifestWriter
 from asset_forge.maya.texture_packager import MayaTexturePackager
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.ai_analysis import LocalChineseSuggestionClient, analyze_validation
-from asset_forge.shared.material_profile_schema import resolve_material_profile
+from asset_forge.shared.material_profile_schema import get_project_material_profiles, resolve_material_profile, write_material_profiles
 from asset_forge.shared.material_profile_validator import validate_material_texture_coverage
 from asset_forge.shared.report_schema import create_export_report, write_report
 from asset_forge.shared.rule_validator import StaticPropRuleValidator
@@ -78,6 +78,7 @@ class MayaStaticPropPipeline(object):
 
         self.exporter.export_asset(asset_root, fbx_path)
         self.texture_packager.package_scan_textures(scan_result, export_package["package_dir"])
+        self._write_material_profiles_snapshot(export_package["material_profiles_snapshot_path"])
         manifest = self.manifest_writer.build(
             scan_result,
             validation_result,
@@ -85,6 +86,7 @@ class MayaStaticPropPipeline(object):
             target_path,
             package_dir=export_package["package_dir"],
             material_profile=material_profile,
+            material_profiles_snapshot_path=export_package["material_profiles_snapshot_path"],
         )
         self.manifest_writer.write(manifest_path, manifest)
         export_report = create_export_report(scan_result, validation_result, manifest, export_package)
@@ -100,6 +102,10 @@ class MayaStaticPropPipeline(object):
             "manifest": manifest,
             "export_report": export_report,
         }
+
+    def _write_material_profiles_snapshot(self, snapshot_path):
+        write_material_profiles(snapshot_path, get_project_material_profiles())
+        return snapshot_path
 
     def _apply_texture_folder(self, scan_result, texture_folder, material_profile):
         if not texture_folder:

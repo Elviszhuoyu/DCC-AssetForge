@@ -240,6 +240,8 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(end_to_end_report["pipeline_summary"]["import_status"], report["status"])
         self.assertEqual(end_to_end_report["pipeline_summary"]["plugin_content_status"], "warning")
         self.assertEqual(end_to_end_report["pipeline_summary"]["material_assignment_status"], "skipped")
+        self.assertTrue(end_to_end_report["pipeline_summary"]["can_accept"])
+        self.assertEqual(end_to_end_report["pipeline_summary"]["blocking_error_count"], 0)
 
     def test_dry_run_returns_skipped_report(self):
         pipeline = UnrealStaticMeshImportPipeline(importer=FakeImporter())
@@ -609,6 +611,41 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertEqual(static_mesh.assigned_materials[0], material_instance)
         self.assertEqual(result["assigned"][0]["material_name"], "M_Crate")
+        self.assertEqual(result["planned_count"], 1)
+        self.assertEqual(result["assigned_count"], 1)
+        self.assertEqual(result["unassigned_materials"], [])
+
+    def test_material_slot_assigner_reports_unassigned_planned_materials(self):
+        fake_unreal = FakeUnreal()
+        static_mesh = FakeStaticMesh(["M_Crate", "M_Trim"])
+        material_instance = FakeMaterialInstance()
+        fake_unreal.EditorAssetLibrary.assets = {
+            "/Game/Props/SM_Crate_01": static_mesh,
+            "/Game/Props/Materials/M_Crate": material_instance,
+        }
+        report = {
+            "imported_assets": ["/Game/Props/SM_Crate_01"],
+            "created_material_instances": ["/Game/Props/Materials/M_Crate"],
+            "material_binding_plan": {
+                "materials": [
+                    {
+                        "material_name": "M_Crate",
+                        "target_asset_path": "/Game/Props/Materials/M_Crate",
+                    },
+                    {
+                        "material_name": "M_Trim",
+                        "target_asset_path": "/Game/Props/Materials/M_Trim",
+                    },
+                ]
+            },
+        }
+
+        result = UnrealMaterialSlotAssigner(fake_unreal).assign_from_report(report)
+
+        self.assertEqual(result["status"], "warning")
+        self.assertEqual(result["planned_count"], 2)
+        self.assertEqual(result["assigned_count"], 1)
+        self.assertEqual(result["unassigned_materials"], ["/Game/Props/Materials/M_Trim"])
 
     def test_texture_importer_configures_unreal_tasks(self):
         fake_unreal = FakeUnreal()
