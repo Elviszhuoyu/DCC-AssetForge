@@ -45,6 +45,8 @@ class UnrealPluginSkeletonTest(unittest.TestCase):
         self.assertGreater(module.BOOTSTRAP_REPORT["action_count"], 0)
         self.assertEqual(module.BOOTSTRAP_REPORT["widget_asset_path"], "/AssetForge/Editor/EUW_AssetForgeBridge")
         self.assertEqual(module.BOOTSTRAP_REPORT["widget_launch_status"], "missing_asset")
+        self.assertEqual(module.BOOTSTRAP_REPORT["material_content_mount"], "/AssetForge")
+        self.assertEqual(module.BOOTSTRAP_REPORT["material_asset_count"], 6)
 
     def test_bootstrap_reports_missing_plugin_assets_without_creating_project_content(self):
         report = UnrealPluginContentBootstrap(unreal_module=FakeUnreal(existing_assets=[])).validate()

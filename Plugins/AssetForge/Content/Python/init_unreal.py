@@ -16,6 +16,7 @@ def bootstrap():
     added_repo_root = _ensure_repo_root(repo_root)
     action_plan = _load_action_plan()
     widget_launch_plan = _load_widget_launch_plan()
+    material_asset_plan = _load_material_asset_plan()
     _log_unreal("Asset Forge Python bootstrap loaded")
     return {
         "repo_root": repo_root.replace("\\", "/"),
@@ -25,6 +26,8 @@ def bootstrap():
         "widget_asset_path": widget_launch_plan.get("asset_path", ""),
         "widget_launch_status": widget_launch_plan.get("status", ""),
         "widget_launch_issues": widget_launch_plan.get("issues", []),
+        "material_asset_count": material_asset_plan.get("asset_count", 0),
+        "material_content_mount": material_asset_plan.get("content_mount", ""),
     }
 
 
@@ -53,6 +56,12 @@ def _load_widget_launch_plan():
     from asset_forge.unreal.editor_widget_launcher import get_widget_launch_plan
 
     return get_widget_launch_plan()
+
+
+def _load_material_asset_plan():
+    from asset_forge.unreal.material_asset_bootstrap import plan_default_material_assets
+
+    return plan_default_material_assets()
 
 
 def _log_unreal(message):

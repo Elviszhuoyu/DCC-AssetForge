@@ -204,6 +204,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["texture_import_issues"], [])
         self.assertEqual(report["created_material_instances"], [])
         self.assertEqual(report["material_instance_issues"], [])
+        self.assertEqual(report["material_asset_bootstrap_report"]["status"], "skipped")
         self.assertEqual(report["material_assignment_report"]["status"], "skipped")
         self.assertEqual(report["post_import_validation"]["status"], "pass")
 
@@ -403,6 +404,26 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertFalse(material_creator.called)
         self.assertIn("缺少母材质", report["material_instance_issues"][0])
         self.assertEqual(report["material_assignment_report"]["status"], "skipped")
+
+    def test_auto_material_bootstrap_refreshes_plugin_validation_before_instances(self):
+        texture_path = self._write_packaged_texture()
+        textured_manifest_path = self._write_textured_manifest(texture_path)
+        plugin_bootstrap = RefreshingPluginContentBootstrap()
+        material_creator = FakeMaterialInstanceCreator(["/Game/Props/Materials/M_Crate"])
+
+        report = UnrealStaticMeshImportPipeline(
+            importer=FakeImporter(),
+            texture_importer=FakeTextureImporter([]),
+            material_instance_creator=material_creator,
+            plugin_content_bootstrap=plugin_bootstrap,
+            material_asset_bootstrap=FakeMaterialAssetBootstrap(),
+            auto_bootstrap_material_assets=True,
+        ).import_from_manifest(textured_manifest_path)
+
+        self.assertEqual(report["material_asset_bootstrap_report"]["status"], "success")
+        self.assertEqual(report["plugin_content_validation"]["status"], "pass")
+        self.assertEqual(report["created_material_instances"], ["/Game/Props/Materials/M_Crate"])
+        self.assertEqual(plugin_bootstrap.calls, 2)
 
     def test_material_instance_creator_configures_unreal_asset(self):
         fake_unreal = FakeUnreal()
@@ -698,6 +719,28 @@ class MissingPluginContentBootstrap(object):
                     "message": "缺少插件资产",
                 }
             ],
+        }
+
+
+class RefreshingPluginContentBootstrap(object):
+    def __init__(self):
+        self.calls = 0
+
+    def validate(self):
+        self.calls += 1
+        if self.calls == 1:
+            return MissingPluginContentBootstrap().validate()
+        return {"status": "pass", "missing_assets": [], "checks": []}
+
+
+class FakeMaterialAssetBootstrap(object):
+    def bootstrap(self, dry_run=False):
+        return {
+            "status": "success",
+            "message": "默认材质资产 Bootstrap 完成",
+            "created_assets": ["/AssetForge/Materials/M_AF_Props_Opaque"],
+            "existing_assets": [],
+            "issues": [],
         }
 
 

@@ -9,6 +9,7 @@ from asset_forge.shared.path_utils import normalize_path
 from asset_forge.shared.report_schema import create_batch_report, create_end_to_end_report, read_report, write_report
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_logger import UnrealImportLogger
+from asset_forge.unreal.material_asset_bootstrap import UnrealMaterialAssetBootstrap
 from asset_forge.unreal.material_binding_planner import UnrealMaterialBindingPlanner
 from asset_forge.unreal.material_instance_creator import UnrealMaterialInstanceCreator
 from asset_forge.unreal.material_slot_assigner import UnrealMaterialSlotAssigner
@@ -37,6 +38,8 @@ class UnrealStaticMeshImportPipeline(object):
         material_instance_creator=None,
         material_slot_assigner=None,
         plugin_content_bootstrap=None,
+        material_asset_bootstrap=None,
+        auto_bootstrap_material_assets=False,
     ):
         self.reader = reader or UnrealManifestReader()
         self.importer = importer or UnrealStaticMeshFbxImporter()
@@ -49,6 +52,8 @@ class UnrealStaticMeshImportPipeline(object):
         self.material_instance_creator = material_instance_creator or UnrealMaterialInstanceCreator()
         self.material_slot_assigner = material_slot_assigner or UnrealMaterialSlotAssigner()
         self.plugin_content_bootstrap = plugin_content_bootstrap or UnrealPluginContentBootstrap()
+        self.material_asset_bootstrap = material_asset_bootstrap or UnrealMaterialAssetBootstrap()
+        self.auto_bootstrap_material_assets = bool(auto_bootstrap_material_assets)
 
     def dry_run_manifest(self, manifest_path, log_path=None):
         prepared = self.reader.load(manifest_path, require_fbx_exists=True)
@@ -104,6 +109,7 @@ class UnrealStaticMeshImportPipeline(object):
         self._attach_plugin_content_validation(report)
         self._attach_texture_import_plan(report, manifest)
         self._attach_material_binding_plan(report, manifest)
+        self._auto_bootstrap_material_assets(report)
         self._import_planned_textures(report)
         self._create_material_instances(report)
         self._assign_material_slots(report)
@@ -165,6 +171,23 @@ class UnrealStaticMeshImportPipeline(object):
             report.get("texture_import_plan", {}),
             manifest.get("material_profile"),
         )
+        return report
+
+    def _auto_bootstrap_material_assets(self, report):
+        report["material_asset_bootstrap_report"] = {
+            "status": "skipped",
+            "message": "未启用自动材质资产 Bootstrap",
+            "created_assets": [],
+            "existing_assets": [],
+            "issues": [],
+        }
+        if not self.auto_bootstrap_material_assets:
+            return report
+
+        bootstrap_report = self.material_asset_bootstrap.bootstrap(dry_run=False)
+        report["material_asset_bootstrap_report"] = bootstrap_report
+        if bootstrap_report.get("status") in ("success", "warning"):
+            self._attach_plugin_content_validation(report)
         return report
 
     def _import_planned_textures(self, report):
