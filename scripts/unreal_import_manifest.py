@@ -75,7 +75,8 @@ def launch_asset_forge_widget():
 
 if __name__ == "__main__":
     _ensure_project_root()
-    args = [item for item in sys.argv[1:] if item not in ("--dry-run", "--latest", "--all")]
+    flags = {"--dry-run", "--latest", "--all", "--package", "--auto-materials"}
+    args = [item for item in sys.argv[1:] if item not in flags]
     dry_run = "--dry-run" in sys.argv[1:]
     latest = "--latest" in sys.argv[1:]
     import_all = "--all" in sys.argv[1:]
