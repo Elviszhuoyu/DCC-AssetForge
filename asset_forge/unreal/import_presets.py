@@ -63,7 +63,7 @@ class UnrealImportPresetManager(object):
 
     def get_preset(self, preset_name):
         if preset_name not in self.presets:
-            raise KeyError("Unknown Unreal import preset: {0}".format(preset_name))
+            raise KeyError("未知 Unreal 导入预设：{0}".format(preset_name))
         preset = dict(self.presets[preset_name])
         preset["name"] = preset_name
         return preset

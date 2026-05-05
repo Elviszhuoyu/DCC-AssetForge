@@ -21,23 +21,26 @@ class UnrealMaterialSlotAssigner(object):
             "issues": [],
         }
         if not self.is_available():
-            result["issues"].append("unreal module is not available")
+            result["issues"].append("当前环境不可用 Unreal Python 模块")
             return result
 
         imported_meshes = report.get("imported_assets", [])
         material_plan = report.get("material_binding_plan", {})
         created_materials = set(report.get("created_material_instances", []))
         if not imported_meshes:
-            result["issues"].append("no imported Static Mesh assets")
+            result["issues"].append("没有可绑定材质的 Static Mesh 导入结果")
             return result
         if not material_plan.get("materials"):
-            result["issues"].append("no material binding plan")
+            result["issues"].append("没有材质绑定计划")
+            return result
+        if not created_materials:
+            result["issues"].append("没有可绑定的材质实例，已跳过材质槽绑定")
             return result
 
         for mesh_path in imported_meshes:
             static_mesh = self._load_asset(mesh_path)
             if not static_mesh:
-                result["issues"].append("failed to load Static Mesh: {0}".format(mesh_path))
+                result["issues"].append("无法加载 Static Mesh：{0}".format(mesh_path))
                 continue
             self._assign_materials(static_mesh, mesh_path, material_plan, created_materials, result)
 
@@ -51,19 +54,19 @@ class UnrealMaterialSlotAssigner(object):
         for index, material in enumerate(material_plan.get("materials", [])):
             material_path = material.get("target_asset_path", "")
             if created_materials and material_path not in created_materials:
-                result["issues"].append("material instance was not created: {0}".format(material_path))
+                result["issues"].append("材质实例未创建：{0}".format(material_path))
                 continue
 
             material_asset = self._load_asset(material_path)
             if not material_asset:
-                result["issues"].append("failed to load Material Instance: {0}".format(material_path))
+                result["issues"].append("无法加载材质实例：{0}".format(material_path))
                 continue
 
             slot_index = self._slot_index(static_mesh, material.get("material_name", ""), index)
             try:
                 static_mesh.set_material(slot_index, material_asset)
             except AttributeError:
-                result["issues"].append("Static Mesh does not expose set_material: {0}".format(mesh_path))
+                result["issues"].append("Static Mesh 不支持 set_material：{0}".format(mesh_path))
                 continue
 
             result["assigned"].append(

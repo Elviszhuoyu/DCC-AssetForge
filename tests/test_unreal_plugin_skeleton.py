@@ -66,6 +66,27 @@ class UnrealPluginSkeletonTest(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["missing_assets"], [])
 
+    def test_bootstrap_skips_asset_queries_when_plugin_is_not_mounted(self):
+        fake_unreal = FakeUnrealWithExternalPlugin()
+        fake_unreal.EditorAssetLibrary.query_count = 0
+
+        report = UnrealPluginContentBootstrap(unreal_module=fake_unreal).validate()
+
+        self.assertEqual(report["status"], "warning")
+        self.assertIn("/AssetForge/Materials/M_AF_Props_Opaque", report["missing_assets"])
+        self.assertEqual(fake_unreal.EditorAssetLibrary.query_count, 0)
+        self.assertIn("未安装或启用", [item for item in report["checks"] if item["id"] == "content_mount"][0]["message"])
+
+    def test_bootstrap_prefers_installed_project_plugin_descriptor(self):
+        fake_unreal = FakeUnrealWithInstalledPlugin()
+        fake_unreal.EditorAssetLibrary.query_count = 0
+
+        report = UnrealPluginContentBootstrap(unreal_module=fake_unreal).validate()
+
+        self.assertEqual(report["status"], "warning")
+        self.assertIn("UEProject/Plugins/AssetForge/AssetForge.uplugin", report["descriptor_path"])
+        self.assertEqual([item for item in report["checks"] if item["id"] == "content_mount"][0]["status"], "pass")
+
     def _load_module(self, path):
         spec = importlib.util.spec_from_file_location("asset_forge_test_init_unreal", path)
         module = importlib.util.module_from_spec(spec)
@@ -83,6 +104,36 @@ class FakeUnreal(object):
 
     def __init__(self, existing_assets):
         self.EditorAssetLibrary.existing_assets = set(existing_assets)
+
+
+class FakeUnrealWithExternalPlugin(object):
+    class Paths(object):
+        @classmethod
+        def project_plugins_dir(cls):
+            return "<LEGACY_WORK_DRIVE>/UE_Pj/UE5/MyProject/Plugins"
+
+        @classmethod
+        def engine_plugins_dir(cls):
+            return "<LEGACY_WORK_DRIVE>/UE_5.6/Engine/Plugins"
+
+    class EditorAssetLibrary(object):
+        query_count = 0
+
+        @classmethod
+        def does_asset_exist(cls, asset_path):
+            cls.query_count += 1
+            return False
+
+
+class FakeUnrealWithInstalledPlugin(FakeUnrealWithExternalPlugin):
+    class Paths(object):
+        @classmethod
+        def project_plugins_dir(cls):
+            return "tests/fixtures/UEProject/Plugins"
+
+        @classmethod
+        def engine_plugins_dir(cls):
+            return "<LEGACY_WORK_DRIVE>/UE_5.6/Engine/Plugins"
 
 
 if __name__ == "__main__":

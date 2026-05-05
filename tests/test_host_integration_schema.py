@@ -41,6 +41,7 @@ class HostIntegrationSchemaTest(unittest.TestCase):
         self.assertEqual(unreal["package_type"], "unreal_plugin")
         self.assertEqual(unreal["official_descriptor"], "Plugins/AssetForge/AssetForge.uplugin")
         self.assertEqual(unreal["content_mount"], "/AssetForge")
+        self.assertIn("install_project_plugin", unreal["adapter_scope"])
         self.assertFalse(unreal["adapter_is_package"])
 
 

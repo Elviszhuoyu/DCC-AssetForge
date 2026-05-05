@@ -24,15 +24,15 @@ class UnrealPostImportValidator(object):
         if imported_assets:
             return {
                 "id": "imported_assets",
-                "label": "Imported Assets",
+                "label": "导入资产",
                 "status": CHECK_STATUS_PASS,
-                "message": "Imported asset paths returned",
+                "message": "Unreal 返回了导入资产路径",
             }
         return {
             "id": "imported_assets",
-            "label": "Imported Assets",
+            "label": "导入资产",
             "status": CHECK_STATUS_ERROR,
-            "message": "No imported asset paths returned",
+            "message": "Unreal 未返回任何导入资产路径",
         }
 
     def _check_target_path(self, manifest, imported_assets):
@@ -41,15 +41,15 @@ class UnrealPostImportValidator(object):
         if expected in normalized_assets:
             return {
                 "id": "target_path",
-                "label": "Target Path",
+                "label": "目标路径",
                 "status": CHECK_STATUS_PASS,
-                "message": "Imported asset matches manifest target path",
+                "message": "导入资产路径与 manifest 目标路径一致",
             }
         return {
             "id": "target_path",
-            "label": "Target Path",
+            "label": "目标路径",
             "status": CHECK_STATUS_ERROR,
-            "message": "Expected imported asset under {0}".format(expected),
+            "message": "导入资产不在预期路径下：{0}".format(expected),
         }
 
     def _expected_asset_path(self, manifest):

@@ -40,14 +40,14 @@ class UnrealManifestReader(object):
         target_path = manifest.get("target_path", "")
 
         if not fbx_path:
-            issues.append("missing fbx_path")
+            issues.append("manifest 缺少 fbx_path")
         elif require_fbx_exists and not os.path.exists(fbx_path):
-            issues.append("fbx_path does not exist: {0}".format(fbx_path))
+            issues.append("fbx_path 指向的文件不存在：{0}".format(fbx_path))
 
         if not target_path:
-            issues.append("missing target_path")
+            issues.append("manifest 缺少 target_path")
         elif not target_path.startswith("/Game"):
-            issues.append("target_path must start with /Game: {0}".format(target_path))
+            issues.append("target_path 必须以 /Game 开头：{0}".format(target_path))
 
         return issues
 

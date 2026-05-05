@@ -229,7 +229,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         report = pipeline.dry_run_manifest(self.manifest_path, log_path)
 
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SKIPPED)
-        self.assertEqual(report["message"], "Dry run passed")
+        self.assertEqual(report["message"], "预检查通过，未执行导入")
         self.assertEqual(report["imported_assets"], [])
         self.assertEqual(report["resolved_preset"]["name"], IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE)
         self.assertTrue(os.path.exists(log_path))
@@ -385,6 +385,24 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
         self.assertEqual(report["created_material_instances"], [])
         self.assertTrue(report["material_instance_issues"])
+
+    def test_missing_plugin_parent_skips_material_instance_creation(self):
+        texture_path = self._write_packaged_texture()
+        textured_manifest_path = self._write_textured_manifest(texture_path)
+        material_creator = AvailableMaterialInstanceCreator()
+
+        report = UnrealStaticMeshImportPipeline(
+            importer=FakeImporter(),
+            texture_importer=FakeTextureImporter([]),
+            material_instance_creator=material_creator,
+            plugin_content_bootstrap=MissingPluginContentBootstrap(),
+        ).import_from_manifest(textured_manifest_path)
+
+        self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
+        self.assertEqual(report["created_material_instances"], [])
+        self.assertFalse(material_creator.called)
+        self.assertIn("缺少母材质", report["material_instance_issues"][0])
+        self.assertEqual(report["material_assignment_report"]["status"], "skipped")
 
     def test_material_instance_creator_configures_unreal_asset(self):
         fake_unreal = FakeUnreal()
@@ -653,6 +671,34 @@ class FakeMaterialInstanceCreator(object):
 class FailingMaterialInstanceCreator(object):
     def create_from_plan(self, material_binding_plan):
         raise RuntimeError("material instance creation failed")
+
+
+class AvailableMaterialInstanceCreator(object):
+    def __init__(self):
+        self.called = False
+
+    def is_available(self):
+        return True
+
+    def create_from_plan(self, material_binding_plan):
+        self.called = True
+        raise RuntimeError("不应在缺少母材质时创建材质实例")
+
+
+class MissingPluginContentBootstrap(object):
+    def validate(self):
+        return {
+            "status": "warning",
+            "missing_assets": ["/AssetForge/Materials/M_AF_Props_Opaque"],
+            "checks": [
+                {
+                    "id": "asset_exists",
+                    "status": "warning",
+                    "path": "/AssetForge/Materials/M_AF_Props_Opaque",
+                    "message": "缺少插件资产",
+                }
+            ],
+        }
 
 
 class FakeMaterialSlotAssigner(object):

@@ -40,7 +40,7 @@ class MayaStaticPropPipeline(object):
     def scan_selection(self):
         selection = self.adapter.get_current_selection()
         if not selection:
-            raise RuntimeError("No selected asset")
+            raise RuntimeError("没有选中资产")
         return self.scan_asset(selection[0])
 
     def scan_asset(self, asset_root):
@@ -60,7 +60,7 @@ class MayaStaticPropPipeline(object):
         scan_result = self.scan_asset(asset_root)
         validation_result = self.validate_scan(scan_result, target_platform)
         if not validation_result.get("can_export", False):
-            raise RuntimeError("Asset has blocking validation errors")
+            raise RuntimeError("资产存在阻断级校验错误，已停止导出")
 
         asset_name = scan_result.get("asset_name", "Asset")
         export_package = build_export_package(output_dir, asset_name, use_asset_folder)

@@ -18,7 +18,7 @@ class MayaMaterialScanner(object):
 
     def scan_meshes(self, meshes):
         if self.cmds is None:
-            raise RuntimeError("maya.cmds is not available")
+            raise RuntimeError("当前环境不可用 maya.cmds")
 
         materials = []
         textures = []
@@ -76,7 +76,7 @@ class MayaMaterialScanner(object):
                     "node": node,
                     "path": normalize_path(path) if path else "",
                     "source_type": "maya_file_node",
-                    "source_label": "Maya file node",
+                    "source_label": "Maya 文件贴图节点",
                     "usage": self._guess_usage(node),
                 }
             )

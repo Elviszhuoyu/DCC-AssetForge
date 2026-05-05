@@ -29,7 +29,7 @@ class TextureFolderScanner(object):
                     issues.append(
                         {
                             "status": "warning",
-                            "message": "Missing required texture for usage: {0}".format(rule.get("usage", "")),
+                            "message": "缺少必需贴图类型：{0}".format(rule.get("usage", "")),
                             "usage": rule.get("usage", ""),
                         }
                     )
@@ -39,7 +39,7 @@ class TextureFolderScanner(object):
                 issues.append(
                     {
                         "status": "warning",
-                        "message": "Multiple textures matched usage: {0}".format(rule.get("usage", "")),
+                        "message": "同一贴图类型匹配到多个文件：{0}".format(rule.get("usage", "")),
                         "usage": rule.get("usage", ""),
                         "matches": [normalize_path(path) for path in matches],
                     }
@@ -90,7 +90,7 @@ class TextureFolderScanner(object):
             "package_path": "",
             "copied": False,
             "source_type": "texture_folder",
-            "source_label": "Texture folder",
+            "source_label": "贴图目录",
             "usage": rule.get("usage", "unknown"),
             "parameter": rule.get("parameter", ""),
             "srgb": bool(rule.get("srgb", False)),

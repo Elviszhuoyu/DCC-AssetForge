@@ -30,7 +30,7 @@ class MayaFbxExporter(object):
 
     def export_asset(self, asset_root, output_path, preset=None):
         if not self.is_available():
-            raise RuntimeError("maya.cmds or maya.mel is not available")
+            raise RuntimeError("当前环境不可用 maya.cmds 或 maya.mel")
 
         self._ensure_fbx_plugin()
         self._ensure_parent_dir(output_path)
@@ -41,11 +41,11 @@ class MayaFbxExporter(object):
 
     def export_selected(self, output_path, preset=None):
         if not self.is_available():
-            raise RuntimeError("maya.cmds or maya.mel is not available")
+            raise RuntimeError("当前环境不可用 maya.cmds 或 maya.mel")
 
         selection = self.cmds.ls(selection=True, long=True) or []
         if not selection:
-            raise RuntimeError("No selected asset to export")
+            raise RuntimeError("没有选中可导出的资产")
 
         self._ensure_fbx_plugin()
         self._ensure_parent_dir(output_path)

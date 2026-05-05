@@ -27,30 +27,30 @@ class UnrealPackageValidator(object):
         if fbx_path and os.path.exists(fbx_path):
             return {
                 "id": "fbx_path",
-                "label": "FBX",
+                "label": "FBX 文件",
                 "status": CHECK_STATUS_PASS,
-                "message": "FBX exists",
+                "message": "FBX 文件存在",
             }
         return {
             "id": "fbx_path",
-            "label": "FBX",
+            "label": "FBX 文件",
             "status": CHECK_STATUS_WARNING,
-            "message": "FBX path is missing or unavailable",
+            "message": "FBX 路径为空或文件不可用",
         }
 
     def _texture_check(self, summary):
         if not summary["missing_package_paths"]:
             return {
                 "id": "textures",
-                "label": "Textures",
+                "label": "贴图",
                 "status": CHECK_STATUS_PASS,
-                "message": "Packaged texture references are available",
+                "message": "已打包贴图引用可用",
             }
         return {
             "id": "textures",
-            "label": "Textures",
+            "label": "贴图",
             "status": CHECK_STATUS_WARNING,
-            "message": "Some packaged texture references are missing",
+            "message": "部分已打包贴图引用缺失",
         }
 
     def _texture_summary(self, textures):

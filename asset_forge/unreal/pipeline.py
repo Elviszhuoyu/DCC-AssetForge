@@ -55,7 +55,7 @@ class UnrealStaticMeshImportPipeline(object):
         manifest = prepared["manifest"]
         active_log_path = log_path or self._default_import_report_path(manifest, manifest_path)
         if not prepared["can_import"]:
-            report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed", prepared.get("preset"))
+            report = self.logger.failed(manifest, prepared["issues"], "Manifest 校验失败", prepared.get("preset"))
             self._attach_package_validation(report, manifest)
             self._attach_plugin_content_validation(report)
             self._attach_texture_import_plan(report, manifest)
@@ -64,7 +64,7 @@ class UnrealStaticMeshImportPipeline(object):
             self._write_end_to_end_report(manifest, manifest_path, report)
             return report
 
-        report = self.logger.skipped(manifest, prepared["preset"], "Dry run passed")
+        report = self.logger.skipped(manifest, prepared["preset"], "预检查通过，未执行导入")
         self._attach_package_validation(report, manifest)
         self._attach_plugin_content_validation(report)
         self._attach_texture_import_plan(report, manifest)
@@ -78,7 +78,7 @@ class UnrealStaticMeshImportPipeline(object):
         manifest = prepared["manifest"]
         active_log_path = log_path or self._default_import_report_path(manifest, manifest_path)
         if not prepared["can_import"]:
-            report = self.logger.failed(manifest, prepared["issues"], "Manifest validation failed", prepared.get("preset"))
+            report = self.logger.failed(manifest, prepared["issues"], "Manifest 校验失败", prepared.get("preset"))
             self._attach_package_validation(report, manifest)
             self._attach_plugin_content_validation(report)
             self._attach_texture_import_plan(report, manifest)
@@ -90,7 +90,7 @@ class UnrealStaticMeshImportPipeline(object):
         try:
             imported_assets = self.importer.import_static_mesh(manifest, prepared["preset"])
         except Exception as exc:
-            report = self.logger.failed(manifest, [str(exc)], "Unreal import failed", prepared["preset"])
+            report = self.logger.failed(manifest, [str(exc)], "Unreal 导入失败", prepared["preset"])
             self._attach_package_validation(report, manifest)
             self._attach_plugin_content_validation(report)
             self._attach_texture_import_plan(report, manifest)
@@ -143,7 +143,7 @@ class UnrealStaticMeshImportPipeline(object):
         if not validation.get("can_accept", False):
             issues = [item["message"] for item in validation.get("checks", []) if item.get("status") == "error"]
             report["status"] = UNREAL_IMPORT_STATUS_FAILED
-            report["message"] = "Imported with post-import validation errors"
+            report["message"] = "导入完成，但导入后校验存在错误"
             report["issues"] = report.get("issues", []) + issues
         return report
 
@@ -177,7 +177,7 @@ class UnrealStaticMeshImportPipeline(object):
         try:
             report["imported_textures"] = self.texture_importer.import_textures(plan)
         except Exception as exc:
-            report["texture_import_issues"].append(str(exc))
+            report["texture_import_issues"].append("贴图导入失败：{0}".format(exc))
         return report
 
     def _create_material_instances(self, report):
@@ -188,12 +188,28 @@ class UnrealStaticMeshImportPipeline(object):
             return report
         if hasattr(self.material_instance_creator, "is_available") and not self.material_instance_creator.is_available():
             return report
+        if hasattr(self.material_instance_creator, "is_available"):
+            blockers = self._material_instance_blockers(report)
+            if blockers:
+                report["material_instance_issues"].extend(blockers)
+                return report
 
         try:
             report["created_material_instances"] = self.material_instance_creator.create_from_plan(plan)
         except Exception as exc:
-            report["material_instance_issues"].append(str(exc))
+            report["material_instance_issues"].append("材质实例创建失败：{0}".format(exc))
         return report
+
+    def _material_instance_blockers(self, report):
+        plugin_validation = report.get("plugin_content_validation", {})
+        missing_assets = set(plugin_validation.get("missing_assets", []))
+        plan = report.get("material_binding_plan", {})
+        blockers = []
+        for material in plan.get("materials", []):
+            parent = material.get("parent_material", "")
+            if parent and parent in missing_assets:
+                blockers.append("缺少母材质 {0}，已跳过材质实例：{1}".format(parent, material.get("target_asset_path", "")))
+        return blockers
 
     def _assign_material_slots(self, report):
         report["material_assignment_report"] = {
@@ -202,14 +218,14 @@ class UnrealStaticMeshImportPipeline(object):
             "issues": [],
         }
         if hasattr(self.material_slot_assigner, "is_available") and not self.material_slot_assigner.is_available():
-            report["material_assignment_report"]["issues"].append("unreal module is not available")
+            report["material_assignment_report"]["issues"].append("当前环境不可用 Unreal Python 模块，跳过材质槽绑定")
             return report
 
         try:
             report["material_assignment_report"] = self.material_slot_assigner.assign_from_report(report)
         except Exception as exc:
             report["material_assignment_report"]["status"] = "warning"
-            report["material_assignment_report"]["issues"].append(str(exc))
+            report["material_assignment_report"]["issues"].append("材质槽绑定失败：{0}".format(exc))
         return report
 
 
@@ -251,7 +267,7 @@ def import_latest_manifest(export_root, log_path=None, dry_run=False):
     """Find and import the newest manifest under an export root."""
     manifest_path = find_latest_manifest(export_root)
     if not manifest_path:
-        raise RuntimeError("No Asset Forge manifest found under: {0}".format(export_root))
+        raise RuntimeError("未找到 Asset Forge manifest：{0}".format(export_root))
     pipeline = UnrealStaticMeshImportPipeline()
     if dry_run:
         return pipeline.dry_run_manifest(manifest_path, log_path)
@@ -262,7 +278,7 @@ def import_asset_forge_package(package_dir, dry_run=False, report_path=None):
     """Import or dry-run the newest manifest in one Asset Forge package folder."""
     manifest_path = find_latest_manifest(package_dir)
     if not manifest_path:
-        raise RuntimeError("No Asset Forge manifest found under package: {0}".format(package_dir))
+        raise RuntimeError("资产包内未找到 Asset Forge manifest：{0}".format(package_dir))
 
     active_report_path = report_path or os.path.join(os.path.abspath(package_dir), "package_import_report.json")
     pipeline = UnrealStaticMeshImportPipeline()

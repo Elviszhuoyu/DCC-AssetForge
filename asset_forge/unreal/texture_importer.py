@@ -17,7 +17,7 @@ class UnrealTextureImporter(object):
 
     def import_textures(self, texture_import_plan):
         if not self.is_available():
-            raise RuntimeError("unreal module is not available")
+            raise RuntimeError("当前环境不可用 Unreal Python 模块")
 
         tasks = [self._build_task(texture) for texture in texture_import_plan.get("textures", [])]
         if not tasks:

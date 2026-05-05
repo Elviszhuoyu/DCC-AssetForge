@@ -21,7 +21,7 @@ class UnrealStaticMeshFbxImporter(object):
 
     def import_static_mesh(self, manifest, preset):
         if not self.is_available():
-            raise RuntimeError("unreal module is not available")
+            raise RuntimeError("当前环境不可用 Unreal Python 模块")
 
         unreal = self.unreal
         task = unreal.AssetImportTask()

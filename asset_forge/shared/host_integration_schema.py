@@ -46,7 +46,7 @@ def get_host_integration_contracts():
                 "runtime_api": ["unreal"],
                 "expected_package_roots": ["Content", "Content/Python"],
                 "content_mount": "/AssetForge",
-                "adapter_scope": ["read_manifest", "import_assets", "validate_plugin_content"],
+                "adapter_scope": ["install_project_plugin", "read_manifest", "import_assets", "validate_plugin_content"],
                 "adapter_is_package": False,
                 "status": "mvp",
             },

@@ -17,7 +17,7 @@ class UnrealMaterialInstanceCreator(object):
 
     def create_from_plan(self, material_binding_plan):
         if not self.is_available():
-            raise RuntimeError("unreal module is not available")
+            raise RuntimeError("当前环境不可用 Unreal Python 模块")
 
         created = []
         for material_plan in material_binding_plan.get("materials", []):
@@ -27,20 +27,36 @@ class UnrealMaterialInstanceCreator(object):
     def _create_material_instance(self, material_plan):
         unreal = self.unreal
         parent_material = self._load_asset(material_plan.get("parent_material", ""))
+        if not parent_material:
+            raise RuntimeError("缺少母材质：{0}".format(material_plan.get("parent_material", "")))
+
         target_path = material_plan.get("target_asset_path", "")
         package_path, asset_name = target_path.rsplit("/", 1)
 
-        factory = unreal.MaterialInstanceConstantFactoryNew()
-        material_instance = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
-            asset_name,
-            package_path,
-            unreal.MaterialInstanceConstant,
-            factory,
-        )
+        material_instance = self._load_existing_asset(target_path)
+        if not material_instance:
+            factory = unreal.MaterialInstanceConstantFactoryNew()
+            material_instance = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+                asset_name,
+                package_path,
+                unreal.MaterialInstanceConstant,
+                factory,
+            )
+        if not material_instance:
+            raise RuntimeError("材质实例未创建：{0}".format(target_path))
+
         set_unreal_property(material_instance, "parent", parent_material)
         self._apply_texture_parameters(material_instance, material_plan.get("texture_parameters", {}))
         self._apply_scalar_parameters(material_instance, material_plan.get("scalar_parameters", {}))
         return target_path
+
+    def _load_existing_asset(self, asset_path):
+        library = getattr(self.unreal, "EditorAssetLibrary", None)
+        if not library or not hasattr(library, "does_asset_exist"):
+            return None
+        if not library.does_asset_exist(asset_path):
+            return None
+        return self._load_asset(asset_path)
 
     def _apply_texture_parameters(self, material_instance, texture_parameters):
         editing = getattr(self.unreal, "MaterialEditingLibrary", None)

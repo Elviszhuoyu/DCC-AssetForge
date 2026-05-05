@@ -25,7 +25,7 @@ class MayaTexturePackager(object):
         if not texture.get("source_type"):
             texture["source_type"] = "maya_file_node"
         if not texture.get("source_label"):
-            texture["source_label"] = "Maya file node"
+            texture["source_label"] = "Maya 文件贴图节点"
 
         if not source_path or not os.path.exists(source_path):
             return texture
