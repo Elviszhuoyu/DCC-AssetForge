@@ -212,6 +212,8 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertIn("/AssetForge/Materials/M_AF_Props_Opaque", report["plugin_content_validation"]["missing_assets"])
         self.assertEqual(report["texture_import_plan"]["target_dir"], "/Game/Props/Textures")
         self.assertEqual(report["texture_import_plan"]["profile"], "Props_Opaque_PainterUE_ARM")
+        self.assertEqual(report["material_profile_validation"]["status"], "warning")
+        self.assertIn("normal", report["material_profile_validation"]["missing_usages"])
         self.assertEqual(report["material_binding_plan"]["target_dir"], "/Game/Props/Materials")
         self.assertEqual(report["material_binding_plan"]["master_material"], "/AssetForge/Materials/M_AF_Props_Opaque")
         self.assertEqual(report["material_binding_plan"]["materials"][0]["target_asset_path"], "/Game/Props/Materials/M_Crate")
@@ -294,6 +296,30 @@ class Phase2UnrealImportTest(unittest.TestCase):
             "/Game/Props/Textures/T_Crate_BaseColor",
         )
 
+    def test_texture_import_plan_deduplicates_target_asset_names(self):
+        texture_dir = os.path.join(self.temp_dir, "Textures")
+        os.makedirs(texture_dir)
+        first = os.path.join(texture_dir, "T_Crate_BaseColor.png")
+        second_dir = os.path.join(texture_dir, "Nested")
+        os.makedirs(second_dir)
+        second = os.path.join(second_dir, "T_Crate_BaseColor.png")
+        for path in [first, second]:
+            with open(path, "wb") as stream:
+                stream.write(b"fake texture")
+        manifest = dict(self.manifest)
+        manifest["textures"] = [
+            {"node": "base_a", "path": first, "package_path": first, "copied": True, "usage": "base_color"},
+            {"node": "base_b", "path": second, "package_path": second, "copied": True, "usage": "base_color"},
+        ]
+        manifest["materials"] = [{"name": "M_Crate", "textures": manifest["textures"]}]
+        manifest_path = os.path.join(self.temp_dir, "duplicate_texture_manifest.json")
+        write_manifest(manifest_path, manifest)
+
+        report = UnrealStaticMeshImportPipeline(importer=FakeImporter()).dry_run_manifest(manifest_path)
+
+        names = [texture["asset_name"] for texture in report["texture_import_plan"]["textures"]]
+        self.assertEqual(names, ["T_Crate_BaseColor", "T_Crate_BaseColor_2"])
+
     def test_material_profile_selects_masked_parent_and_parameters(self):
         texture_path = self._write_packaged_texture()
         textured_manifest_path = self._write_textured_manifest(texture_path)
@@ -317,6 +343,30 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["material_binding_plan"]["master_material"], "/AssetForge/Materials/M_AF_Props_Masked")
         self.assertEqual(report["material_binding_plan"]["render_mode"], "masked")
         self.assertEqual(report["material_binding_plan"]["materials"][0]["scalar_parameters"]["OpacityClipValue"], 0.333)
+
+    def test_material_and_texture_target_names_are_sanitized(self):
+        texture_path = self._write_packaged_texture()
+        textured_manifest_path = self._write_textured_manifest(texture_path)
+        manifest = dict(self.manifest)
+        manifest["textures"] = [
+            {
+                "node": "file_basecolor",
+                "path": self.fbx_path.replace(".fbx", ".png"),
+                "package_path": os.path.join(self.temp_dir, "Textures", "T Crate.BaseColor.png"),
+                "copied": True,
+                "usage": "base_color",
+            }
+        ]
+        with open(manifest["textures"][0]["package_path"], "wb") as stream:
+            stream.write(b"fake")
+        manifest["materials"] = [{"name": "Wood Crate.Material", "textures": manifest["textures"]}]
+        write_manifest(textured_manifest_path, manifest)
+
+        report = UnrealStaticMeshImportPipeline(importer=FakeImporter()).dry_run_manifest(textured_manifest_path)
+
+        self.assertEqual(report["texture_import_plan"]["textures"][0]["asset_name"], "T_Crate_BaseColor")
+        self.assertEqual(report["material_binding_plan"]["materials"][0]["target_asset_name"], "Wood_Crate_Material")
+        self.assertEqual(report["material_binding_plan"]["materials"][0]["target_asset_path"], "/Game/Props/Materials/Wood_Crate_Material")
 
     def test_pipeline_imports_planned_textures_without_blocking_mesh(self):
         texture_path = self._write_packaged_texture()
@@ -486,6 +536,52 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(asset.parent, "asset:/AssetForge/Materials/M_AF_Props_Opaque")
         self.assertEqual(fake_unreal.MaterialEditingLibrary.texture_calls[0][1], "BaseColor")
         self.assertEqual(fake_unreal.MaterialEditingLibrary.scalar_calls[0][1], "EmissiveIntensity")
+        self.assertEqual(UnrealMaterialInstanceCreator(fake_unreal).last_parameter_report["status"], "skipped")
+
+    def test_material_instance_creator_records_parameter_report(self):
+        fake_unreal = FakeUnreal()
+        fake_unreal.AssetToolsHelpers.asset_tools = FakeAssetTools()
+        fake_unreal.MaterialEditingLibrary.texture_calls = []
+        fake_unreal.MaterialEditingLibrary.scalar_calls = []
+        creator = UnrealMaterialInstanceCreator(fake_unreal)
+        plan = {
+            "materials": [
+                {
+                    "material_name": "M_Crate",
+                    "parent_material": "/AssetForge/Materials/M_AF_Props_Opaque",
+                    "target_asset_path": "/Game/Props/Materials/M_Crate",
+                    "texture_parameters": {"BaseColor": "/Game/Props/Textures/T_Crate_BaseColor"},
+                    "scalar_parameters": {"EmissiveIntensity": 2.0},
+                }
+            ]
+        }
+
+        creator.create_from_plan(plan)
+
+        self.assertEqual(creator.last_parameter_report["texture_parameters"][0]["name"], "BaseColor")
+        self.assertEqual(creator.last_parameter_report["scalar_parameters"][0]["value"], 2.0)
+
+    def test_summary_includes_export_texture_and_profile_warnings(self):
+        summary = summarize_pipeline(
+            export_report={
+                "validation": {"status": "pass"},
+                "texture_folder_scan": {"issues": [{"message": "缺少必需贴图类型：normal"}]},
+                "material_profile_validation": {
+                    "status": "warning",
+                    "checks": [
+                        {
+                            "id": "required_texture",
+                            "status": "warning",
+                            "message": "缺少必需贴图：normal",
+                        }
+                    ],
+                },
+            },
+            import_report={"status": UNREAL_IMPORT_STATUS_SUCCESS},
+        )
+
+        self.assertEqual(summary["export_material_profile_status"], "warning")
+        self.assertEqual(summary["warning_count"], 2)
 
     def test_material_slot_assigner_configures_unreal_static_mesh(self):
         fake_unreal = FakeUnreal()

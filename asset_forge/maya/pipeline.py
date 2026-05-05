@@ -12,6 +12,7 @@ from asset_forge.maya.texture_packager import MayaTexturePackager
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.ai_analysis import LocalChineseSuggestionClient, analyze_validation
 from asset_forge.shared.material_profile_schema import resolve_material_profile
+from asset_forge.shared.material_profile_validator import validate_material_texture_coverage
 from asset_forge.shared.report_schema import create_export_report, write_report
 from asset_forge.shared.rule_validator import StaticPropRuleValidator
 from asset_forge.shared.rules_schema import get_default_rules
@@ -65,6 +66,7 @@ class MayaStaticPropPipeline(object):
     ):
         scan_result = self.scan_asset(asset_root)
         scan_result = self._apply_texture_folder(scan_result, texture_folder, material_profile)
+        scan_result = self._apply_material_profile_validation(scan_result, material_profile)
         validation_result = self.validate_scan(scan_result, target_platform)
         if not validation_result.get("can_export", False):
             raise RuntimeError("资产存在阻断级校验错误，已停止导出")
@@ -109,6 +111,14 @@ class MayaStaticPropPipeline(object):
         result["textures"] = self._merged_textures(scan_result.get("textures", []), folder_scan.get("textures", []))
         result["texture_folder_scan"] = folder_scan
         result["materials"] = self._attach_folder_textures_to_materials(scan_result.get("materials", []), folder_scan.get("textures", []), scan_result.get("asset_name", ""))
+        return result
+
+    def _apply_material_profile_validation(self, scan_result, material_profile):
+        result = dict(scan_result)
+        result["material_profile_validation"] = validate_material_texture_coverage(
+            material_profile,
+            result.get("textures", []),
+        )
         return result
 
     def _merged_textures(self, existing, incoming):

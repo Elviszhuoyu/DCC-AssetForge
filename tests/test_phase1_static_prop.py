@@ -189,6 +189,7 @@ class Phase1StaticPropTest(unittest.TestCase):
             usages = [texture["usage"] for texture in result["manifest"]["textures"]]
             self.assertEqual(usages, ["base_color", "normal"])
             self.assertEqual(result["scan"]["texture_folder_scan"]["issues"], [])
+            self.assertEqual(result["scan"]["material_profile_validation"]["status"], "pass")
             self.assertTrue(result["manifest"]["textures"][0]["copied"])
             self.assertEqual(result["manifest"]["materials"][0]["textures"][0]["source_type"], "texture_folder")
         finally:

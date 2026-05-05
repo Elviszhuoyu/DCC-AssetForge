@@ -11,6 +11,9 @@ from asset_forge.shared.material_profile_schema import (
     create_material_profile,
     get_default_material_profile,
     get_default_material_profiles,
+    get_material_profile,
+    get_project_material_profiles,
+    material_profile_names,
     read_material_profiles,
     resolve_material_profile,
     validate_material_profile,
@@ -77,6 +80,12 @@ class MaterialProfileSchemaTest(unittest.TestCase):
 
         self.assertEqual(validate_material_profiles(loaded), [])
         self.assertEqual(loaded["profiles"][0]["name"], "Props_Opaque_PainterUE_ARM")
+
+    def test_project_material_profiles_load_from_config_file(self):
+        profiles = get_project_material_profiles(os.path.join("config", "material_profiles.json"))
+
+        self.assertIn("Props_Masked_PainterUE_ARM", material_profile_names(profiles))
+        self.assertEqual(get_material_profile("Props_Translucent_PainterUE_ARM", profiles)["render_mode"], "translucent")
 
     def test_manifest_can_reference_material_profile_without_breaking_compatibility(self):
         manifest = create_manifest(

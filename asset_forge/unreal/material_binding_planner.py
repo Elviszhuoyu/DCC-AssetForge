@@ -3,6 +3,7 @@
 from __future__ import absolute_import
 
 from asset_forge.shared.material_profile_schema import resolve_material_profile
+from asset_forge.unreal.name_utils import sanitize_unreal_asset_name
 
 
 class UnrealMaterialBindingPlanner(object):
@@ -28,6 +29,7 @@ class UnrealMaterialBindingPlanner(object):
 
     def _material_plan(self, material, target_dir, texture_lookup, rule_lookup, profile):
         material_name = material.get("name", "M_Asset")
+        target_asset_name = sanitize_unreal_asset_name(material_name, "M_Asset")
         slots = {}
         texture_parameters = {}
         for texture in material.get("textures", []):
@@ -42,7 +44,8 @@ class UnrealMaterialBindingPlanner(object):
         return {
             "material_name": material_name,
             "parent_material": profile.get("master_material", ""),
-            "target_asset_path": "{0}/{1}".format(target_dir, material_name),
+            "target_asset_path": "{0}/{1}".format(target_dir, target_asset_name),
+            "target_asset_name": target_asset_name,
             "slots": slots,
             "texture_parameters": texture_parameters,
             "scalar_parameters": dict(profile.get("scalar_parameters", {})),

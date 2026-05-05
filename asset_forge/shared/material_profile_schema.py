@@ -4,6 +4,7 @@ from __future__ import absolute_import
 
 import io
 import json
+import os
 
 from asset_forge.shared.constants import (
     ASSET_TYPE_PROPS,
@@ -14,6 +15,7 @@ from asset_forge.shared.constants import (
 
 
 MATERIAL_PROFILE_VERSION = "0.1"
+DEFAULT_MATERIAL_PROFILE_NAME = "Props_Opaque_PainterUE_ARM"
 
 REQUIRED_PROFILE_FIELDS = [
     "version",
@@ -123,15 +125,40 @@ def get_default_material_profile(name):
     return None
 
 
-def resolve_material_profile(profile=None):
+def default_material_profiles_path():
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    return os.path.join(repo_root, "config", "material_profiles.json")
+
+
+def get_project_material_profiles(path=None):
+    profile_path = path or default_material_profiles_path()
+    if profile_path and os.path.exists(profile_path):
+        return read_material_profiles(profile_path)
+    return get_default_material_profiles()
+
+
+def get_material_profile(name, profiles=None):
+    active = profiles or get_project_material_profiles()
+    for profile in active.get("profiles", []):
+        if profile.get("name") == name:
+            return profile
+    return None
+
+
+def material_profile_names(profiles=None):
+    active = profiles or get_project_material_profiles()
+    return [profile.get("name", "") for profile in active.get("profiles", []) if profile.get("name")]
+
+
+def resolve_material_profile(profile=None, profiles=None):
     """Return a profile dict from a dict, name, or default Props Opaque fallback."""
     if isinstance(profile, dict):
         return profile
     if profile:
-        found = get_default_material_profile(profile)
+        found = get_material_profile(profile, profiles)
         if found:
             return found
-    return get_default_material_profile("Props_Opaque_PainterUE_ARM")
+    return get_material_profile(DEFAULT_MATERIAL_PROFILE_NAME, profiles) or get_default_material_profile(DEFAULT_MATERIAL_PROFILE_NAME)
 
 
 def write_material_profiles(path, profiles, pretty=True):

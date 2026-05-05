@@ -12,7 +12,7 @@ from asset_forge.shared.constants import (
     TARGET_PLATFORM_MOBILE,
     TARGET_PLATFORM_PC,
 )
-from asset_forge.shared.material_profile_schema import get_default_material_profiles
+from asset_forge.shared.material_profile_schema import get_project_material_profiles
 
 
 WINDOW_NAME = "assetForgePhase1Window"
@@ -47,7 +47,7 @@ class AssetForgeMayaWindow(object):
         self.cmds.optionMenu(self.controls["platform"], edit=True, value=TARGET_PLATFORM_HIGH_END_MOBILE)
 
         self.controls["material_profile"] = self.cmds.optionMenu(label="材质配置")
-        for profile in get_default_material_profiles()["profiles"]:
+        for profile in get_project_material_profiles()["profiles"]:
             self.cmds.menuItem(label=profile["name"])
         self.cmds.optionMenu(self.controls["material_profile"], edit=True, value="Props_Opaque_PainterUE_ARM")
 

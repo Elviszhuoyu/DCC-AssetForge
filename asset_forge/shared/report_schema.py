@@ -26,7 +26,10 @@ def summarize_pipeline(export_report=None, import_report=None):
     export_report = export_report or {}
     import_report = import_report or {}
     validation = export_report.get("validation", {})
+    texture_folder_scan = export_report.get("texture_folder_scan", {})
+    export_material_profile = export_report.get("material_profile_validation", {})
     plugin_content = import_report.get("plugin_content_validation", {})
+    material_profile_validation = import_report.get("material_profile_validation", {})
     texture_plan = import_report.get("texture_import_plan", {})
     texture_configuration = import_report.get("texture_configuration_report", {})
     material_plan = import_report.get("material_binding_plan", {})
@@ -37,6 +40,8 @@ def summarize_pipeline(export_report=None, import_report=None):
     errors = []
     warnings.extend(_messages("maya_validation", validation.get("warnings", [])))
     errors.extend(_messages("maya_validation", validation.get("errors", [])))
+    warnings.extend(_plain_messages("texture_folder_scan", texture_folder_scan.get("issues", [])))
+    _append_checks(export_material_profile.get("checks", []), "export_material_profile", warnings, errors)
 
     import_issues = _plain_messages("unreal_import", import_report.get("issues", []))
     if import_report.get("status") == "failed":
@@ -45,6 +50,7 @@ def summarize_pipeline(export_report=None, import_report=None):
         warnings.extend(import_issues)
 
     _append_checks(plugin_content.get("checks", []), "plugin_content", warnings, errors)
+    _append_checks(material_profile_validation.get("checks", []), "material_profile", warnings, errors)
     warnings.extend(_plain_messages("texture_import", import_report.get("texture_import_issues", [])))
     warnings.extend(_plain_messages("texture_configuration", texture_configuration.get("issues", [])))
     warnings.extend(_plain_messages("material_instance", import_report.get("material_instance_issues", [])))
@@ -54,8 +60,10 @@ def summarize_pipeline(export_report=None, import_report=None):
     return {
         "status": import_report.get("status") or validation.get("status", ""),
         "export_status": validation.get("status", ""),
+        "export_material_profile_status": export_material_profile.get("status", ""),
         "import_status": import_report.get("status", ""),
         "plugin_content_status": plugin_content.get("status", ""),
+        "material_profile_status": material_profile_validation.get("status", ""),
         "texture_import_count": texture_plan.get("count", 0),
         "imported_texture_count": len(import_report.get("imported_textures", [])),
         "texture_configuration_status": texture_configuration.get("status", ""),
@@ -89,6 +97,8 @@ def create_export_report(scan_result, validation_result, manifest, paths):
         "material_slots": scan_result.get("material_slots", 0),
         "materials": scan_result.get("materials", []),
         "textures": scan_result.get("textures", []),
+        "texture_folder_scan": scan_result.get("texture_folder_scan", {}),
+        "material_profile_validation": scan_result.get("material_profile_validation", {}),
         "validation": summarize_validation(validation_result),
     }
 

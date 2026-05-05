@@ -11,6 +11,7 @@ class UnrealMaterialInstanceCreator(object):
 
     def __init__(self, unreal_module=None):
         self.unreal = unreal_module or get_unreal()
+        self.last_parameter_report = self._empty_parameter_report()
 
     def is_available(self):
         return self.unreal is not None
@@ -19,6 +20,7 @@ class UnrealMaterialInstanceCreator(object):
         if not self.is_available():
             raise RuntimeError("当前环境不可用 Unreal Python 模块")
 
+        self.last_parameter_report = self._empty_parameter_report()
         created = []
         for material_plan in material_binding_plan.get("materials", []):
             created.append(self._create_material_instance(material_plan))
@@ -64,7 +66,11 @@ class UnrealMaterialInstanceCreator(object):
             return
         for name, texture_path in texture_parameters.items():
             texture_asset = self._load_asset(texture_path)
+            if not texture_asset:
+                self.last_parameter_report["issues"].append("无法加载贴图参数 {0}：{1}".format(name, texture_path))
+                continue
             editing.set_material_instance_texture_parameter_value(material_instance, name, texture_asset)
+            self.last_parameter_report["texture_parameters"].append({"name": name, "asset_path": texture_path})
 
     def _apply_scalar_parameters(self, material_instance, scalar_parameters):
         editing = getattr(self.unreal, "MaterialEditingLibrary", None)
@@ -72,8 +78,17 @@ class UnrealMaterialInstanceCreator(object):
             return
         for name, value in scalar_parameters.items():
             editing.set_material_instance_scalar_parameter_value(material_instance, name, value)
+            self.last_parameter_report["scalar_parameters"].append({"name": name, "value": value})
 
     def _load_asset(self, asset_path):
         if hasattr(self.unreal, "EditorAssetLibrary"):
             return self.unreal.EditorAssetLibrary.load_asset(asset_path)
         return asset_path
+
+    def _empty_parameter_report(self):
+        return {
+            "status": "skipped",
+            "texture_parameters": [],
+            "scalar_parameters": [],
+            "issues": [],
+        }

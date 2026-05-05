@@ -9,6 +9,7 @@ from asset_forge.shared.path_utils import normalize_path
 from asset_forge.shared.report_schema import create_batch_report, create_end_to_end_report, read_report, write_report
 from asset_forge.unreal.fbx_importer import UnrealStaticMeshFbxImporter
 from asset_forge.unreal.import_logger import UnrealImportLogger
+from asset_forge.shared.material_profile_validator import validate_material_texture_coverage
 from asset_forge.unreal.material_asset_bootstrap import UnrealMaterialAssetBootstrap
 from asset_forge.unreal.material_binding_planner import UnrealMaterialBindingPlanner
 from asset_forge.unreal.material_instance_creator import UnrealMaterialInstanceCreator
@@ -65,6 +66,7 @@ class UnrealStaticMeshImportPipeline(object):
             self._attach_plugin_content_validation(report)
             self._attach_texture_import_plan(report, manifest)
             self._attach_material_binding_plan(report, manifest)
+            self._attach_material_profile_validation(report, manifest)
             self._write_log(active_log_path, report)
             self._write_end_to_end_report(manifest, manifest_path, report)
             return report
@@ -74,6 +76,7 @@ class UnrealStaticMeshImportPipeline(object):
         self._attach_plugin_content_validation(report)
         self._attach_texture_import_plan(report, manifest)
         self._attach_material_binding_plan(report, manifest)
+        self._attach_material_profile_validation(report, manifest)
         self._write_log(active_log_path, report)
         self._write_end_to_end_report(manifest, manifest_path, report)
         return report
@@ -88,6 +91,7 @@ class UnrealStaticMeshImportPipeline(object):
             self._attach_plugin_content_validation(report)
             self._attach_texture_import_plan(report, manifest)
             self._attach_material_binding_plan(report, manifest)
+            self._attach_material_profile_validation(report, manifest)
             self._write_log(active_log_path, report)
             self._write_end_to_end_report(manifest, manifest_path, report)
             return report
@@ -100,6 +104,7 @@ class UnrealStaticMeshImportPipeline(object):
             self._attach_plugin_content_validation(report)
             self._attach_texture_import_plan(report, manifest)
             self._attach_material_binding_plan(report, manifest)
+            self._attach_material_profile_validation(report, manifest)
             self._write_log(active_log_path, report)
             self._write_end_to_end_report(manifest, manifest_path, report)
             return report
@@ -109,6 +114,7 @@ class UnrealStaticMeshImportPipeline(object):
         self._attach_plugin_content_validation(report)
         self._attach_texture_import_plan(report, manifest)
         self._attach_material_binding_plan(report, manifest)
+        self._attach_material_profile_validation(report, manifest)
         self._auto_bootstrap_material_assets(report)
         self._import_planned_textures(report)
         self._create_material_instances(report)
@@ -173,6 +179,13 @@ class UnrealStaticMeshImportPipeline(object):
         )
         return report
 
+    def _attach_material_profile_validation(self, report, manifest):
+        report["material_profile_validation"] = validate_material_texture_coverage(
+            manifest.get("material_profile"),
+            manifest.get("textures", []),
+        )
+        return report
+
     def _auto_bootstrap_material_assets(self, report):
         report["material_asset_bootstrap_report"] = {
             "status": "skipped",
@@ -225,8 +238,24 @@ class UnrealStaticMeshImportPipeline(object):
 
         try:
             report["created_material_instances"] = self.material_instance_creator.create_from_plan(plan)
+            report["material_parameter_report"] = self._material_parameter_report()
         except Exception as exc:
             report["material_instance_issues"].append("材质实例创建失败：{0}".format(exc))
+            report["material_parameter_report"] = {"status": "skipped", "texture_parameters": [], "scalar_parameters": [], "issues": []}
+        return report
+
+    def _material_parameter_report(self):
+        report = getattr(
+            self.material_instance_creator,
+            "last_parameter_report",
+            {"status": "skipped", "texture_parameters": [], "scalar_parameters": [], "issues": []},
+        )
+        if report.get("issues"):
+            report["status"] = "warning"
+        elif report.get("texture_parameters") or report.get("scalar_parameters"):
+            report["status"] = "success"
+        else:
+            report["status"] = "skipped"
         return report
 
     def _material_instance_blockers(self, report):
