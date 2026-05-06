@@ -112,6 +112,17 @@ class FakeUnreal(object):
             return "asset:" + asset_path
 
         @classmethod
+        def does_asset_exist(cls, asset_path):
+            return asset_path in cls.assets
+
+        @classmethod
+        def delete_asset(cls, asset_path):
+            if asset_path in cls.assets:
+                del cls.assets[asset_path]
+                return True
+            return False
+
+        @classmethod
         def save_asset(cls, asset_path):
             cls.saved.append(asset_path)
 
@@ -297,6 +308,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
             report["material_binding_plan"]["materials"][0]["texture_parameters"]["BaseColor"],
             "/Game/Props/Textures/T_Crate_BaseColor",
         )
+        self.assertEqual(report["texture_import_plan"]["textures"][0]["channels"], {})
 
     def test_texture_import_plan_deduplicates_target_asset_names(self):
         texture_dir = os.path.join(self.temp_dir, "Textures")
@@ -321,6 +333,29 @@ class Phase2UnrealImportTest(unittest.TestCase):
 
         names = [texture["asset_name"] for texture in report["texture_import_plan"]["textures"]]
         self.assertEqual(names, ["T_Crate_BaseColor", "T_Crate_BaseColor_2"])
+
+    def test_binding_plan_carries_packed_texture_channels_and_existing_strategy(self):
+        texture_path = self._write_packaged_texture()
+        textured_manifest_path = self._write_textured_manifest(texture_path)
+        manifest = dict(self.manifest)
+        manifest["existing_material_strategy"] = "skip"
+        manifest["textures"] = [
+            {
+                "node": "file_arm",
+                "path": texture_path,
+                "package_path": texture_path,
+                "copied": True,
+                "usage": "packed_arm",
+            }
+        ]
+        manifest["materials"] = [{"name": "M_Crate", "textures": manifest["textures"]}]
+        write_manifest(textured_manifest_path, manifest)
+
+        report = UnrealStaticMeshImportPipeline(importer=FakeImporter()).dry_run_manifest(textured_manifest_path)
+
+        self.assertEqual(report["material_binding_plan"]["existing_material_strategy"], "skip")
+        self.assertEqual(report["texture_import_plan"]["textures"][0]["channels"]["r"], "ao")
+        self.assertEqual(report["material_binding_plan"]["materials"][0]["channel_mappings"]["packed_arm"]["g"], "roughness")
 
     def test_material_profile_selects_masked_parent_and_parameters(self):
         texture_path = self._write_packaged_texture()
@@ -562,6 +597,57 @@ class Phase2UnrealImportTest(unittest.TestCase):
 
         self.assertEqual(creator.last_parameter_report["texture_parameters"][0]["name"], "BaseColor")
         self.assertEqual(creator.last_parameter_report["scalar_parameters"][0]["value"], 2.0)
+
+    def test_material_instance_creator_reuses_existing_asset_by_default(self):
+        fake_unreal = FakeUnreal()
+        fake_unreal.AssetToolsHelpers.asset_tools = FakeAssetTools()
+        existing = FakeMaterialInstance()
+        fake_unreal.EditorAssetLibrary.assets = {
+            "/AssetForge/Materials/M_AF_Props_Opaque": "parent",
+            "/Game/Props/Materials/M_Crate": existing,
+        }
+        creator = UnrealMaterialInstanceCreator(fake_unreal)
+
+        created = creator.create_from_plan(
+            {
+                "materials": [
+                    {
+                        "material_name": "M_Crate",
+                        "parent_material": "/AssetForge/Materials/M_AF_Props_Opaque",
+                        "target_asset_path": "/Game/Props/Materials/M_Crate",
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(created, ["/Game/Props/Materials/M_Crate"])
+        self.assertEqual(creator.last_creation_report["actions"][0]["action"], "reused")
+        self.assertEqual(fake_unreal.AssetToolsHelpers.asset_tools.assets, [])
+
+    def test_material_instance_creator_skips_existing_asset_when_requested(self):
+        fake_unreal = FakeUnreal()
+        existing = FakeMaterialInstance()
+        fake_unreal.EditorAssetLibrary.assets = {
+            "/AssetForge/Materials/M_AF_Props_Opaque": "parent",
+            "/Game/Props/Materials/M_Crate": existing,
+        }
+        creator = UnrealMaterialInstanceCreator(fake_unreal)
+
+        created = creator.create_from_plan(
+            {
+                "existing_material_strategy": "skip",
+                "materials": [
+                    {
+                        "material_name": "M_Crate",
+                        "parent_material": "/AssetForge/Materials/M_AF_Props_Opaque",
+                        "target_asset_path": "/Game/Props/Materials/M_Crate",
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(created, [])
+        self.assertEqual(creator.last_creation_report["actions"][0]["action"], "skipped")
 
     def test_summary_includes_export_texture_and_profile_warnings(self):
         summary = summarize_pipeline(

@@ -4,7 +4,8 @@ from __future__ import absolute_import
 
 import os
 
-from asset_forge.shared.material_profile_validator import validate_material_texture_coverage
+from asset_forge.shared.report_schema import write_report
+from asset_forge.shared.material_profile_validator import validate_material_texture_coverage, validate_packed_texture_channel_rules
 from asset_forge.shared.path_utils import normalize_path
 from asset_forge.unreal.manifest_finder import find_latest_manifest
 from asset_forge.unreal.manifest_reader import UnrealManifestReader
@@ -37,10 +38,13 @@ class UnrealPackageAcceptanceValidator(object):
         self.material_binding_planner = material_binding_planner or UnrealMaterialBindingPlanner()
         self.plugin_mount_preflight = plugin_mount_preflight or UnrealPluginMountPreflight(content_bootstrap=self.plugin_content_bootstrap)
 
-    def validate(self, manifest_or_package_path):
+    def validate(self, manifest_or_package_path, report_path=None):
         manifest_path = self._resolve_manifest_path(manifest_or_package_path)
         if not manifest_path:
-            return self._missing_manifest_report(manifest_or_package_path)
+            report = self._missing_manifest_report(manifest_or_package_path)
+            if report_path:
+                write_report(report_path, report)
+            return report
 
         prepared = self.reader.load(manifest_path, require_fbx_exists=True)
         manifest = prepared.get("manifest", {})
@@ -51,6 +55,7 @@ class UnrealPackageAcceptanceValidator(object):
         texture_plan = self.texture_import_planner.plan(manifest)
         material_plan = self.material_binding_planner.plan(manifest, texture_plan, manifest.get("material_profile"))
         material_profile_validation = validate_material_texture_coverage(manifest.get("material_profile"), manifest.get("textures", []))
+        channel_validation = validate_packed_texture_channel_rules(manifest.get("material_profile"))
 
         checks = [
             self._check("manifest", "pass" if prepared.get("can_import") else "error", "Manifest", prepared.get("issues", [])),
@@ -59,9 +64,10 @@ class UnrealPackageAcceptanceValidator(object):
             self._check("plugin_content", plugin_content_validation.get("status"), "UE 插件内容", self._messages(plugin_content_validation)),
             self._check("material_assets", material_asset_validation.get("status"), "默认材质资产", [material_asset_validation.get("message", "")]),
             self._check("material_profile", material_profile_validation.get("status"), "Material Profile", self._messages(material_profile_validation)),
+            self._check("packed_channels", channel_validation.get("status"), "打包贴图通道", self._messages(channel_validation)),
         ]
         summary = self._summary(checks)
-        return {
+        report = {
             "status": "pass" if summary["can_accept"] else "warning",
             "stage": "package_acceptance",
             "manifest_path": normalize_path(manifest_path),
@@ -77,7 +83,11 @@ class UnrealPackageAcceptanceValidator(object):
             "texture_import_plan": texture_plan,
             "material_binding_plan": material_plan,
             "material_profile_validation": material_profile_validation,
+            "packed_channel_validation": channel_validation,
         }
+        if report_path:
+            write_report(report_path, report)
+        return report
 
     def _resolve_manifest_path(self, manifest_or_package_path):
         if os.path.isfile(manifest_or_package_path):
@@ -127,5 +137,5 @@ class UnrealPackageAcceptanceValidator(object):
         }
 
 
-def validate_asset_forge_package(manifest_or_package_path):
-    return UnrealPackageAcceptanceValidator().validate(manifest_or_package_path)
+def validate_asset_forge_package(manifest_or_package_path, report_path=None):
+    return UnrealPackageAcceptanceValidator().validate(manifest_or_package_path, report_path)

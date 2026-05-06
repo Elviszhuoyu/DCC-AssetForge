@@ -227,9 +227,11 @@ class UnrealStaticMeshImportPipeline(object):
         try:
             report["created_material_instances"] = self.material_instance_creator.create_from_plan(plan)
             report["material_parameter_report"] = self._material_parameter_report()
+            report["material_instance_policy_report"] = self._material_instance_policy_report()
         except Exception as exc:
             report["material_instance_issues"].append("材质实例创建失败：{0}".format(exc))
             report["material_parameter_report"] = {"status": "skipped", "texture_parameters": [], "scalar_parameters": [], "issues": []}
+            report["material_instance_policy_report"] = {"status": "skipped", "existing_material_strategy": "", "actions": [], "issues": []}
         return report
 
     def _material_parameter_report(self):
@@ -245,6 +247,13 @@ class UnrealStaticMeshImportPipeline(object):
         else:
             report["status"] = "skipped"
         return report
+
+    def _material_instance_policy_report(self):
+        return getattr(
+            self.material_instance_creator,
+            "last_creation_report",
+            {"status": "skipped", "existing_material_strategy": "", "actions": [], "issues": []},
+        )
 
     def _material_instance_blockers(self, report):
         plugin_validation = report.get("plugin_content_validation", {})

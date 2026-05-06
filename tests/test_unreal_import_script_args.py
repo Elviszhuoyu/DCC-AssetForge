@@ -34,6 +34,30 @@ class UnrealImportScriptArgsTest(unittest.TestCase):
         finally:
             self._remove_tree(temp_dir)
 
+    def test_validate_package_flag_writes_acceptance_report(self):
+        temp_dir = self._make_package()
+        report_path = os.path.join(temp_dir, "acceptance_report.json")
+
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/unreal_import_manifest.py",
+                    "--validate-package",
+                    temp_dir,
+                    report_path,
+                ],
+                cwd=os.getcwd(),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            report = ast.literal_eval(result.stdout.strip())
+            self.assertEqual(report["stage"], "package_acceptance")
+            self.assertTrue(os.path.exists(report_path))
+        finally:
+            self._remove_tree(temp_dir)
+
     def _make_package(self):
         import tempfile
 

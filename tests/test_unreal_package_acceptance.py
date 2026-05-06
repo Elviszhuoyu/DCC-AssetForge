@@ -46,8 +46,21 @@ class UnrealPackageAcceptanceTest(unittest.TestCase):
         self.assertIn("material_asset_validation", report)
         self.assertIn("texture_import_plan", report)
         self.assertIn("material_binding_plan", report)
+        self.assertIn("packed_channel_validation", report)
         self.assertTrue(report["summary"]["can_accept"])
         self.assertIn("material_profile", report["summary"]["warning_checks"])
+
+    def test_acceptance_report_can_be_written_to_disk(self):
+        report_path = os.path.join(self.temp_dir, "acceptance_report.json")
+        validator = UnrealPackageAcceptanceValidator(
+            plugin_content_bootstrap=FakePluginContentBootstrap(),
+            material_asset_bootstrap=FakeMaterialAssetBootstrap(),
+        )
+
+        report = validator.validate(self.package["package_dir"], report_path)
+
+        self.assertEqual(report["stage"], "package_acceptance")
+        self.assertTrue(os.path.exists(report_path))
 
     def test_acceptance_report_blocks_missing_manifest(self):
         validator = UnrealPackageAcceptanceValidator(

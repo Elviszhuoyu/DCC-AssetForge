@@ -47,6 +47,7 @@ class UnrealTextureImportPlanner(object):
             "parameter": rule.get("parameter", texture.get("parameter", "")),
             "srgb": rule.get("srgb", texture.get("srgb")),
             "compression": rule.get("compression", texture.get("compression", "")),
+            "channels": dict(texture.get("channels") or rule.get("channels", {})),
             "node": texture.get("node", ""),
             "source_type": texture.get("source_type", ""),
             "source_label": texture.get("source_label", ""),
