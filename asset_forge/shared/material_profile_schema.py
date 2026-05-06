@@ -162,6 +162,9 @@ def resolve_material_profile(profile=None, profiles=None):
 
 
 def write_material_profiles(path, profiles, pretty=True):
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent and not os.path.exists(parent):
+        os.makedirs(parent)
     indent = 2 if pretty else None
     with io.open(path, "w", encoding="utf-8") as stream:
         stream.write(json.dumps(profiles, ensure_ascii=False, indent=indent))
@@ -172,6 +175,80 @@ def write_material_profiles(path, profiles, pretty=True):
 def read_material_profiles(path):
     with io.open(path, "r", encoding="utf-8") as stream:
         return json.load(stream)
+
+
+def validate_material_profiles_report(profiles):
+    """Return a Chinese report for project Material Profile schema checks."""
+    issues = validate_material_profiles(profiles)
+    checks = [
+        {
+            "id": "material_profile_schema",
+            "status": "error",
+            "message": _localize_profile_issue(issue),
+            "raw": issue,
+        }
+        for issue in issues
+    ]
+    if not checks:
+        checks.append(
+            {
+                "id": "material_profile_schema",
+                "status": "pass",
+                "message": "Material Profile 配置结构有效",
+            }
+        )
+    return {
+        "status": "error" if issues else "pass",
+        "can_use": not issues,
+        "profile_count": len(profiles.get("profiles", [])) if isinstance(profiles, dict) else 0,
+        "checks": checks,
+        "issues": [_localize_profile_issue(issue) for issue in issues],
+    }
+
+
+def export_material_profiles_config(destination_path, profiles=None):
+    """Export active Material Profiles to a distributable JSON file."""
+    active_profiles = profiles or get_project_material_profiles()
+    validation = validate_material_profiles_report(active_profiles)
+    if not validation.get("can_use", False):
+        return {
+            "status": "error",
+            "message": "Material Profile 配置存在错误，未导出",
+            "path": destination_path,
+            "validation": validation,
+        }
+    write_material_profiles(destination_path, active_profiles)
+    return {
+        "status": "success",
+        "message": "Material Profile 配置已导出",
+        "path": os.path.abspath(destination_path).replace("\\", "/"),
+        "profile_count": validation.get("profile_count", 0),
+        "validation": validation,
+    }
+
+
+def import_material_profiles_config(source_path, target_path=None):
+    """Validate and import a project Material Profile JSON file."""
+    profiles = read_material_profiles(source_path)
+    validation = validate_material_profiles_report(profiles)
+    active_target = target_path or default_material_profiles_path()
+    if not validation.get("can_use", False):
+        return {
+            "status": "error",
+            "message": "Material Profile 配置存在错误，未导入",
+            "source_path": os.path.abspath(source_path).replace("\\", "/"),
+            "target_path": os.path.abspath(active_target).replace("\\", "/"),
+            "validation": validation,
+        }
+    write_material_profiles(active_target, profiles)
+    return {
+        "status": "success",
+        "message": "Material Profile 配置已导入",
+        "source_path": os.path.abspath(source_path).replace("\\", "/"),
+        "target_path": os.path.abspath(active_target).replace("\\", "/"),
+        "profile_count": validation.get("profile_count", 0),
+        "validation": validation,
+    }
 
 
 def _validate_texture_rule(rule, index):
@@ -192,6 +269,30 @@ def _validate_texture_rule(rule, index):
         issues.append("texture_rules[{0}] channels must be a dict".format(index))
 
     return issues
+
+
+def _localize_profile_issue(issue):
+    if issue == "material profiles must be a dict":
+        return "Material Profile 集合必须是字典结构"
+    if issue == "profiles must be a list":
+        return "profiles 必须是列表"
+    if issue == "material profile must be a dict":
+        return "单个 Material Profile 必须是字典结构"
+    if issue.startswith("duplicate profile name:"):
+        return "Material Profile 名称重复：{0}".format(issue.split(":", 1)[1].strip())
+    if "missing field:" in issue:
+        return "缺少字段：{0}".format(issue.split("missing field:", 1)[1].strip())
+    if "texture_rules must be a list" in issue:
+        return "texture_rules 必须是列表"
+    if "scalar_parameters must be a dict" in issue:
+        return "scalar_parameters 必须是字典"
+    if "suffixes must be a list" in issue:
+        return "贴图规则 suffixes 必须是列表：{0}".format(issue)
+    if "channels must be a dict" in issue:
+        return "贴图规则 channels 必须是字典：{0}".format(issue)
+    if "texture_rules" in issue and "missing field:" in issue:
+        return "贴图规则缺少字段：{0}".format(issue)
+    return issue
 
 
 def _common_props_texture_rules():

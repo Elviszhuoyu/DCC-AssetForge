@@ -7,6 +7,7 @@ import unittest
 
 from asset_forge.unreal.material_package_schema import get_default_material_package_plan
 from asset_forge.unreal.plugin_content_bootstrap import UnrealPluginContentBootstrap
+from asset_forge.unreal.plugin_mount_preflight import UnrealPluginMountPreflight
 
 
 class UnrealPluginSkeletonTest(unittest.TestCase):
@@ -88,6 +89,25 @@ class UnrealPluginSkeletonTest(unittest.TestCase):
         self.assertEqual(report["status"], "warning")
         self.assertIn("UEProject/Plugins/AssetForge/AssetForge.uplugin", report["descriptor_path"])
         self.assertEqual([item for item in report["checks"] if item["id"] == "content_mount"][0]["status"], "pass")
+
+    def test_plugin_mount_preflight_focuses_on_content_root(self):
+        fake_unreal = FakeUnrealWithInstalledPlugin()
+
+        report = UnrealPluginMountPreflight(unreal_module=fake_unreal).check()
+
+        self.assertEqual(report["status"], "pass")
+        self.assertTrue(report["can_use_plugin_content"])
+        self.assertEqual(report["content_mount"], "/AssetForge")
+        self.assertEqual(report["mount_check"]["status"], "pass")
+
+    def test_plugin_mount_preflight_warns_when_not_installed(self):
+        fake_unreal = FakeUnrealWithExternalPlugin()
+
+        report = UnrealPluginMountPreflight(unreal_module=fake_unreal).check()
+
+        self.assertEqual(report["status"], "warning")
+        self.assertFalse(report["can_use_plugin_content"])
+        self.assertEqual(report["mount_check"]["status"], "warning")
 
     def _load_module(self, path):
         spec = importlib.util.spec_from_file_location("asset_forge_test_init_unreal", path)

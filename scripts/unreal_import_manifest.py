@@ -45,6 +45,13 @@ def import_asset_forge_package(package_dir, dry_run=False, report_path=None, aut
     return pipeline.import_from_manifest(manifest_path, report_path)
 
 
+def validate_asset_forge_package(package_dir):
+    _ensure_project_root()
+    from asset_forge.unreal.package_acceptance import validate_asset_forge_package as run_validation
+
+    return run_validation(package_dir)
+
+
 def import_all_manifests(export_root, report_path=None, dry_run=False):
     _ensure_project_root()
     from asset_forge.unreal.pipeline import import_all_manifests as run_all

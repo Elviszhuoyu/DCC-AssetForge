@@ -38,12 +38,25 @@ class UnrealMaterialAssetBootstrapTest(unittest.TestCase):
         self.assertIn("/AssetForge/Materials/M_AF_Props_Opaque", report["existing_assets"])
         self.assertNotIn("/AssetForge/Materials/M_AF_Props_Opaque", report["created_assets"])
 
+    def test_inspect_assets_reports_existing_and_missing_counts(self):
+        fake_unreal = FakeUnreal(existing_assets=["/AssetForge/Materials/M_AF_Props_Opaque"])
+
+        report = UnrealMaterialAssetBootstrap(unreal_module=fake_unreal).inspect_assets()
+
+        self.assertEqual(report["status"], "warning")
+        self.assertEqual(report["planned_count"], 6)
+        self.assertEqual(report["existing_count"], 1)
+        self.assertEqual(report["missing_count"], 5)
+        self.assertIn("/AssetForge/Materials/M_AF_Props_Opaque", report["existing_assets"])
+        self.assertIn("/AssetForge/Materials/M_AF_Props_Masked", report["missing_assets"])
+
     def test_dry_run_does_not_create_assets(self):
         fake_unreal = FakeUnreal()
 
         report = UnrealMaterialAssetBootstrap(unreal_module=fake_unreal).bootstrap(dry_run=True)
 
         self.assertEqual(report["status"], "skipped")
+        self.assertEqual(report["asset_validation"]["missing_count"], 6)
         self.assertEqual(fake_unreal.AssetToolsHelpers.asset_tools.assets, {})
 
 

@@ -13,11 +13,14 @@ from asset_forge.shared.material_profile_schema import (
     get_default_material_profiles,
     get_material_profile,
     get_project_material_profiles,
+    export_material_profiles_config,
+    import_material_profiles_config,
     material_profile_names,
     read_material_profiles,
     resolve_material_profile,
     validate_material_profile,
     validate_material_profiles,
+    validate_material_profiles_report,
     write_material_profiles,
 )
 
@@ -74,6 +77,29 @@ class MaterialProfileSchemaTest(unittest.TestCase):
             self.assertEqual(loaded["profiles"][0]["name"], profiles["profiles"][0]["name"])
         finally:
             shutil.rmtree(temp_dir)
+
+    def test_material_profile_config_import_and_export_reports(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            export_path = os.path.join(temp_dir, "Profiles", "material_profiles.json")
+            target_path = os.path.join(temp_dir, "Project", "material_profiles.json")
+
+            export_report = export_material_profiles_config(export_path, get_default_material_profiles())
+            import_report = import_material_profiles_config(export_path, target_path)
+
+            self.assertEqual(export_report["status"], "success")
+            self.assertEqual(import_report["status"], "success")
+            self.assertTrue(os.path.exists(target_path))
+            self.assertEqual(read_material_profiles(target_path)["profiles"][0]["name"], "Props_Opaque_PainterUE_ARM")
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_material_profile_validation_report_uses_chinese_messages(self):
+        report = validate_material_profiles_report({"profiles": [{"name": "Broken"}]})
+
+        self.assertEqual(report["status"], "error")
+        self.assertFalse(report["can_use"])
+        self.assertTrue(any("缺少字段" in issue for issue in report["issues"]))
 
     def test_config_material_profiles_file_is_valid(self):
         loaded = read_material_profiles(os.path.join("config", "material_profiles.json"))

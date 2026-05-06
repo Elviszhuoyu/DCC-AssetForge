@@ -32,12 +32,46 @@ class UnrealMaterialAssetBootstrap(object):
             "assets": assets,
         }
 
+    def inspect_assets(self):
+        """Report which default plugin material assets already exist."""
+        bootstrap_plan = self.plan()
+        assets = []
+        for asset_plan in bootstrap_plan.get("assets", []):
+            exists = self._asset_exists(asset_plan.get("path", ""))
+            assets.append(dict(asset_plan, status="existing" if exists else "missing"))
+
+        existing_assets = [asset["path"] for asset in assets if asset["status"] == "existing"]
+        missing_assets = [asset["path"] for asset in assets if asset["status"] == "missing"]
+        if self.unreal is None:
+            status = "warning"
+            message = "当前环境不可用 Unreal Python 模块，无法确认默认材质资产是否存在"
+        elif missing_assets:
+            status = "warning"
+            message = "默认材质资产不完整"
+        else:
+            status = "pass"
+            message = "默认材质资产已就绪"
+
+        return {
+            "status": status,
+            "message": message,
+            "content_mount": bootstrap_plan.get("content_mount", ""),
+            "planned_count": len(assets),
+            "existing_count": len(existing_assets),
+            "missing_count": len(missing_assets),
+            "existing_assets": existing_assets,
+            "missing_assets": missing_assets,
+            "assets": assets,
+        }
+
     def bootstrap(self, dry_run=False):
         bootstrap_plan = self.plan()
+        asset_validation = self.inspect_assets()
         report = {
             "status": "skipped" if dry_run else "failed",
             "message": "材质资产预检查完成，未创建资产" if dry_run else "材质资产 Bootstrap 失败",
             "plan": bootstrap_plan,
+            "asset_validation": asset_validation,
             "created_assets": [],
             "existing_assets": [],
             "issues": [],
@@ -53,6 +87,7 @@ class UnrealMaterialAssetBootstrap(object):
         for asset_plan in bootstrap_plan.get("assets", []):
             self._ensure_asset(asset_plan, report)
 
+        report["asset_validation"] = self.inspect_assets()
         report["status"] = "warning" if report["issues"] else "success"
         report["message"] = "默认材质资产 Bootstrap 完成" if not report["issues"] else "默认材质资产 Bootstrap 完成，但存在警告"
         return report
@@ -128,6 +163,8 @@ class UnrealMaterialAssetBootstrap(object):
         return getattr(blend_enum, enum_name, None) if enum_name else None
 
     def _asset_exists(self, asset_path):
+        if self.unreal is None:
+            return False
         library = getattr(self.unreal, "EditorAssetLibrary", None)
         if library and hasattr(library, "does_asset_exist"):
             return bool(library.does_asset_exist(asset_path))
@@ -157,6 +194,10 @@ class UnrealMaterialAssetBootstrap(object):
 
 def plan_default_material_assets():
     return UnrealMaterialAssetBootstrap().plan()
+
+
+def inspect_default_material_assets():
+    return UnrealMaterialAssetBootstrap().inspect_assets()
 
 
 def bootstrap_default_material_assets(dry_run=False):
