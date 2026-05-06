@@ -57,7 +57,7 @@ class UnrealMaterialBindingPlanner(object):
             "slots": slots,
             "texture_parameters": texture_parameters,
             "channel_mappings": channel_mappings,
-            "scalar_parameters": dict(profile.get("scalar_parameters", {})),
+            "scalar_parameters": self._scalar_parameters(profile, channel_mappings),
         }
 
     def _texture_lookup(self, texture_import_plan):
@@ -76,3 +76,16 @@ class UnrealMaterialBindingPlanner(object):
 
     def _rule_lookup(self, profile):
         return dict((rule.get("usage", ""), rule) for rule in profile.get("texture_rules", []))
+
+    def _scalar_parameters(self, profile, channel_mappings):
+        parameters = dict(profile.get("scalar_parameters", {}))
+        for usage, channels in channel_mappings.items():
+            for channel, meaning in channels.items():
+                name = self._channel_scalar_name(usage, channel, meaning)
+                parameters[name] = 1.0
+        return parameters
+
+    def _channel_scalar_name(self, usage, channel, meaning):
+        clean_usage = sanitize_unreal_asset_name(usage, "Texture")
+        clean_meaning = sanitize_unreal_asset_name(meaning, "Channel")
+        return "{0}_{1}_{2}".format(clean_usage, str(channel).upper(), clean_meaning)

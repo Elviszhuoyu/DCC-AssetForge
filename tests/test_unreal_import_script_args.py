@@ -58,6 +58,31 @@ class UnrealImportScriptArgsTest(unittest.TestCase):
         finally:
             self._remove_tree(temp_dir)
 
+    def test_validate_all_packages_flag_writes_batch_acceptance_report(self):
+        temp_dir = self._make_package()
+        report_path = os.path.join(temp_dir, "batch_acceptance_report.json")
+
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/unreal_import_manifest.py",
+                    "--validate-all-packages",
+                    temp_dir,
+                    report_path,
+                ],
+                cwd=os.getcwd(),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            report = ast.literal_eval(result.stdout.strip())
+            self.assertEqual(report["stage"], "batch_package_acceptance")
+            self.assertEqual(report["total"], 1)
+            self.assertTrue(os.path.exists(report_path))
+        finally:
+            self._remove_tree(temp_dir)
+
     def _make_package(self):
         import tempfile
 

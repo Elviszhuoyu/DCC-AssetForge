@@ -94,6 +94,11 @@ class UnrealStaticMeshImportPipeline(object):
             return report
 
         report = self.logger.success(manifest, imported_assets, preset=prepared["preset"])
+        report["static_mesh_import_policy_report"] = getattr(
+            self.importer,
+            "last_import_policy_report",
+            {"status": "skipped", "existing_mesh_strategy": "", "actions": [], "issues": []},
+        )
         self._attach_common_preflight(report, manifest)
         self._auto_bootstrap_material_assets(report)
         self._import_planned_textures(report)
@@ -205,9 +210,15 @@ class UnrealStaticMeshImportPipeline(object):
                 "last_configuration_report",
                 {"status": "skipped", "configured": [], "issues": []},
             )
+            report["texture_import_policy_report"] = getattr(
+                self.texture_importer,
+                "last_import_policy_report",
+                {"status": "skipped", "existing_texture_strategy": "", "actions": [], "issues": []},
+            )
         except Exception as exc:
             report["texture_import_issues"].append("贴图导入失败：{0}".format(exc))
             report["texture_configuration_report"] = {"status": "skipped", "configured": [], "issues": []}
+            report["texture_import_policy_report"] = {"status": "skipped", "existing_texture_strategy": "", "actions": [], "issues": []}
         return report
 
     def _create_material_instances(self, report):

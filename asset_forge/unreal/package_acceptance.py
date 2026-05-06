@@ -75,6 +75,7 @@ class UnrealPackageAcceptanceValidator(object):
             "target_path": manifest.get("target_path", ""),
             "checks": checks,
             "summary": summary,
+            "import_strategy_summary": self._import_strategy_summary(manifest, texture_plan, material_plan),
             "manifest_validation": prepared,
             "package_validation": package_validation,
             "plugin_mount_preflight": plugin_mount,
@@ -136,6 +137,43 @@ class UnrealPackageAcceptanceValidator(object):
             "warning_checks": [item["id"] for item in warnings],
         }
 
+    def _import_strategy_summary(self, manifest, texture_plan, material_plan):
+        return {
+            "existing_mesh_strategy": manifest.get("existing_mesh_strategy", "overwrite"),
+            "existing_texture_strategy": texture_plan.get("existing_texture_strategy", "overwrite"),
+            "existing_material_strategy": material_plan.get("existing_material_strategy", "reuse"),
+        }
+
 
 def validate_asset_forge_package(manifest_or_package_path, report_path=None):
     return UnrealPackageAcceptanceValidator().validate(manifest_or_package_path, report_path)
+
+
+def validate_all_asset_forge_packages(export_root, report_path=None):
+    validator = UnrealPackageAcceptanceValidator()
+    manifests = []
+    for root, _, file_names in os.walk(export_root):
+        for file_name in file_names:
+            if file_name.endswith("_manifest.json"):
+                manifests.append(os.path.join(root, file_name))
+    reports = [validator.validate(path) for path in sorted(manifests)]
+    batch_report = {
+        "version": "0.1",
+        "stage": "batch_package_acceptance",
+        "export_root": normalize_path(export_root),
+        "total": len(reports),
+        "counts": {
+            "pass": len([report for report in reports if report.get("status") == "pass"]),
+            "warning": len([report for report in reports if report.get("status") == "warning"]),
+            "error": len([report for report in reports if report.get("status") == "error"]),
+        },
+        "summary": {
+            "can_accept": all(report.get("summary", {}).get("can_accept", False) for report in reports) if reports else False,
+            "warning_count": sum(report.get("summary", {}).get("warning_count", 0) for report in reports),
+            "error_count": sum(report.get("summary", {}).get("error_count", 0) for report in reports),
+        },
+        "reports": reports,
+    }
+    if report_path:
+        write_report(report_path, batch_report)
+    return batch_report

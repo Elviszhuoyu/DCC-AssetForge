@@ -10,11 +10,18 @@ from asset_forge.unreal.property_utils import (
 from asset_forge.unreal.unreal_bridge import get_unreal
 
 
+MESH_STRATEGY_OVERWRITE = "overwrite"
+MESH_STRATEGY_REUSE = "reuse"
+MESH_STRATEGY_SKIP = "skip"
+MESH_STRATEGY_ERROR = "error"
+
+
 class UnrealStaticMeshFbxImporter(object):
     """Import Static Mesh FBX files using Unreal Python."""
 
     def __init__(self, unreal_module=None):
         self.unreal = unreal_module or get_unreal()
+        self.last_import_policy_report = self._empty_policy_report()
 
     def is_available(self):
         return self.unreal is not None
@@ -23,17 +30,62 @@ class UnrealStaticMeshFbxImporter(object):
         if not self.is_available():
             raise RuntimeError("当前环境不可用 Unreal Python 模块")
 
+        target_asset_path = self._target_asset_path(manifest)
+        strategy = manifest.get("existing_mesh_strategy", MESH_STRATEGY_OVERWRITE)
+        self.last_import_policy_report = self._empty_policy_report(strategy)
+        if self._asset_exists(target_asset_path):
+            if strategy == MESH_STRATEGY_SKIP:
+                self._record_policy(target_asset_path, strategy, "skipped", "同名 Static Mesh 已存在，按策略跳过")
+                return [target_asset_path]
+            if strategy == MESH_STRATEGY_REUSE:
+                self._record_policy(target_asset_path, strategy, "reused", "复用已有 Static Mesh")
+                return [target_asset_path]
+            if strategy == MESH_STRATEGY_ERROR:
+                raise RuntimeError("同名 Static Mesh 已存在：{0}".format(target_asset_path))
+
         unreal = self.unreal
         task = unreal.AssetImportTask()
         set_unreal_property(task, "filename", manifest["fbx_path"])
         set_unreal_property(task, "destination_path", manifest["target_path"])
         set_unreal_property(task, "automated", True)
-        set_unreal_property(task, "replace_existing", True)
+        set_unreal_property(task, "replace_existing", strategy == MESH_STRATEGY_OVERWRITE)
         set_unreal_property(task, "save", True)
         set_unreal_property(task, "options", self._build_fbx_import_ui(preset))
 
         unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
-        return list(get_unreal_property(task, "imported_object_paths", []) or [])
+        imported = list(get_unreal_property(task, "imported_object_paths", []) or [])
+        self._record_policy(target_asset_path, strategy, "imported", "Static Mesh 已执行 FBX 导入")
+        return imported
+
+    def _target_asset_path(self, manifest):
+        return "{0}/{1}".format(manifest.get("target_path", "").rstrip("/"), manifest.get("asset_name", ""))
+
+    def _asset_exists(self, asset_path):
+        library = getattr(self.unreal, "EditorAssetLibrary", None)
+        if library and hasattr(library, "does_asset_exist"):
+            return bool(library.does_asset_exist(asset_path))
+        if library and hasattr(library, "load_asset"):
+            return bool(library.load_asset(asset_path))
+        return False
+
+    def _record_policy(self, target_asset_path, strategy, action, message):
+        self.last_import_policy_report["actions"].append(
+            {
+                "target_asset_path": target_asset_path,
+                "strategy": strategy,
+                "action": action,
+                "message": message,
+            }
+        )
+        self.last_import_policy_report["status"] = "success"
+
+    def _empty_policy_report(self, strategy="overwrite"):
+        return {
+            "status": "skipped",
+            "existing_mesh_strategy": strategy,
+            "actions": [],
+            "issues": [],
+        }
 
     def _build_fbx_import_ui(self, preset):
         unreal = self.unreal

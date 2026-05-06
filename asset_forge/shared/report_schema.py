@@ -28,9 +28,11 @@ def summarize_pipeline(export_report=None, import_report=None):
     validation = export_report.get("validation", {})
     texture_folder_scan = export_report.get("texture_folder_scan", {})
     export_material_profile = export_report.get("material_profile_validation", {})
+    mesh_policy = import_report.get("static_mesh_import_policy_report", {})
     plugin_content = import_report.get("plugin_content_validation", {})
     material_profile_validation = import_report.get("material_profile_validation", {})
     texture_plan = import_report.get("texture_import_plan", {})
+    texture_policy = import_report.get("texture_import_policy_report", {})
     texture_configuration = import_report.get("texture_configuration_report", {})
     material_plan = import_report.get("material_binding_plan", {})
     material_policy = import_report.get("material_instance_policy_report", {})
@@ -52,7 +54,9 @@ def summarize_pipeline(export_report=None, import_report=None):
 
     _append_checks(plugin_content.get("checks", []), "plugin_content", warnings, errors)
     _append_checks(material_profile_validation.get("checks", []), "material_profile", warnings, errors)
+    warnings.extend(_plain_messages("static_mesh_import_policy", mesh_policy.get("issues", [])))
     warnings.extend(_plain_messages("texture_import", import_report.get("texture_import_issues", [])))
+    warnings.extend(_plain_messages("texture_import_policy", texture_policy.get("issues", [])))
     warnings.extend(_plain_messages("texture_configuration", texture_configuration.get("issues", [])))
     warnings.extend(_plain_messages("material_instance", import_report.get("material_instance_issues", [])))
     warnings.extend(_plain_messages("material_instance_policy", material_policy.get("issues", [])))
@@ -68,8 +72,12 @@ def summarize_pipeline(export_report=None, import_report=None):
         "import_status": import_report.get("status", ""),
         "plugin_content_status": plugin_content.get("status", ""),
         "material_profile_status": material_profile_validation.get("status", ""),
+        "static_mesh_import_policy_status": mesh_policy.get("status", ""),
+        "static_mesh_import_policy_action_count": len(mesh_policy.get("actions", [])),
         "texture_import_count": texture_plan.get("count", 0),
         "imported_texture_count": len(import_report.get("imported_textures", [])),
+        "texture_import_policy_status": texture_policy.get("status", ""),
+        "texture_import_policy_action_count": len(texture_policy.get("actions", [])),
         "texture_configuration_status": texture_configuration.get("status", ""),
         "configured_texture_count": len(texture_configuration.get("configured", [])),
         "material_plan_count": material_plan.get("count", 0),

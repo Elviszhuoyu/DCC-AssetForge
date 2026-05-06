@@ -52,6 +52,13 @@ def validate_asset_forge_package(package_dir, report_path=None):
     return run_validation(package_dir, report_path)
 
 
+def validate_all_asset_forge_packages(export_root, report_path=None):
+    _ensure_project_root()
+    from asset_forge.unreal.package_acceptance import validate_all_asset_forge_packages as run_validation
+
+    return run_validation(export_root, report_path)
+
+
 def import_all_manifests(export_root, report_path=None, dry_run=False):
     _ensure_project_root()
     from asset_forge.unreal.pipeline import import_all_manifests as run_all
@@ -82,7 +89,7 @@ def launch_asset_forge_widget():
 
 if __name__ == "__main__":
     _ensure_project_root()
-    flags = {"--dry-run", "--latest", "--all", "--package", "--auto-materials", "--validate-package"}
+    flags = {"--dry-run", "--latest", "--all", "--package", "--auto-materials", "--validate-package", "--validate-all-packages"}
     args = [item for item in sys.argv[1:] if item not in flags]
     dry_run = "--dry-run" in sys.argv[1:]
     latest = "--latest" in sys.argv[1:]
@@ -90,9 +97,12 @@ if __name__ == "__main__":
     package = "--package" in sys.argv[1:]
     auto_materials = "--auto-materials" in sys.argv[1:]
     validate_package = "--validate-package" in sys.argv[1:]
+    validate_all_packages = "--validate-all-packages" in sys.argv[1:]
     if len(args) < 1:
         raise RuntimeError("Usage: unreal_import_manifest.py <manifest_path_or_export_root> [log_path] [--dry-run] [--latest] [--all] [--package]")
-    if validate_package:
+    if validate_all_packages:
+        report = validate_all_asset_forge_packages(args[0], args[1] if len(args) > 1 else None)
+    elif validate_package:
         report = validate_asset_forge_package(args[0], args[1] if len(args) > 1 else None)
     elif import_all:
         report = import_all_manifests(args[0], args[1] if len(args) > 1 else None, dry_run)

@@ -16,16 +16,18 @@ class UnrealTextureImportPlanner(object):
         profile = resolve_material_profile(material_profile or manifest.get("material_profile"))
         target_dir = self._target_texture_dir(manifest, profile)
         rule_lookup = self._rule_lookup(profile)
+        existing_strategy = manifest.get("existing_texture_strategy", profile.get("existing_texture_strategy", "overwrite"))
         planned_textures = []
         for texture in manifest.get("textures", []):
             if not self._is_packaged_texture(texture):
                 continue
-            planned_textures.append(self._texture_plan(texture, target_dir, rule_lookup.get(texture.get("usage", ""))))
+            planned_textures.append(self._texture_plan(texture, target_dir, rule_lookup.get(texture.get("usage", "")), existing_strategy))
         planned_textures = self._dedupe_asset_names(planned_textures)
 
         return {
             "target_dir": target_dir,
             "profile": profile.get("name", ""),
+            "existing_texture_strategy": existing_strategy,
             "count": len(planned_textures),
             "textures": planned_textures,
         }
@@ -34,7 +36,7 @@ class UnrealTextureImportPlanner(object):
         package_path = texture.get("package_path", "")
         return bool(texture.get("copied") and package_path and os.path.exists(package_path))
 
-    def _texture_plan(self, texture, target_dir, rule=None):
+    def _texture_plan(self, texture, target_dir, rule=None, existing_strategy="overwrite"):
         rule = rule or {}
         package_path = normalize_path(texture.get("package_path", ""))
         asset_name = sanitize_unreal_asset_name(os.path.splitext(os.path.basename(package_path))[0], "T_Texture")
@@ -43,6 +45,7 @@ class UnrealTextureImportPlanner(object):
             "target_dir": target_dir,
             "target_asset_path": "{0}/{1}".format(target_dir, asset_name),
             "asset_name": asset_name,
+            "existing_texture_strategy": texture.get("existing_texture_strategy", existing_strategy),
             "usage": texture.get("usage", "unknown"),
             "parameter": rule.get("parameter", texture.get("parameter", "")),
             "srgb": rule.get("srgb", texture.get("srgb")),

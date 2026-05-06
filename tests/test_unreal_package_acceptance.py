@@ -8,7 +8,7 @@ import unittest
 from asset_forge.maya.export_package import build_export_package
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
-from asset_forge.unreal.package_acceptance import UnrealPackageAcceptanceValidator
+from asset_forge.unreal.package_acceptance import UnrealPackageAcceptanceValidator, validate_all_asset_forge_packages
 
 
 class UnrealPackageAcceptanceTest(unittest.TestCase):
@@ -49,6 +49,9 @@ class UnrealPackageAcceptanceTest(unittest.TestCase):
         self.assertIn("packed_channel_validation", report)
         self.assertTrue(report["summary"]["can_accept"])
         self.assertIn("material_profile", report["summary"]["warning_checks"])
+        self.assertEqual(report["import_strategy_summary"]["existing_mesh_strategy"], "overwrite")
+        self.assertEqual(report["import_strategy_summary"]["existing_texture_strategy"], "overwrite")
+        self.assertEqual(report["import_strategy_summary"]["existing_material_strategy"], "reuse")
 
     def test_acceptance_report_can_be_written_to_disk(self):
         report_path = os.path.join(self.temp_dir, "acceptance_report.json")
@@ -60,6 +63,15 @@ class UnrealPackageAcceptanceTest(unittest.TestCase):
         report = validator.validate(self.package["package_dir"], report_path)
 
         self.assertEqual(report["stage"], "package_acceptance")
+        self.assertTrue(os.path.exists(report_path))
+
+    def test_batch_acceptance_validates_every_manifest_under_root(self):
+        report_path = os.path.join(self.temp_dir, "batch_acceptance_report.json")
+
+        report = validate_all_asset_forge_packages(self.temp_dir, report_path)
+
+        self.assertEqual(report["stage"], "batch_package_acceptance")
+        self.assertEqual(report["total"], 1)
         self.assertTrue(os.path.exists(report_path))
 
     def test_acceptance_report_blocks_missing_manifest(self):

@@ -356,6 +356,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["material_binding_plan"]["existing_material_strategy"], "skip")
         self.assertEqual(report["texture_import_plan"]["textures"][0]["channels"]["r"], "ao")
         self.assertEqual(report["material_binding_plan"]["materials"][0]["channel_mappings"]["packed_arm"]["g"], "roughness")
+        self.assertEqual(report["material_binding_plan"]["materials"][0]["scalar_parameters"]["packed_arm_R_ao"], 1.0)
 
     def test_material_profile_selects_masked_parent_and_parameters(self):
         texture_path = self._write_packaged_texture()
@@ -420,6 +421,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["imported_textures"], ["/Game/Props/Textures/T_Crate_BaseColor.T_Crate_BaseColor"])
         self.assertEqual(texture_importer.plans[0]["count"], 1)
         self.assertEqual(report["texture_configuration_report"]["status"], "success")
+        self.assertEqual(report["texture_import_policy_report"]["status"], "success")
 
     def test_pipeline_creates_material_instances_without_blocking_mesh(self):
         texture_path = self._write_packaged_texture()
@@ -766,7 +768,38 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(texture.compression_settings, "default")
         self.assertEqual(importer.last_configuration_report["status"], "success")
         self.assertEqual(importer.last_configuration_report["configured"][0]["usage"], "base_color")
+        self.assertEqual(importer.last_import_policy_report["actions"][0]["action"], "queued")
         self.assertIn("/Game/Props/Textures/T_Crate_BaseColor", fake_unreal.EditorAssetLibrary.saved)
+
+    def test_texture_importer_reuses_existing_texture_when_requested(self):
+        fake_unreal = FakeUnreal()
+        fake_unreal.AssetToolsHelpers.asset_tools = FakeAssetTools()
+        existing = FakeTexture()
+        fake_unreal.EditorAssetLibrary.assets = {"/Game/Props/Textures/T_Crate_BaseColor": existing}
+        fake_unreal.EditorAssetLibrary.saved = []
+        plan = {
+            "existing_texture_strategy": "reuse",
+            "textures": [
+                {
+                    "source_path": "C:/Exports/SM_Crate_01/Textures/T_Crate_BaseColor.png",
+                    "target_dir": "/Game/Props/Textures",
+                    "asset_name": "T_Crate_BaseColor",
+                    "target_asset_path": "/Game/Props/Textures/T_Crate_BaseColor",
+                    "existing_texture_strategy": "reuse",
+                    "usage": "base_color",
+                    "srgb": True,
+                    "compression": "default",
+                }
+            ],
+        }
+        importer = UnrealTextureImporter(fake_unreal)
+
+        imported = importer.import_textures(plan)
+
+        self.assertEqual(imported, ["/Game/Props/Textures/T_Crate_BaseColor"])
+        self.assertEqual(fake_unreal.AssetToolsHelpers.asset_tools.tasks, [])
+        self.assertTrue(existing.srgb)
+        self.assertEqual(importer.last_import_policy_report["actions"][0]["action"], "reused")
 
     def test_texture_import_error_does_not_fail_static_mesh_import(self):
         texture_path = self._write_packaged_texture()
@@ -822,6 +855,19 @@ class Phase2UnrealImportTest(unittest.TestCase):
             task.options.static_mesh_import_data.normal_import_method,
             "normals_and_tangents",
         )
+
+    def test_fbx_importer_reuses_existing_mesh_when_requested(self):
+        prepared = prepare_manifest_for_import(self.manifest_path)
+        manifest = dict(prepared["manifest"])
+        manifest["existing_mesh_strategy"] = "reuse"
+        fake_unreal = FakeUnreal()
+        fake_unreal.AssetToolsHelpers.asset_tools = FakeAssetTools()
+        fake_unreal.EditorAssetLibrary.assets = {"/Game/Props/SM_Crate_01": FakeStaticMesh()}
+
+        imported = UnrealStaticMeshFbxImporter(fake_unreal).import_static_mesh(manifest, prepared["preset"])
+
+        self.assertEqual(imported, ["/Game/Props/SM_Crate_01"])
+        self.assertEqual(fake_unreal.AssetToolsHelpers.asset_tools.tasks, [])
 
     def test_invalid_target_path_blocks_import(self):
         bad_manifest_path = os.path.join(self.temp_dir, "bad_manifest.json")
@@ -934,6 +980,7 @@ class FakeTextureImporter(object):
     def __init__(self, imported):
         self.imported = imported
         self.plans = []
+        self.last_import_policy_report = {"status": "success", "existing_texture_strategy": "overwrite", "actions": [], "issues": []}
 
     def import_textures(self, texture_import_plan):
         self.plans.append(texture_import_plan)
