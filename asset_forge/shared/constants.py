@@ -7,12 +7,14 @@ ASSET_TYPE_SKELETAL_MESH = "skeletal_mesh"
 ASSET_TYPE_ANIMATION = "animation"
 ASSET_TYPE_MORPH_TARGET = "morph_target"
 ASSET_TYPE_PROPS = "props"
+ASSET_TYPE_ENVIRONMENT = "environment"
 ASSET_TYPE_CHARACTER = "character"
 ASSET_TYPE_FX = "fx"
 ASSET_TYPE_ANIMATE = "animate"
 
 SOURCE_DCC_MAYA = "maya"
 SOURCE_DCC_BLENDER = "blender"
+SOURCE_DCC_3DS_MAX = "3ds_max"
 
 TARGET_ENGINE_UNREAL = "unreal"
 

@@ -2,7 +2,7 @@
 
 from __future__ import absolute_import
 
-from asset_forge.shared.constants import SOURCE_DCC_BLENDER, SOURCE_DCC_MAYA, TARGET_ENGINE_UNREAL
+from asset_forge.shared.constants import SOURCE_DCC_3DS_MAX, SOURCE_DCC_BLENDER, SOURCE_DCC_MAYA, TARGET_ENGINE_UNREAL
 
 
 HOST_INTEGRATION_VERSION = "0.1"
@@ -38,6 +38,17 @@ def get_host_integration_contracts():
                 "adapter_scope": ["selection", "scan_asset", "export_fbx"],
                 "adapter_is_package": False,
                 "status": "planned",
+            },
+            {
+                "host": SOURCE_DCC_3DS_MAX,
+                "package_type": "3ds_max_script_package",
+                "official_descriptor": "package manifest",
+                "descriptor_path": "",
+                "runtime_api": ["pymxs"],
+                "expected_package_roots": ["integrations/3ds_max"],
+                "adapter_scope": ["selection", "scan_asset", "export_fbx"],
+                "adapter_is_package": False,
+                "status": "roadmap",
             },
             {
                 "host": TARGET_ENGINE_UNREAL,

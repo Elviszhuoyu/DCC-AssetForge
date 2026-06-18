@@ -2,7 +2,7 @@ from __future__ import absolute_import
 
 import unittest
 
-from asset_forge.shared.constants import SOURCE_DCC_BLENDER, SOURCE_DCC_MAYA, TARGET_ENGINE_UNREAL
+from asset_forge.shared.constants import SOURCE_DCC_3DS_MAX, SOURCE_DCC_BLENDER, SOURCE_DCC_MAYA, TARGET_ENGINE_UNREAL
 from asset_forge.shared.host_integration_schema import (
     get_host_integration_contract,
     get_host_integration_contracts,
@@ -34,6 +34,14 @@ class HostIntegrationSchemaTest(unittest.TestCase):
         self.assertEqual(blender["descriptor_path"], "integrations/blender/asset_forge_extension/blender_manifest.toml")
         self.assertEqual(blender["status"], "planned")
         self.assertFalse(blender["adapter_is_package"])
+
+    def test_3ds_max_is_roadmap_host_contract(self):
+        max_contract = get_host_integration_contract(SOURCE_DCC_3DS_MAX)
+
+        self.assertEqual(max_contract["package_type"], "3ds_max_script_package")
+        self.assertEqual(max_contract["runtime_api"], ["pymxs"])
+        self.assertEqual(max_contract["status"], "roadmap")
+        self.assertFalse(max_contract["adapter_is_package"])
 
     def test_unreal_plugin_contract_owns_assetforge_mount(self):
         unreal = get_host_integration_contract(TARGET_ENGINE_UNREAL)
