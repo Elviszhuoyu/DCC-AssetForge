@@ -28,13 +28,16 @@ def get_blender_extension_package_plan():
         "required_entry_functions": ["register", "unregister"],
         "blender_version_min": "4.2.0",
         "status": "packaging_gate",
+        "support": "roadmap",
+        "real_exporter": False,
+        "roadmap": "Extension package contract only; real Blender selection, scan, and FBX export are not implemented in the TA portfolio MVP.",
     }
 
 
 def read_blender_manifest(path=BLENDER_MANIFEST):
     """Read blender_manifest.toml."""
     if tomllib is None:
-        raise RuntimeError("tomllib is required to read blender_manifest.toml")
+        return _read_simple_toml(path)
     with open(path, "rb") as stream:
         return tomllib.load(stream)
 
@@ -73,3 +76,20 @@ def _load_entry_module(path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _read_simple_toml(path):
+    """Small fallback for Python 3.9 test hosts; supports this flat manifest only."""
+    data = {}
+    with open(path, "r", encoding="utf-8") as stream:
+        for raw_line in stream:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = [item.strip() for item in line.split("=", 1)]
+            if value.startswith("[") and value.endswith("]"):
+                items = [item.strip().strip('"') for item in value[1:-1].split(",") if item.strip()]
+                data[key] = items
+            else:
+                data[key] = value.strip('"')
+    return data

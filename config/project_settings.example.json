@@ -1,0 +1,21 @@
+{
+  "version": "0.1",
+  "export_root": "D:/AssetForge/Exports",
+  "texture_root": "D:/AssetForge/Textures",
+  "triangle_budget": 50000,
+  "mesh_prefix": "SM_",
+  "texture_prefix": "T_",
+  "texture_set_token": "",
+  "ue_target_path": "/Game/Props",
+  "target_platform": "high_end_mobile",
+  "material_profile": "Props_Opaque_PainterUE_ARM",
+  "virtual_texture_policy": "project_default",
+  "texture_streaming_policy": "project_default",
+  "texture_group": "project_default",
+  "nanite_policy": "project_default",
+  "static_mesh_lod_group": "project_default",
+  "static_mesh_lod_import_policy": "import_existing",
+  "build_reversed_index_buffer": "report_only",
+  "generate_lightmap_uvs": "report_only",
+  "collision_complexity": "report_only"
+}

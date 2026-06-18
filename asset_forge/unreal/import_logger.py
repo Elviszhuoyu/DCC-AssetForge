@@ -4,12 +4,15 @@ from __future__ import absolute_import
 
 import io
 import json
+import os
 
 from asset_forge.shared.constants import (
     UNREAL_IMPORT_STATUS_FAILED,
     UNREAL_IMPORT_STATUS_SKIPPED,
     UNREAL_IMPORT_STATUS_SUCCESS,
 )
+from asset_forge.shared.manifest_schema import ASSET_FORGE_SCHEMA_VERSION
+from asset_forge.shared.report_schema import REPORT_VERSION, normalize_report_value
 
 
 class UnrealImportLogger(object):
@@ -27,7 +30,11 @@ class UnrealImportLogger(object):
     def _report(self, status, manifest, imported_assets, issues, message, preset=None):
         preset = preset or {}
         return {
+            "version": REPORT_VERSION,
+            "schema_version": ASSET_FORGE_SCHEMA_VERSION,
+            "asset_forge_schema_version": ASSET_FORGE_SCHEMA_VERSION,
             "status": status,
+            "stage": "unreal_import",
             "message": message,
             "asset_name": manifest.get("asset_name", ""),
             "asset_type": manifest.get("asset_type", ""),
@@ -40,12 +47,17 @@ class UnrealImportLogger(object):
             "resolved_preset": preset,
             "materials": manifest.get("materials", []),
             "textures": manifest.get("textures", []),
+            "texture_import_policy": manifest.get("texture_import_policy", {}),
+            "static_mesh_import_policy": manifest.get("static_mesh_import_policy", {}),
             "imported_assets": imported_assets,
             "issues": issues,
         }
 
     def write(self, path, report):
-        with io.open(path, "w", encoding="utf-8") as stream:
+        report = normalize_report_value(report)
+        temp_path = path + ".tmp"
+        with io.open(temp_path, "w", encoding="utf-8") as stream:
             stream.write(json.dumps(report, ensure_ascii=False, indent=2))
             stream.write("\n")
+        os.replace(temp_path, path)
         return path

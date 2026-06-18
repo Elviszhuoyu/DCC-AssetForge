@@ -26,5 +26,14 @@ class MayaAdapter(DccAdapter):
     def scan_asset(self, asset_root, rules=None):
         return self.scanner.scan(asset_root)
 
+    def scan_assets(self, asset_roots, rules=None):
+        return self.scanner.scan_many(asset_roots)
+
+    def rename_with_prefix(self, asset_roots, prefix="SM_"):
+        return self.scanner.rename_with_prefix(asset_roots, prefix)
+
+    def rename_mesh_transforms_with_prefix(self, asset_roots, prefix="SM_"):
+        return self.scanner.rename_mesh_transforms_with_prefix(asset_roots, prefix)
+
     def export_fbx(self, asset_root, output_path, preset=None):
         return self.exporter.export_asset(asset_root, output_path, preset)

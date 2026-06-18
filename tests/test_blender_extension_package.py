@@ -26,6 +26,9 @@ class BlenderExtensionPackageTest(unittest.TestCase):
         plan = get_blender_extension_package_plan()
 
         self.assertEqual(plan["status"], "packaging_gate")
+        self.assertEqual(plan["support"], "roadmap")
+        self.assertFalse(plan["real_exporter"])
+        self.assertIn("contract only", plan["roadmap"])
         self.assertEqual(plan["required_entry_functions"], ["register", "unregister"])
 
 

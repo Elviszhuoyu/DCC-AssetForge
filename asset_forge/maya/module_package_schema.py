@@ -25,7 +25,7 @@ def get_maya_module_package_plan():
             os.path.join("integrations", "maya", "plug-ins"),
         ],
         "entry_script": os.path.join("integrations", "maya", "scripts", "asset_forge_maya.py"),
-        "entry_functions": ["show", "scan_selection", "export_selected"],
+        "entry_functions": ["show", "reload_and_show", "scan_selection", "export_selected"],
     }
 
 

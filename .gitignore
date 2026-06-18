@@ -21,3 +21,14 @@ env/
 Thumbs.db
 Desktop.ini
 
+# Local generated evidence, scratch spaces, and manual test assets.
+# Keep useful reports/screenshots locally, but do not commit them by default.
+AssetForgeReports/
+.tmp/
+offline_static_prop_sample/
+测试/
+
+# One-off editor rescue/probe scripts are useful locally, but must not drift
+# into the reusable plugin runtime or test suite without being parameterized.
+tools/ue55_*.py
+tools/ue56_*.py

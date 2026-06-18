@@ -39,6 +39,20 @@ class MayaFbxExporter(object):
         self.mel.eval('FBXExport -f "{0}" -s'.format(self._maya_path(output_path)))
         return output_path
 
+    def export_assets(self, asset_roots, output_path, preset=None):
+        if not self.is_available():
+            raise RuntimeError("当前环境不可用 maya.cmds 或 maya.mel")
+        roots = list(asset_roots or [])
+        if not roots:
+            raise RuntimeError("没有选中可导出的资产")
+
+        self._ensure_fbx_plugin()
+        self._ensure_parent_dir(output_path)
+        self.cmds.select(roots, replace=True)
+        self._apply_preset(preset or DEFAULT_FBX_EXPORT_PRESET)
+        self.mel.eval('FBXExport -f "{0}" -s'.format(self._maya_path(output_path)))
+        return output_path
+
     def export_selected(self, output_path, preset=None):
         if not self.is_available():
             raise RuntimeError("当前环境不可用 maya.cmds 或 maya.mel")

@@ -5,6 +5,7 @@ from __future__ import absolute_import
 import os
 
 from asset_forge.shared.manifest_schema import read_manifest, validate_manifest
+from asset_forge.shared.unreal_path import sanitize_unreal_package_path
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
 
 
@@ -46,8 +47,11 @@ class UnrealManifestReader(object):
 
         if not target_path:
             issues.append("manifest 缺少 target_path")
-        elif not target_path.startswith("/Game"):
-            issues.append("target_path 必须以 /Game 开头：{0}".format(target_path))
+        else:
+            try:
+                sanitize_unreal_package_path(target_path)
+            except ValueError as exc:
+                issues.append(str(exc))
 
         return issues
 
@@ -56,6 +60,12 @@ class UnrealManifestReader(object):
         fbx_path = normalized.get("fbx_path")
         if fbx_path:
             normalized["fbx_path"] = os.path.abspath(fbx_path).replace("\\", "/")
+        target_path = normalized.get("target_path")
+        if target_path:
+            try:
+                normalized["target_path"] = sanitize_unreal_package_path(target_path)
+            except ValueError:
+                normalized["target_path"] = str(target_path or "").replace("\\", "/").strip()
         return normalized
 
 

@@ -5,7 +5,7 @@ import shutil
 import tempfile
 import unittest
 
-from asset_forge.shared.constants import ASSET_TYPE_PROPS, RENDER_MODE_OPAQUE
+from asset_forge.shared.constants import ASSET_TYPE_CHARACTER, ASSET_TYPE_ENVIRONMENT, ASSET_TYPE_FX, ASSET_TYPE_PROPS, RENDER_MODE_ADDITIVE, RENDER_MODE_OPAQUE
 from asset_forge.shared.manifest_schema import create_manifest, validate_manifest
 from asset_forge.shared.material_profile_schema import (
     create_material_profile,
@@ -34,6 +34,9 @@ class MaterialProfileSchemaTest(unittest.TestCase):
         self.assertIn("Props_Opaque_PainterUE_ARM", profile_names)
         self.assertIn("Props_Masked_PainterUE_ARM", profile_names)
         self.assertIn("Props_Translucent_PainterUE_ARM", profile_names)
+        self.assertIn("Environment_Opaque_PainterUE_ARM", profile_names)
+        self.assertIn("Character_Basic_PainterUE_ARM", profile_names)
+        self.assertIn("Emissive_Surface_PainterUE", profile_names)
 
     def test_props_opaque_profile_contains_painter_ue_arm_rules(self):
         profile = get_default_material_profile("Props_Opaque_PainterUE_ARM")
@@ -41,13 +44,56 @@ class MaterialProfileSchemaTest(unittest.TestCase):
 
         self.assertEqual(profile["asset_family"], ASSET_TYPE_PROPS)
         self.assertEqual(profile["render_mode"], RENDER_MODE_OPAQUE)
-        self.assertEqual(profile["master_material"], "/AssetForge/Materials/M_AF_Props_Opaque")
+        self.assertEqual(profile["master_material"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(profile["master_family"], "MM_Surface_PBR")
+        self.assertEqual(profile["material_variants"]["opaque"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(profile["material_variants"]["dirty_wear_vt"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(profile["parameter_api_mapping"]["BaseColor"], "Base Color")
         self.assertTrue(profile["supports"]["emissive"])
         self.assertFalse(profile["supports"]["opacity_mask"])
+        self.assertTrue(profile["supports"]["imperfection_mask"])
+        self.assertFalse(profile["supports"]["pom"])
+        self.assertIn("emissive", rules_by_usage)
+        self.assertIn("height", rules_by_usage)
+        self.assertNotIn("EmissiveIntensity", profile["scalar_parameters"])
+        self.assertNotIn("EmissiveTint", profile["vector_parameters"])
         self.assertEqual(rules_by_usage["packed_arm"]["channels"]["r"], "ao")
         self.assertEqual(rules_by_usage["packed_arm"]["channels"]["g"], "roughness")
         self.assertEqual(rules_by_usage["packed_arm"]["channels"]["b"], "metallic")
         self.assertFalse(rules_by_usage["normal"]["srgb"])
+        self.assertEqual(rules_by_usage["imperfection_mask"]["parameter"], "ImperfectionMask")
+        self.assertFalse(rules_by_usage["imperfection_mask"]["required"])
+        self.assertEqual(rules_by_usage["imperfection_mask"]["channels"]["g"], "edge_wear")
+        self.assertEqual(profile["scalar_parameters"]["RoughnessMin"], 0.05)
+        self.assertEqual(profile["scalar_parameters"]["RoughnessMax"], 0.95)
+        self.assertIn("dirty_wear", profile["material_variants"])
+        self.assertEqual(profile["parameter_api_mapping"]["ImperfectionMask"], "Imperfection Mask")
+
+    def test_masked_profiles_allow_base_color_alpha_without_separate_mask(self):
+        props = get_default_material_profile("Props_Masked_PainterUE_ARM")
+        environment = get_default_material_profile("Environment_Masked_PainterUE_ARM")
+
+        self.assertFalse(dict((rule["usage"], rule) for rule in props["texture_rules"])["opacity_mask"]["required"])
+        self.assertFalse(dict((rule["usage"], rule) for rule in environment["texture_rules"])["opacity_mask"]["required"])
+
+    def test_default_profiles_cover_environment_character_and_emissive_surface(self):
+        environment = get_default_material_profile("Environment_Opaque_PainterUE_ARM")
+        character = get_default_material_profile("Character_Basic_PainterUE_ARM")
+        emissive = get_default_material_profile("Emissive_Surface_PainterUE")
+        translucent = get_default_material_profile("Props_Translucent_PainterUE_ARM")
+
+        self.assertEqual(environment["asset_family"], ASSET_TYPE_ENVIRONMENT)
+        self.assertEqual(environment["master_material"], "/AssetForge/Materials/M_AF_Environment_Master")
+        self.assertFalse(environment["supports"]["pom"])
+        self.assertEqual(character["asset_family"], ASSET_TYPE_CHARACTER)
+        self.assertEqual(character["master_material"], "/AssetForge/Materials/M_AF_Character_Master")
+        self.assertIn("SubsurfaceTint", character["vector_parameters"])
+        self.assertEqual(emissive["asset_family"], ASSET_TYPE_FX)
+        self.assertEqual(emissive["render_mode"], RENDER_MODE_ADDITIVE)
+        self.assertEqual(emissive["master_material"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertIn("EmissiveTint", emissive["vector_parameters"])
+        self.assertEqual(translucent["enabled_material_variants"], ["glass", "translucent"])
+        self.assertFalse(translucent["default_import_profile"])
 
     def test_profile_validation_reports_missing_fields(self):
         profile = create_material_profile(
@@ -103,9 +149,18 @@ class MaterialProfileSchemaTest(unittest.TestCase):
 
     def test_config_material_profiles_file_is_valid(self):
         loaded = read_material_profiles(os.path.join("config", "material_profiles.json"))
+        opaque = get_material_profile("Props_Opaque_PainterUE_ARM", loaded)
+        rules_by_usage = dict((rule["usage"], rule) for rule in opaque["texture_rules"])
 
         self.assertEqual(validate_material_profiles(loaded), [])
         self.assertEqual(loaded["profiles"][0]["name"], "Props_Opaque_PainterUE_ARM")
+        self.assertEqual(opaque["master_material"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(opaque["master_family"], "MM_Surface_PBR")
+        self.assertIn("imperfection_mask", rules_by_usage)
+        self.assertEqual(rules_by_usage["imperfection_mask"]["parameter"], "ImperfectionMask")
+        self.assertIn("material_variants", opaque)
+        self.assertIn("parameter_api_mapping", opaque)
+        self.assertEqual(opaque["parameter_api_mapping"]["RoughnessMin"], "Roughness Min")
 
     def test_project_material_profiles_load_from_config_file(self):
         profiles = get_project_material_profiles(os.path.join("config", "material_profiles.json"))

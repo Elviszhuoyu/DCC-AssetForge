@@ -2,6 +2,9 @@
 
 from __future__ import absolute_import
 
+import json
+import os
+
 from asset_forge.shared.constants import (
     ASSET_TYPE_STATIC_PROP,
     SEVERITY_ERROR,
@@ -128,3 +131,27 @@ def get_default_rules():
                 copied[key] = value
         rules[asset_type] = copied
     return rules
+
+
+def get_project_rules(config_path=None):
+    """Return project rules from config/project_rules.json when available."""
+    path = config_path or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "config", "project_rules.json"))
+    if not os.path.exists(path):
+        return get_default_rules()
+    with open(path, "r", encoding="utf-8") as stream:
+        data = json.load(stream)
+    return _merge_rules(get_default_rules(), data)
+
+
+def _merge_rules(default_rules, override_rules):
+    result = get_default_rules()
+    for asset_type, override in (override_rules or {}).items():
+        base = result.setdefault(asset_type, {})
+        for key, value in override.items():
+            if isinstance(value, dict) and isinstance(base.get(key), dict):
+                merged = dict(base[key])
+                merged.update(value)
+                base[key] = merged
+            else:
+                base[key] = value
+    return result

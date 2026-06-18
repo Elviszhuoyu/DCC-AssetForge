@@ -6,6 +6,7 @@ import os
 import shutil
 
 from asset_forge.shared.path_utils import ensure_dir, normalize_path
+from asset_forge.shared.texture_metadata import apply_texture_metadata
 
 
 class MayaTexturePackager(object):
@@ -30,17 +31,12 @@ class MayaTexturePackager(object):
         if not source_path or not os.path.exists(source_path):
             return texture
 
-        destination = self._unique_destination(texture_dir, os.path.basename(source_path))
-        shutil.copy2(source_path, destination)
+        destination = self._destination(texture_dir, os.path.basename(source_path))
+        if normalize_path(source_path) != normalize_path(destination):
+            shutil.copy2(source_path, destination)
         texture["package_path"] = normalize_path(destination)
         texture["copied"] = True
-        return texture
+        return apply_texture_metadata(texture, destination)
 
-    def _unique_destination(self, texture_dir, file_name):
-        base, extension = os.path.splitext(file_name)
-        destination = os.path.join(texture_dir, file_name)
-        index = 1
-        while os.path.exists(destination):
-            destination = os.path.join(texture_dir, "{0}_{1}{2}".format(base, index, extension))
-            index += 1
-        return destination
+    def _destination(self, texture_dir, file_name):
+        return os.path.join(texture_dir, file_name)

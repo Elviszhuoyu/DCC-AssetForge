@@ -7,13 +7,16 @@ schemas.
 from __future__ import absolute_import
 
 from asset_forge.shared.constants import SOURCE_DCC_BLENDER
-from asset_forge.shared.dcc_adapter import DccAdapter
+from asset_forge.shared.dcc_adapter import DccAdapter, get_dcc_support_contract
 
 
 class BlenderAdapter(DccAdapter):
     """Future Blender implementation of the DCC adapter contract."""
 
     dcc_name = SOURCE_DCC_BLENDER
+
+    def support_contract(self):
+        return get_dcc_support_contract(self.dcc_name)
 
     def is_available(self):
         try:

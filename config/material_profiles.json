@@ -7,14 +7,23 @@
       "display_name": "Props Opaque - Painter UE ARM",
       "asset_family": "props",
       "render_mode": "opaque",
-      "master_material": "/AssetForge/Materials/M_AF_Props_Opaque",
+      "master_material": "/AssetForge/Materials/M_AF_Props_Master",
       "material_instance_dir": "{target_path}/Materials",
       "texture_dir": "{target_path}/Textures",
       "texture_rules": [
         {
           "usage": "base_color",
           "parameter": "BaseColor",
-          "suffixes": ["_BaseColor", "_BC", "_Albedo"],
+          "suffixes": [
+            "_BaseColor",
+            "_Base Color",
+            "_Base_Color",
+            "_BC",
+            "_B",
+            "_Color",
+            "_Albedo",
+            "_Diffuse"
+          ],
           "srgb": true,
           "compression": "default",
           "required": true
@@ -22,7 +31,11 @@
         {
           "usage": "normal",
           "parameter": "Normal",
-          "suffixes": ["_Normal", "_N"],
+          "suffixes": [
+            "_Normal",
+            "_NormalMap",
+            "_N"
+          ],
           "srgb": false,
           "compression": "normalmap",
           "required": true
@@ -30,7 +43,12 @@
         {
           "usage": "packed_arm",
           "parameter": "ARM",
-          "suffixes": ["_ARM", "_ORM"],
+          "suffixes": [
+            "_ARM",
+            "_ORM",
+            "_OcclusionRoughnessMetallic",
+            "_Occlusion_Roughness_Metallic"
+          ],
           "srgb": false,
           "compression": "masks",
           "required": false,
@@ -41,23 +59,161 @@
           }
         },
         {
+          "usage": "imperfection_mask",
+          "parameter": "ImperfectionMask",
+          "suffixes": [
+            "_Imperfection",
+            "_Imperfections",
+            "_Dirty",
+            "_Dirt",
+            "_Grime",
+            "_Wear",
+            "_EdgeWear",
+            "_Scratches"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false,
+          "channels": {
+            "r": "dust_or_grime",
+            "g": "edge_wear",
+            "b": "scratches",
+            "a": "stain"
+          }
+        },
+        {
           "usage": "emissive",
           "parameter": "Emissive",
-          "suffixes": ["_Emissive", "_E"],
+          "suffixes": [
+            "_Emissive",
+            "_Emission",
+            "_Emit",
+            "_Glow"
+          ],
           "srgb": true,
           "compression": "default",
+          "required": false
+        },
+        {
+          "usage": "height",
+          "parameter": "Height",
+          "suffixes": [
+            "_Height",
+            "_HeightMap",
+            "_Displacement",
+            "_Disp",
+            "_POM"
+          ],
+          "srgb": false,
+          "compression": "masks",
           "required": false
         }
       ],
       "scalar_parameters": {
+        "UVTiling": 1.0,
+        "BaseColorIntensity": 1.0,
+        "AOIntensity": 1.0,
         "RoughnessIntensity": 1.0,
+        "RoughnessMin": 0.05,
+        "RoughnessMax": 0.95,
         "MetallicIntensity": 1.0,
-        "EmissiveIntensity": 1.0
+        "Specular": 0.5,
+        "NormalStrength": 1.0,
+        "ImperfectionIntensity": 0.0,
+        "EdgeWearIntensity": 0.0
+      },
+      "vector_parameters": {
+        "BaseColorTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
       },
       "supports": {
         "emissive": true,
         "opacity_mask": false,
-        "translucency": false
+        "translucency": false,
+        "imperfection_mask": true,
+        "height": true,
+        "pom": false
+      },
+      "master_family": "MM_Surface_PBR",
+      "material_variants": {
+        "opaque": "/AssetForge/Materials/M_AF_Props_Master",
+        "opaque_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "world_aligned": "/AssetForge/Materials/M_AF_Environment_Master",
+        "pom": "/AssetForge/Materials/M_AF_Environment_Master",
+        "decal": "/AssetForge/Materials/M_AF_Props_Master",
+        "glass": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "environment": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "character_basic": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_basic_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "emissive_surface": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_surface_vt": "/AssetForge/Materials/M_AF_Props_Master"
+      },
+      "enabled_material_variants": [],
+      "default_import_profile": true,
+      "parameter_api_mapping": {
+        "BaseColor": "Base Color",
+        "Normal": "Normal Map",
+        "ARM": "Pack Map",
+        "ImperfectionMask": "Imperfection Mask",
+        "Emissive": "Emissive Map",
+        "Opacity": "Opacity Map",
+        "OpacityMask": "Opacity Map",
+        "Height": "Height Map",
+        "UVTiling": "UV Tile",
+        "WorldAlignedScale": "World Aligned Scale",
+        "ProjectionBlendSharpness": "Projection Blend Sharpness",
+        "HeightScale": "Height Scale",
+        "POMMinSteps": "POM Min Steps",
+        "POMMaxSteps": "POM Max Steps",
+        "POMTemporalAAStepMultiplier": "POM Temporal AA Step Multiplier",
+        "DecalAlphaSharpness": "Decal Alpha Sharpness",
+        "RefractionDepthBias": "Refraction Depth Bias",
+        "SubsurfaceTint": "Subsurface Tint",
+        "SubsurfaceIntensity": "Subsurface Intensity",
+        "EmissiveTint": "Emissive Tint",
+        "EmissiveIntensity": "Emissive Intensity",
+        "OpacityIntensity": "Opacity Intensity",
+        "BaseColorTint": "Tint",
+        "NormalStrength": "Normal Intensity",
+        "RoughnessMin": "Roughness Min",
+        "RoughnessMax": "Roughness Max",
+        "ImperfectionIntensity": "Imperfection Intensity",
+        "EdgeWearIntensity": "Edge Wear Intensity"
+      },
+      "texture_import_policy": {
+        "virtual_texture_policy": "project_default",
+        "texture_streaming_policy": "project_default",
+        "texture_group": "project_default"
+      },
+      "static_mesh_import_policy": {
+        "lod_group": "project_default",
+        "import_lod_policy": "import_existing"
+      },
+      "material_network_status": "generated_pbr",
+      "material_network_message": "UE Python bootstrap 可生成参数化 PBR 母材质网络；真实验收仍需在 UE 现场确认节点连接。",
+      "packed_texture_semantics": {
+        "R": "ambient_occlusion",
+        "G": "roughness",
+        "B": "metallic"
       }
     },
     {
@@ -66,14 +222,23 @@
       "display_name": "Props Masked - Painter UE ARM",
       "asset_family": "props",
       "render_mode": "masked",
-      "master_material": "/AssetForge/Materials/M_AF_Props_Masked",
+      "master_material": "/AssetForge/Materials/M_AF_Props_Master",
       "material_instance_dir": "{target_path}/Materials",
       "texture_dir": "{target_path}/Textures",
       "texture_rules": [
         {
           "usage": "base_color",
           "parameter": "BaseColor",
-          "suffixes": ["_BaseColor", "_BC", "_Albedo"],
+          "suffixes": [
+            "_BaseColor",
+            "_Base Color",
+            "_Base_Color",
+            "_BC",
+            "_B",
+            "_Color",
+            "_Albedo",
+            "_Diffuse"
+          ],
           "srgb": true,
           "compression": "default",
           "required": true
@@ -81,7 +246,11 @@
         {
           "usage": "normal",
           "parameter": "Normal",
-          "suffixes": ["_Normal", "_N"],
+          "suffixes": [
+            "_Normal",
+            "_NormalMap",
+            "_N"
+          ],
           "srgb": false,
           "compression": "normalmap",
           "required": true
@@ -89,7 +258,12 @@
         {
           "usage": "packed_arm",
           "parameter": "ARM",
-          "suffixes": ["_ARM", "_ORM"],
+          "suffixes": [
+            "_ARM",
+            "_ORM",
+            "_OcclusionRoughnessMetallic",
+            "_Occlusion_Roughness_Metallic"
+          ],
           "srgb": false,
           "compression": "masks",
           "required": false,
@@ -100,30 +274,174 @@
           }
         },
         {
+          "usage": "imperfection_mask",
+          "parameter": "ImperfectionMask",
+          "suffixes": [
+            "_Imperfection",
+            "_Imperfections",
+            "_Dirty",
+            "_Dirt",
+            "_Grime",
+            "_Wear",
+            "_EdgeWear",
+            "_Scratches"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false,
+          "channels": {
+            "r": "dust_or_grime",
+            "g": "edge_wear",
+            "b": "scratches",
+            "a": "stain"
+          }
+        },
+        {
           "usage": "emissive",
           "parameter": "Emissive",
-          "suffixes": ["_Emissive", "_E"],
+          "suffixes": [
+            "_Emissive",
+            "_Emission",
+            "_Emit",
+            "_Glow"
+          ],
           "srgb": true,
           "compression": "default",
           "required": false
         },
         {
-          "usage": "opacity_mask",
-          "parameter": "OpacityMask",
-          "suffixes": ["_Mask", "_Opacity", "_OpacityMask"],
+          "usage": "height",
+          "parameter": "Height",
+          "suffixes": [
+            "_Height",
+            "_HeightMap",
+            "_Displacement",
+            "_Disp",
+            "_POM"
+          ],
           "srgb": false,
           "compression": "masks",
-          "required": true
+          "required": false
+        },
+        {
+          "usage": "opacity_mask",
+          "parameter": "OpacityMask",
+          "suffixes": [
+            "_Mask",
+            "_Opacity",
+            "_OpacityMask"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false
         }
       ],
       "scalar_parameters": {
+        "UVTiling": 1.0,
+        "BaseColorIntensity": 1.0,
+        "AOIntensity": 1.0,
+        "RoughnessIntensity": 1.0,
+        "RoughnessMin": 0.05,
+        "RoughnessMax": 0.95,
+        "MetallicIntensity": 1.0,
+        "Specular": 0.5,
+        "NormalStrength": 1.0,
         "OpacityClipValue": 0.333,
-        "EmissiveIntensity": 1.0
+        "ImperfectionIntensity": 0.0,
+        "EdgeWearIntensity": 0.0
+      },
+      "vector_parameters": {
+        "BaseColorTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
       },
       "supports": {
         "emissive": true,
         "opacity_mask": true,
-        "translucency": false
+        "translucency": false,
+        "imperfection_mask": true,
+        "height": true,
+        "pom": false
+      },
+      "master_family": "MM_Surface_PBR",
+      "material_variants": {
+        "opaque": "/AssetForge/Materials/M_AF_Props_Master",
+        "opaque_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "world_aligned": "/AssetForge/Materials/M_AF_Environment_Master",
+        "pom": "/AssetForge/Materials/M_AF_Environment_Master",
+        "decal": "/AssetForge/Materials/M_AF_Props_Master",
+        "glass": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "environment": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "character_basic": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_basic_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "emissive_surface": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_surface_vt": "/AssetForge/Materials/M_AF_Props_Master"
+      },
+      "enabled_material_variants": [],
+      "default_import_profile": true,
+      "parameter_api_mapping": {
+        "BaseColor": "Base Color",
+        "Normal": "Normal Map",
+        "ARM": "Pack Map",
+        "ImperfectionMask": "Imperfection Mask",
+        "Emissive": "Emissive Map",
+        "Opacity": "Opacity Map",
+        "OpacityMask": "Opacity Map",
+        "Height": "Height Map",
+        "UVTiling": "UV Tile",
+        "WorldAlignedScale": "World Aligned Scale",
+        "ProjectionBlendSharpness": "Projection Blend Sharpness",
+        "HeightScale": "Height Scale",
+        "POMMinSteps": "POM Min Steps",
+        "POMMaxSteps": "POM Max Steps",
+        "POMTemporalAAStepMultiplier": "POM Temporal AA Step Multiplier",
+        "DecalAlphaSharpness": "Decal Alpha Sharpness",
+        "RefractionDepthBias": "Refraction Depth Bias",
+        "SubsurfaceTint": "Subsurface Tint",
+        "SubsurfaceIntensity": "Subsurface Intensity",
+        "EmissiveTint": "Emissive Tint",
+        "EmissiveIntensity": "Emissive Intensity",
+        "OpacityIntensity": "Opacity Intensity",
+        "BaseColorTint": "Tint",
+        "NormalStrength": "Normal Intensity",
+        "RoughnessMin": "Roughness Min",
+        "RoughnessMax": "Roughness Max",
+        "ImperfectionIntensity": "Imperfection Intensity",
+        "EdgeWearIntensity": "Edge Wear Intensity"
+      },
+      "texture_import_policy": {
+        "virtual_texture_policy": "project_default",
+        "texture_streaming_policy": "project_default",
+        "texture_group": "project_default"
+      },
+      "static_mesh_import_policy": {
+        "lod_group": "project_default",
+        "import_lod_policy": "import_existing"
+      },
+      "material_network_status": "generated_pbr",
+      "material_network_message": "UE Python bootstrap 可生成参数化 PBR 母材质网络；真实验收仍需在 UE 现场确认节点连接。",
+      "packed_texture_semantics": {
+        "R": "ambient_occlusion",
+        "G": "roughness",
+        "B": "metallic"
       }
     },
     {
@@ -132,14 +450,23 @@
       "display_name": "Props Translucent - Painter UE ARM",
       "asset_family": "props",
       "render_mode": "translucent",
-      "master_material": "/AssetForge/Materials/M_AF_Props_Translucent",
+      "master_material": "/AssetForge/Materials/M_AF_Props_Master",
       "material_instance_dir": "{target_path}/Materials",
       "texture_dir": "{target_path}/Textures",
       "texture_rules": [
         {
           "usage": "base_color",
           "parameter": "BaseColor",
-          "suffixes": ["_BaseColor", "_BC", "_Albedo"],
+          "suffixes": [
+            "_BaseColor",
+            "_Base Color",
+            "_Base_Color",
+            "_BC",
+            "_B",
+            "_Color",
+            "_Albedo",
+            "_Diffuse"
+          ],
           "srgb": true,
           "compression": "default",
           "required": true
@@ -147,7 +474,11 @@
         {
           "usage": "normal",
           "parameter": "Normal",
-          "suffixes": ["_Normal", "_N"],
+          "suffixes": [
+            "_Normal",
+            "_NormalMap",
+            "_N"
+          ],
           "srgb": false,
           "compression": "normalmap",
           "required": true
@@ -155,7 +486,12 @@
         {
           "usage": "packed_arm",
           "parameter": "ARM",
-          "suffixes": ["_ARM", "_ORM"],
+          "suffixes": [
+            "_ARM",
+            "_ORM",
+            "_OcclusionRoughnessMetallic",
+            "_Occlusion_Roughness_Metallic"
+          ],
           "srgb": false,
           "compression": "masks",
           "required": false,
@@ -166,30 +502,995 @@
           }
         },
         {
+          "usage": "imperfection_mask",
+          "parameter": "ImperfectionMask",
+          "suffixes": [
+            "_Imperfection",
+            "_Imperfections",
+            "_Dirty",
+            "_Dirt",
+            "_Grime",
+            "_Wear",
+            "_EdgeWear",
+            "_Scratches"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false,
+          "channels": {
+            "r": "dust_or_grime",
+            "g": "edge_wear",
+            "b": "scratches",
+            "a": "stain"
+          }
+        },
+        {
           "usage": "emissive",
           "parameter": "Emissive",
-          "suffixes": ["_Emissive", "_E"],
+          "suffixes": [
+            "_Emissive",
+            "_Emission",
+            "_Emit",
+            "_Glow"
+          ],
           "srgb": true,
           "compression": "default",
           "required": false
         },
         {
+          "usage": "height",
+          "parameter": "Height",
+          "suffixes": [
+            "_Height",
+            "_HeightMap",
+            "_Displacement",
+            "_Disp",
+            "_POM"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false
+        },
+        {
           "usage": "opacity",
           "parameter": "Opacity",
-          "suffixes": ["_Opacity", "_Alpha"],
+          "suffixes": [
+            "_Opacity",
+            "_Alpha"
+          ],
           "srgb": false,
           "compression": "masks",
           "required": false
         }
       ],
       "scalar_parameters": {
+        "UVTiling": 1.0,
+        "BaseColorIntensity": 1.0,
+        "AOIntensity": 1.0,
+        "RoughnessIntensity": 1.0,
+        "RoughnessMin": 0.05,
+        "RoughnessMax": 0.95,
+        "MetallicIntensity": 1.0,
+        "Specular": 0.5,
+        "NormalStrength": 1.0,
         "OpacityIntensity": 1.0,
-        "EmissiveIntensity": 1.0
+        "ImperfectionIntensity": 0.0,
+        "EdgeWearIntensity": 0.0
+      },
+      "vector_parameters": {
+        "BaseColorTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
       },
       "supports": {
         "emissive": true,
         "opacity_mask": false,
-        "translucency": true
+        "translucency": true,
+        "imperfection_mask": true
+      },
+      "master_family": "MM_Surface_PBR",
+      "material_variants": {
+        "opaque": "/AssetForge/Materials/M_AF_Props_Master",
+        "opaque_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "world_aligned": "/AssetForge/Materials/M_AF_Environment_Master",
+        "pom": "/AssetForge/Materials/M_AF_Environment_Master",
+        "decal": "/AssetForge/Materials/M_AF_Props_Master",
+        "glass": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "environment": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "character_basic": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_basic_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "emissive_surface": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_surface_vt": "/AssetForge/Materials/M_AF_Props_Master"
+      },
+      "enabled_material_variants": [
+        "glass",
+        "translucent"
+      ],
+      "default_import_profile": false,
+      "parameter_api_mapping": {
+        "BaseColor": "Base Color",
+        "Normal": "Normal Map",
+        "ARM": "Pack Map",
+        "ImperfectionMask": "Imperfection Mask",
+        "Emissive": "Emissive Map",
+        "Opacity": "Opacity Map",
+        "OpacityMask": "Opacity Map",
+        "Height": "Height Map",
+        "UVTiling": "UV Tile",
+        "WorldAlignedScale": "World Aligned Scale",
+        "ProjectionBlendSharpness": "Projection Blend Sharpness",
+        "HeightScale": "Height Scale",
+        "POMMinSteps": "POM Min Steps",
+        "POMMaxSteps": "POM Max Steps",
+        "POMTemporalAAStepMultiplier": "POM Temporal AA Step Multiplier",
+        "DecalAlphaSharpness": "Decal Alpha Sharpness",
+        "RefractionDepthBias": "Refraction Depth Bias",
+        "SubsurfaceTint": "Subsurface Tint",
+        "SubsurfaceIntensity": "Subsurface Intensity",
+        "EmissiveTint": "Emissive Tint",
+        "EmissiveIntensity": "Emissive Intensity",
+        "OpacityIntensity": "Opacity Intensity",
+        "BaseColorTint": "Tint",
+        "NormalStrength": "Normal Intensity",
+        "RoughnessMin": "Roughness Min",
+        "RoughnessMax": "Roughness Max",
+        "ImperfectionIntensity": "Imperfection Intensity",
+        "EdgeWearIntensity": "Edge Wear Intensity"
+      },
+      "texture_import_policy": {
+        "virtual_texture_policy": "project_default",
+        "texture_streaming_policy": "project_default",
+        "texture_group": "project_default"
+      },
+      "static_mesh_import_policy": {
+        "lod_group": "project_default",
+        "import_lod_policy": "import_existing"
+      },
+      "material_network_status": "generated_pbr",
+      "material_network_message": "UE Python bootstrap 可生成参数化 PBR 母材质网络；真实验收仍需在 UE 现场确认节点连接。",
+      "packed_texture_semantics": {
+        "R": "ambient_occlusion",
+        "G": "roughness",
+        "B": "metallic"
+      }
+    },
+    {
+      "version": "0.1",
+      "name": "Environment_Opaque_PainterUE_ARM",
+      "display_name": "Environment Opaque - Painter UE ARM",
+      "asset_family": "environment",
+      "render_mode": "opaque",
+      "master_material": "/AssetForge/Materials/M_AF_Environment_Master",
+      "material_instance_dir": "{target_path}/Materials",
+      "texture_dir": "{target_path}/Textures",
+      "texture_rules": [
+        {
+          "usage": "base_color",
+          "parameter": "BaseColor",
+          "suffixes": [
+            "_BaseColor",
+            "_Base Color",
+            "_Base_Color",
+            "_BC",
+            "_B",
+            "_Color",
+            "_Albedo",
+            "_Diffuse"
+          ],
+          "srgb": true,
+          "compression": "default",
+          "required": true
+        },
+        {
+          "usage": "normal",
+          "parameter": "Normal",
+          "suffixes": [
+            "_Normal",
+            "_NormalMap",
+            "_N"
+          ],
+          "srgb": false,
+          "compression": "normalmap",
+          "required": true
+        },
+        {
+          "usage": "packed_arm",
+          "parameter": "ARM",
+          "suffixes": [
+            "_ARM",
+            "_ORM",
+            "_OcclusionRoughnessMetallic",
+            "_Occlusion_Roughness_Metallic"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false,
+          "channels": {
+            "r": "ao",
+            "g": "roughness",
+            "b": "metallic"
+          }
+        },
+        {
+          "usage": "imperfection_mask",
+          "parameter": "ImperfectionMask",
+          "suffixes": [
+            "_Imperfection",
+            "_Imperfections",
+            "_Dirty",
+            "_Dirt",
+            "_Grime",
+            "_Wear",
+            "_EdgeWear",
+            "_Scratches"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false,
+          "channels": {
+            "r": "dust_or_grime",
+            "g": "edge_wear",
+            "b": "scratches",
+            "a": "stain"
+          }
+        },
+        {
+          "usage": "emissive",
+          "parameter": "Emissive",
+          "suffixes": [
+            "_Emissive",
+            "_Emission",
+            "_Emit",
+            "_Glow"
+          ],
+          "srgb": true,
+          "compression": "default",
+          "required": false
+        },
+        {
+          "usage": "height",
+          "parameter": "Height",
+          "suffixes": [
+            "_Height",
+            "_HeightMap",
+            "_Displacement",
+            "_Disp",
+            "_POM"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false
+        }
+      ],
+      "scalar_parameters": {
+        "UVTiling": 1.0,
+        "BaseColorIntensity": 1.0,
+        "AOIntensity": 1.0,
+        "RoughnessIntensity": 1.0,
+        "RoughnessMin": 0.05,
+        "RoughnessMax": 0.95,
+        "MetallicIntensity": 1.0,
+        "Specular": 0.5,
+        "NormalStrength": 1.0,
+        "ImperfectionIntensity": 0.0,
+        "EdgeWearIntensity": 0.0
+      },
+      "vector_parameters": {
+        "BaseColorTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "supports": {
+        "emissive": true,
+        "opacity_mask": false,
+        "translucency": false,
+        "imperfection_mask": true,
+        "height": true,
+        "pom": false
+      },
+      "master_family": "MM_Surface_PBR",
+      "material_variants": {
+        "opaque": "/AssetForge/Materials/M_AF_Props_Master",
+        "opaque_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "world_aligned": "/AssetForge/Materials/M_AF_Environment_Master",
+        "pom": "/AssetForge/Materials/M_AF_Environment_Master",
+        "decal": "/AssetForge/Materials/M_AF_Props_Master",
+        "glass": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "environment": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "character_basic": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_basic_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "emissive_surface": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_surface_vt": "/AssetForge/Materials/M_AF_Props_Master"
+      },
+      "enabled_material_variants": [],
+      "default_import_profile": true,
+      "parameter_api_mapping": {
+        "BaseColor": "Base Color",
+        "Normal": "Normal Map",
+        "ARM": "Pack Map",
+        "ImperfectionMask": "Imperfection Mask",
+        "Emissive": "Emissive Map",
+        "Opacity": "Opacity Map",
+        "OpacityMask": "Opacity Map",
+        "Height": "Height Map",
+        "UVTiling": "UV Tile",
+        "WorldAlignedScale": "World Aligned Scale",
+        "ProjectionBlendSharpness": "Projection Blend Sharpness",
+        "HeightScale": "Height Scale",
+        "POMMinSteps": "POM Min Steps",
+        "POMMaxSteps": "POM Max Steps",
+        "POMTemporalAAStepMultiplier": "POM Temporal AA Step Multiplier",
+        "DecalAlphaSharpness": "Decal Alpha Sharpness",
+        "RefractionDepthBias": "Refraction Depth Bias",
+        "SubsurfaceTint": "Subsurface Tint",
+        "SubsurfaceIntensity": "Subsurface Intensity",
+        "EmissiveTint": "Emissive Tint",
+        "EmissiveIntensity": "Emissive Intensity",
+        "OpacityIntensity": "Opacity Intensity",
+        "BaseColorTint": "Tint",
+        "NormalStrength": "Normal Intensity",
+        "RoughnessMin": "Roughness Min",
+        "RoughnessMax": "Roughness Max",
+        "ImperfectionIntensity": "Imperfection Intensity",
+        "EdgeWearIntensity": "Edge Wear Intensity"
+      },
+      "texture_import_policy": {
+        "virtual_texture_policy": "project_default",
+        "texture_streaming_policy": "project_default",
+        "texture_group": "project_default"
+      },
+      "static_mesh_import_policy": {
+        "lod_group": "project_default",
+        "import_lod_policy": "import_existing"
+      },
+      "material_network_status": "generated_pbr",
+      "material_network_message": "UE Python bootstrap 可生成参数化 PBR 母材质网络；真实验收仍需在 UE 现场确认节点连接。",
+      "packed_texture_semantics": {
+        "R": "ambient_occlusion",
+        "G": "roughness",
+        "B": "metallic"
+      }
+    },
+    {
+      "version": "0.1",
+      "name": "Environment_Masked_PainterUE_ARM",
+      "display_name": "Environment Masked - Painter UE ARM",
+      "asset_family": "environment",
+      "render_mode": "masked",
+      "master_material": "/AssetForge/Materials/M_AF_Environment_Master",
+      "material_instance_dir": "{target_path}/Materials",
+      "texture_dir": "{target_path}/Textures",
+      "texture_rules": [
+        {
+          "usage": "base_color",
+          "parameter": "BaseColor",
+          "suffixes": [
+            "_BaseColor",
+            "_Base Color",
+            "_Base_Color",
+            "_BC",
+            "_B",
+            "_Color",
+            "_Albedo",
+            "_Diffuse"
+          ],
+          "srgb": true,
+          "compression": "default",
+          "required": true
+        },
+        {
+          "usage": "normal",
+          "parameter": "Normal",
+          "suffixes": [
+            "_Normal",
+            "_NormalMap",
+            "_N"
+          ],
+          "srgb": false,
+          "compression": "normalmap",
+          "required": true
+        },
+        {
+          "usage": "packed_arm",
+          "parameter": "ARM",
+          "suffixes": [
+            "_ARM",
+            "_ORM",
+            "_OcclusionRoughnessMetallic",
+            "_Occlusion_Roughness_Metallic"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false,
+          "channels": {
+            "r": "ao",
+            "g": "roughness",
+            "b": "metallic"
+          }
+        },
+        {
+          "usage": "imperfection_mask",
+          "parameter": "ImperfectionMask",
+          "suffixes": [
+            "_Imperfection",
+            "_Imperfections",
+            "_Dirty",
+            "_Dirt",
+            "_Grime",
+            "_Wear",
+            "_EdgeWear",
+            "_Scratches"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false,
+          "channels": {
+            "r": "dust_or_grime",
+            "g": "edge_wear",
+            "b": "scratches",
+            "a": "stain"
+          }
+        },
+        {
+          "usage": "emissive",
+          "parameter": "Emissive",
+          "suffixes": [
+            "_Emissive",
+            "_Emission",
+            "_Emit",
+            "_Glow"
+          ],
+          "srgb": true,
+          "compression": "default",
+          "required": false
+        },
+        {
+          "usage": "height",
+          "parameter": "Height",
+          "suffixes": [
+            "_Height",
+            "_HeightMap",
+            "_Displacement",
+            "_Disp",
+            "_POM"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false
+        },
+        {
+          "usage": "opacity_mask",
+          "parameter": "OpacityMask",
+          "suffixes": [
+            "_Mask",
+            "_Opacity",
+            "_OpacityMask",
+            "_Alpha"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false
+        }
+      ],
+      "scalar_parameters": {
+        "UVTiling": 1.0,
+        "BaseColorIntensity": 1.0,
+        "AOIntensity": 1.0,
+        "RoughnessIntensity": 1.0,
+        "RoughnessMin": 0.05,
+        "RoughnessMax": 0.95,
+        "MetallicIntensity": 1.0,
+        "Specular": 0.5,
+        "NormalStrength": 1.0,
+        "ImperfectionIntensity": 0.0,
+        "EdgeWearIntensity": 0.0,
+        "OpacityClipValue": 0.333
+      },
+      "vector_parameters": {
+        "BaseColorTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "supports": {
+        "emissive": true,
+        "opacity_mask": true,
+        "translucency": false,
+        "imperfection_mask": true,
+        "height": true,
+        "pom": false
+      },
+      "master_family": "MM_Surface_PBR",
+      "material_variants": {
+        "opaque": "/AssetForge/Materials/M_AF_Props_Master",
+        "opaque_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "world_aligned": "/AssetForge/Materials/M_AF_Environment_Master",
+        "pom": "/AssetForge/Materials/M_AF_Environment_Master",
+        "decal": "/AssetForge/Materials/M_AF_Props_Master",
+        "glass": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "environment": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "character_basic": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_basic_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "emissive_surface": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_surface_vt": "/AssetForge/Materials/M_AF_Props_Master"
+      },
+      "enabled_material_variants": [],
+      "default_import_profile": true,
+      "parameter_api_mapping": {
+        "BaseColor": "Base Color",
+        "Normal": "Normal Map",
+        "ARM": "Pack Map",
+        "ImperfectionMask": "Imperfection Mask",
+        "Emissive": "Emissive Map",
+        "Opacity": "Opacity Map",
+        "OpacityMask": "Opacity Map",
+        "Height": "Height Map",
+        "UVTiling": "UV Tile",
+        "WorldAlignedScale": "World Aligned Scale",
+        "ProjectionBlendSharpness": "Projection Blend Sharpness",
+        "HeightScale": "Height Scale",
+        "POMMinSteps": "POM Min Steps",
+        "POMMaxSteps": "POM Max Steps",
+        "POMTemporalAAStepMultiplier": "POM Temporal AA Step Multiplier",
+        "DecalAlphaSharpness": "Decal Alpha Sharpness",
+        "RefractionDepthBias": "Refraction Depth Bias",
+        "SubsurfaceTint": "Subsurface Tint",
+        "SubsurfaceIntensity": "Subsurface Intensity",
+        "EmissiveTint": "Emissive Tint",
+        "EmissiveIntensity": "Emissive Intensity",
+        "OpacityIntensity": "Opacity Intensity",
+        "BaseColorTint": "Tint",
+        "NormalStrength": "Normal Intensity",
+        "RoughnessMin": "Roughness Min",
+        "RoughnessMax": "Roughness Max",
+        "ImperfectionIntensity": "Imperfection Intensity",
+        "EdgeWearIntensity": "Edge Wear Intensity"
+      },
+      "texture_import_policy": {
+        "virtual_texture_policy": "project_default",
+        "texture_streaming_policy": "project_default",
+        "texture_group": "project_default"
+      },
+      "static_mesh_import_policy": {
+        "lod_group": "project_default",
+        "import_lod_policy": "import_existing"
+      },
+      "material_network_status": "generated_pbr",
+      "material_network_message": "UE Python bootstrap 可生成参数化 PBR 母材质网络；真实验收仍需在 UE 现场确认节点连接。",
+      "packed_texture_semantics": {
+        "R": "ambient_occlusion",
+        "G": "roughness",
+        "B": "metallic"
+      }
+    },
+    {
+      "version": "0.1",
+      "name": "Character_Basic_PainterUE_ARM",
+      "display_name": "Character Basic - Painter UE ARM",
+      "asset_family": "character",
+      "render_mode": "opaque",
+      "master_material": "/AssetForge/Materials/M_AF_Character_Master",
+      "material_instance_dir": "{target_path}/Materials",
+      "texture_dir": "{target_path}/Textures",
+      "texture_rules": [
+        {
+          "usage": "base_color",
+          "parameter": "BaseColor",
+          "suffixes": [
+            "_BaseColor",
+            "_Base Color",
+            "_Base_Color",
+            "_BC",
+            "_B",
+            "_Color",
+            "_Albedo",
+            "_Diffuse"
+          ],
+          "srgb": true,
+          "compression": "default",
+          "required": true
+        },
+        {
+          "usage": "normal",
+          "parameter": "Normal",
+          "suffixes": [
+            "_Normal",
+            "_NormalMap",
+            "_N"
+          ],
+          "srgb": false,
+          "compression": "normalmap",
+          "required": true
+        },
+        {
+          "usage": "packed_arm",
+          "parameter": "ARM",
+          "suffixes": [
+            "_ARM",
+            "_ORM",
+            "_OcclusionRoughnessMetallic",
+            "_Occlusion_Roughness_Metallic"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false,
+          "channels": {
+            "r": "ao",
+            "g": "roughness",
+            "b": "metallic"
+          }
+        },
+        {
+          "usage": "imperfection_mask",
+          "parameter": "ImperfectionMask",
+          "suffixes": [
+            "_Imperfection",
+            "_Imperfections",
+            "_Dirty",
+            "_Dirt",
+            "_Grime",
+            "_Wear",
+            "_EdgeWear",
+            "_Scratches"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false,
+          "channels": {
+            "r": "dust_or_grime",
+            "g": "edge_wear",
+            "b": "scratches",
+            "a": "stain"
+          }
+        },
+        {
+          "usage": "emissive",
+          "parameter": "Emissive",
+          "suffixes": [
+            "_Emissive",
+            "_Emission",
+            "_Emit",
+            "_Glow"
+          ],
+          "srgb": true,
+          "compression": "default",
+          "required": false
+        },
+        {
+          "usage": "height",
+          "parameter": "Height",
+          "suffixes": [
+            "_Height",
+            "_HeightMap",
+            "_Displacement",
+            "_Disp",
+            "_POM"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false
+        }
+      ],
+      "scalar_parameters": {
+        "UVTiling": 1.0,
+        "BaseColorIntensity": 1.0,
+        "AOIntensity": 1.0,
+        "RoughnessIntensity": 1.0,
+        "RoughnessMin": 0.05,
+        "RoughnessMax": 0.95,
+        "MetallicIntensity": 1.0,
+        "Specular": 0.5,
+        "NormalStrength": 1.0,
+        "ImperfectionIntensity": 0.0,
+        "EdgeWearIntensity": 0.0,
+        "SubsurfaceIntensity": 0.25
+      },
+      "vector_parameters": {
+        "BaseColorTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "SubsurfaceTint": [
+          1.0,
+          0.78,
+          0.65,
+          1.0
+        ]
+      },
+      "supports": {
+        "emissive": false,
+        "opacity_mask": true,
+        "translucency": false,
+        "imperfection_mask": false,
+        "height": false,
+        "pom": false
+      },
+      "master_family": "MM_Surface_PBR",
+      "material_variants": {
+        "opaque": "/AssetForge/Materials/M_AF_Props_Master",
+        "opaque_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "world_aligned": "/AssetForge/Materials/M_AF_Environment_Master",
+        "pom": "/AssetForge/Materials/M_AF_Environment_Master",
+        "decal": "/AssetForge/Materials/M_AF_Props_Master",
+        "glass": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "environment": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "character_basic": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_basic_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "emissive_surface": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_surface_vt": "/AssetForge/Materials/M_AF_Props_Master"
+      },
+      "enabled_material_variants": [],
+      "default_import_profile": true,
+      "parameter_api_mapping": {
+        "BaseColor": "Base Color",
+        "Normal": "Normal Map",
+        "ARM": "Pack Map",
+        "ImperfectionMask": "Imperfection Mask",
+        "Emissive": "Emissive Map",
+        "Opacity": "Opacity Map",
+        "OpacityMask": "Opacity Map",
+        "Height": "Height Map",
+        "UVTiling": "UV Tile",
+        "WorldAlignedScale": "World Aligned Scale",
+        "ProjectionBlendSharpness": "Projection Blend Sharpness",
+        "HeightScale": "Height Scale",
+        "POMMinSteps": "POM Min Steps",
+        "POMMaxSteps": "POM Max Steps",
+        "POMTemporalAAStepMultiplier": "POM Temporal AA Step Multiplier",
+        "DecalAlphaSharpness": "Decal Alpha Sharpness",
+        "RefractionDepthBias": "Refraction Depth Bias",
+        "SubsurfaceTint": "Subsurface Tint",
+        "SubsurfaceIntensity": "Subsurface Intensity",
+        "EmissiveTint": "Emissive Tint",
+        "EmissiveIntensity": "Emissive Intensity",
+        "OpacityIntensity": "Opacity Intensity",
+        "BaseColorTint": "Tint",
+        "NormalStrength": "Normal Intensity",
+        "RoughnessMin": "Roughness Min",
+        "RoughnessMax": "Roughness Max",
+        "ImperfectionIntensity": "Imperfection Intensity",
+        "EdgeWearIntensity": "Edge Wear Intensity"
+      },
+      "texture_import_policy": {
+        "virtual_texture_policy": "project_default",
+        "texture_streaming_policy": "project_default",
+        "texture_group": "project_default"
+      },
+      "static_mesh_import_policy": {
+        "lod_group": "project_default",
+        "import_lod_policy": "import_existing"
+      },
+      "material_network_status": "generated_pbr",
+      "material_network_message": "UE Python bootstrap 可生成参数化 PBR 母材质网络；真实验收仍需在 UE 现场确认节点连接。",
+      "packed_texture_semantics": {
+        "R": "ambient_occlusion",
+        "G": "roughness",
+        "B": "metallic"
+      }
+    },
+    {
+      "version": "0.1",
+      "name": "Emissive_Surface_PainterUE",
+      "display_name": "Emissive Surface - Painter UE",
+      "asset_family": "fx",
+      "render_mode": "additive",
+      "master_material": "/AssetForge/Materials/M_AF_Props_Master",
+      "material_instance_dir": "{target_path}/Materials",
+      "texture_dir": "{target_path}/Textures",
+      "texture_rules": [
+        {
+          "usage": "base_color",
+          "parameter": "BaseColor",
+          "suffixes": [
+            "_BaseColor",
+            "_Color",
+            "_Albedo",
+            "_Diffuse"
+          ],
+          "srgb": true,
+          "compression": "default",
+          "required": false
+        },
+        {
+          "usage": "emissive",
+          "parameter": "Emissive",
+          "suffixes": [
+            "_Emissive",
+            "_Emission",
+            "_Emit",
+            "_Glow"
+          ],
+          "srgb": true,
+          "compression": "default",
+          "required": true
+        },
+        {
+          "usage": "opacity",
+          "parameter": "Opacity",
+          "suffixes": [
+            "_Opacity",
+            "_Alpha",
+            "_Mask"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": false
+        }
+      ],
+      "scalar_parameters": {
+        "UVTiling": 1.0,
+        "BaseColorIntensity": 1.0,
+        "OpacityIntensity": 1.0,
+        "EmissiveIntensity": 2.0
+      },
+      "vector_parameters": {
+        "BaseColorTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "EmissiveTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "supports": {
+        "emissive": true,
+        "opacity_mask": false,
+        "translucency": true,
+        "imperfection_mask": false,
+        "height": false,
+        "pom": false
+      },
+      "master_family": "MM_Emissive_Effect",
+      "material_variants": {
+        "opaque": "/AssetForge/Materials/M_AF_Props_Master",
+        "opaque_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked": "/AssetForge/Materials/M_AF_Props_Master",
+        "masked_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear": "/AssetForge/Materials/M_AF_Props_Master",
+        "dirty_wear_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "world_aligned": "/AssetForge/Materials/M_AF_Environment_Master",
+        "pom": "/AssetForge/Materials/M_AF_Environment_Master",
+        "decal": "/AssetForge/Materials/M_AF_Props_Master",
+        "glass": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent": "/AssetForge/Materials/M_AF_Props_Master",
+        "translucent_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "environment": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_masked_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive": "/AssetForge/Materials/M_AF_Environment_Master",
+        "environment_emissive_vt": "/AssetForge/Materials/M_AF_Environment_Master",
+        "character_basic": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_basic_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked": "/AssetForge/Materials/M_AF_Character_Master",
+        "character_masked_vt": "/AssetForge/Materials/M_AF_Character_Master",
+        "emissive_surface": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive_surface_vt": "/AssetForge/Materials/M_AF_Props_Master"
+      },
+      "enabled_material_variants": [],
+      "default_import_profile": true,
+      "parameter_api_mapping": {
+        "BaseColor": "Base Color",
+        "Normal": "Normal Map",
+        "ARM": "Pack Map",
+        "ImperfectionMask": "Imperfection Mask",
+        "Emissive": "Emissive Map",
+        "Opacity": "Opacity Map",
+        "OpacityMask": "Opacity Map",
+        "Height": "Height Map",
+        "UVTiling": "UV Tile",
+        "WorldAlignedScale": "World Aligned Scale",
+        "ProjectionBlendSharpness": "Projection Blend Sharpness",
+        "HeightScale": "Height Scale",
+        "POMMinSteps": "POM Min Steps",
+        "POMMaxSteps": "POM Max Steps",
+        "POMTemporalAAStepMultiplier": "POM Temporal AA Step Multiplier",
+        "DecalAlphaSharpness": "Decal Alpha Sharpness",
+        "RefractionDepthBias": "Refraction Depth Bias",
+        "SubsurfaceTint": "Subsurface Tint",
+        "SubsurfaceIntensity": "Subsurface Intensity",
+        "EmissiveTint": "Emissive Tint",
+        "EmissiveIntensity": "Emissive Intensity",
+        "OpacityIntensity": "Opacity Intensity",
+        "BaseColorTint": "Tint",
+        "NormalStrength": "Normal Intensity",
+        "RoughnessMin": "Roughness Min",
+        "RoughnessMax": "Roughness Max",
+        "ImperfectionIntensity": "Imperfection Intensity",
+        "EdgeWearIntensity": "Edge Wear Intensity"
+      },
+      "texture_import_policy": {
+        "virtual_texture_policy": "project_default",
+        "texture_streaming_policy": "project_default",
+        "texture_group": "project_default"
+      },
+      "static_mesh_import_policy": {
+        "lod_group": "project_default",
+        "import_lod_policy": "import_existing"
+      },
+      "material_network_status": "generated_pbr",
+      "material_network_message": "UE Python bootstrap 可生成参数化 PBR 母材质网络；真实验收仍需在 UE 现场确认节点连接。",
+      "packed_texture_semantics": {
+        "R": "ambient_occlusion",
+        "G": "roughness",
+        "B": "metallic"
       }
     }
   ]
