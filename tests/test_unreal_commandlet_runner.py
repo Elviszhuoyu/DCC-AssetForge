@@ -7,11 +7,16 @@ import tempfile
 import unittest
 
 from asset_forge.unreal.commandlet_runner import (
+    build_editor_launch_command,
     build_accept_flow_command,
     build_material_evidence_command,
+    close_unreal_crash_reporters,
+    find_running_unreal_editors,
+    launch_unreal_editor_safe,
     run_accept_flow_commandlet,
     run_accept_flow_with_material_evidence_commandlet,
 )
+from scripts.unreal_launch_editor_safe import parse_args as parse_editor_launch_args
 from scripts.unreal_run_accept_flow_commandlet import parse_args
 
 
@@ -56,6 +61,85 @@ class UnrealCommandletRunnerTest(unittest.TestCase):
         self.assertIn("--cold-start-readback", script_arg)
         self.assertNotIn("\\u", script_arg.lower())
         self.assertIn("-ddc=InstalledNoZenLocalFallback", command)
+
+    def test_build_editor_launch_command_uses_ddc_fallback(self):
+        command = build_editor_launch_command(
+            r"<UNREAL_ENGINE_DRIVE>/UE_5.6\Engine\Binaries\Win64\UnrealEditor.exe",
+            r"<LOCAL_WORK_DRIVE>/UE_Pj\UE5\AssetForgeAutomation\AssetForgeAutomation.uproject",
+        )
+
+        self.assertEqual(command[0], r"<UNREAL_ENGINE_DRIVE>/UE_5.6\Engine\Binaries\Win64\UnrealEditor.exe")
+        self.assertEqual(command[1], "<LOCAL_WORK_DRIVE>/UE_Pj/UE5/AssetForgeAutomation/AssetForgeAutomation.uproject")
+        self.assertIn("-ddc=InstalledNoZenLocalFallback", command)
+        self.assertIn("-nop4", command)
+        self.assertIn("-nosplash", command)
+
+    def test_close_unreal_crash_reporters_targets_only_ue_reporter(self):
+        calls = []
+
+        def fake_runner(command, **kwargs):
+            calls.append(command)
+            return FakeCompleted(returncode=0, stdout="SUCCESS", stderr="")
+
+        report = close_unreal_crash_reporters(runner=fake_runner)
+
+        self.assertEqual(report["status"], "closed")
+        self.assertEqual(calls[0], ["taskkill", "/IM", "CrashReportClientEditor.exe", "/F"])
+
+    def test_launch_unreal_editor_safe_cleans_reporter_and_keeps_process_running(self):
+        calls = []
+
+        def fake_runner(command, **kwargs):
+            calls.append(command)
+            return FakeCompleted(returncode=0, stdout="SUCCESS", stderr="")
+
+        report = launch_unreal_editor_safe(
+            "UE.exe",
+            r"<LOCAL_WORK_DRIVE>/Project\Project.uproject",
+            wait_seconds=0,
+            popen=lambda command: FakePopen(command, pid=42, returncode=None),
+            crash_reporter_runner=fake_runner,
+            process_list_runner=lambda command, **kwargs: FakeCompleted(returncode=0, stdout='INFO: No tasks are running which match the specified criteria.', stderr=""),
+        )
+
+        self.assertEqual(report["status"], "success")
+        self.assertEqual(report["pid"], 42)
+        self.assertEqual(report["ddc_mode"], "InstalledNoZenLocalFallback")
+        self.assertTrue(report["crash_reporter_cleanup"]["closed"])
+        self.assertIn("-ddc=InstalledNoZenLocalFallback", report["command"])
+
+    def test_launch_unreal_editor_safe_reuses_existing_editor_by_default(self):
+        report = launch_unreal_editor_safe(
+            "UE.exe",
+            r"<LOCAL_WORK_DRIVE>/Project\Project.uproject",
+            wait_seconds=0,
+            popen=lambda command: (_ for _ in ()).throw(AssertionError("should not launch a second editor")),
+            crash_reporter_runner=lambda command, **kwargs: FakeCompleted(returncode=0, stdout="SUCCESS", stderr=""),
+            process_list_runner=lambda command, **kwargs: FakeCompleted(returncode=0, stdout='"UnrealEditor.exe","64776","Console","1","1,024 K"\n', stderr=""),
+        )
+
+        self.assertEqual(report["status"], "success")
+        self.assertEqual(report["launch_state"], "already_running")
+        self.assertFalse(report["did_launch"])
+        self.assertEqual(report["pid"], 64776)
+
+    def test_find_running_unreal_editors_parses_tasklist_csv(self):
+        rows = find_running_unreal_editors(
+            runner=lambda command, **kwargs: FakeCompleted(
+                returncode=0,
+                stdout='"UnrealEditor.exe","64776","Console","1","1,024 K"\n',
+                stderr="",
+            )
+        )
+
+        self.assertEqual(rows, [{"image_name": "UnrealEditor.exe", "pid": 64776}])
+
+    def test_parse_editor_launch_args_defaults_to_crash_reporter_cleanup(self):
+        args = parse_editor_launch_args(["UE.exe", "Project.uproject"])
+
+        self.assertEqual(args.ddc_mode, "InstalledNoZenLocalFallback")
+        self.assertFalse(args.keep_crash_reporters)
+        self.assertFalse(args.force_new)
 
     def test_run_accept_flow_commandlet_returns_success_from_json_report(self):
         report_path = os.path.join(self.temp_dir, "flow.json")
@@ -197,6 +281,16 @@ class FakeCompleted(object):
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
+
+
+class FakePopen(object):
+    def __init__(self, command, pid=1, returncode=None):
+        self.command = list(command or [])
+        self.pid = pid
+        self._returncode = returncode
+
+    def poll(self):
+        return self._returncode
 
 
 def _material_report():

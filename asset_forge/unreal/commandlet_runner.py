@@ -5,9 +5,14 @@ from __future__ import absolute_import
 import json
 import os
 import subprocess
+import sys
+import time
+import csv
 
 
 DEFAULT_DDC_MODE = "InstalledNoZenLocalFallback"
+UE_CRASH_REPORTER_IMAGE = "CrashReportClientEditor.exe"
+UE_EDITOR_IMAGE = "UnrealEditor.exe"
 
 
 def run_accept_flow_commandlet(
@@ -212,6 +217,133 @@ def build_material_evidence_command(
     if ddc_mode:
         command.append("-ddc={0}".format(ddc_mode))
     return command
+
+
+def build_editor_launch_command(
+    unreal_editor,
+    uproject_path,
+    ddc_mode=DEFAULT_DDC_MODE,
+    nop4=True,
+    nosplash=True,
+    extra_args=None,
+):
+    command = [
+        str(unreal_editor),
+        _ue_path(uproject_path),
+    ]
+    if ddc_mode:
+        command.append("-ddc={0}".format(ddc_mode))
+    if nop4:
+        command.append("-nop4")
+    if nosplash:
+        command.append("-nosplash")
+    command.extend(list(extra_args or []))
+    return command
+
+
+def close_unreal_crash_reporters(runner=None):
+    if not sys.platform.startswith("win"):
+        return {"status": "skipped", "reason": "not_windows", "closed": False, "process_image": UE_CRASH_REPORTER_IMAGE}
+    active_runner = runner or subprocess.run
+    completed = active_runner(
+        ["taskkill", "/IM", UE_CRASH_REPORTER_IMAGE, "/F"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    closed = completed.returncode == 0
+    not_found = "not found" in (completed.stdout or "").lower() or "not found" in (completed.stderr or "").lower()
+    return {
+        "status": "closed" if closed else "not_found" if not_found else "warning",
+        "closed": closed,
+        "process_image": UE_CRASH_REPORTER_IMAGE,
+        "returncode": completed.returncode,
+        "stdout": completed.stdout or "",
+        "stderr": completed.stderr or "",
+    }
+
+
+def find_running_unreal_editors(runner=None):
+    if not sys.platform.startswith("win"):
+        return []
+    active_runner = runner or subprocess.run
+    completed = active_runner(
+        ["tasklist", "/FI", "IMAGENAME eq {0}".format(UE_EDITOR_IMAGE), "/FO", "CSV", "/NH"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if completed.returncode != 0:
+        return []
+    rows = []
+    for row in csv.reader((completed.stdout or "").splitlines()):
+        if len(row) < 2 or row[0].upper().startswith("INFO:"):
+            continue
+        try:
+            pid = int(row[1])
+        except (TypeError, ValueError):
+            continue
+        rows.append({"image_name": row[0], "pid": pid})
+    return rows
+
+
+def launch_unreal_editor_safe(
+    unreal_editor,
+    uproject_path,
+    ddc_mode=DEFAULT_DDC_MODE,
+    close_crash_reporters=True,
+    force_new=False,
+    wait_seconds=10,
+    extra_args=None,
+    popen=None,
+    crash_reporter_runner=None,
+    process_list_runner=None,
+):
+    cleanup = {"status": "skipped", "closed": False}
+    if close_crash_reporters:
+        cleanup = close_unreal_crash_reporters(runner=crash_reporter_runner)
+    running_editors = find_running_unreal_editors(runner=process_list_runner)
+    command = build_editor_launch_command(
+        unreal_editor,
+        uproject_path,
+        ddc_mode=ddc_mode,
+        extra_args=extra_args,
+    )
+    if running_editors and not force_new:
+        return {
+            "version": "0.1",
+            "stage": "unreal_editor_safe_launch",
+            "status": "success",
+            "launch_state": "already_running",
+            "did_launch": False,
+            "pid": running_editors[0].get("pid"),
+            "running_editors": running_editors,
+            "process_exit_code": None,
+            "command": list(command),
+            "ddc_mode": ddc_mode,
+            "crash_reporter_cleanup": cleanup,
+            "next_action": "检测到 UE Editor 已在运行；已避免重复启动，可继续窗口级复核。",
+        }
+    launcher = popen or subprocess.Popen
+    process = launcher(command)
+    if wait_seconds:
+        time.sleep(float(wait_seconds))
+    exited = process.poll() is not None
+    return {
+        "version": "0.1",
+        "stage": "unreal_editor_safe_launch",
+        "status": "error" if exited else "success",
+        "launch_state": "launched",
+        "did_launch": True,
+        "pid": getattr(process, "pid", None),
+        "process_exit_code": process.poll() if exited else None,
+        "command": list(command),
+        "ddc_mode": ddc_mode,
+        "crash_reporter_cleanup": cleanup,
+        "next_action": "UE Editor 已保持运行，可继续窗口级复核。" if not exited else "查看 UE Saved/Logs，修复启动错误后重新使用安全启动器。",
+    }
 
 
 def summarize_commandlet_result(process_exit_code, report, log_path, command):
