@@ -99,7 +99,7 @@ class BLENDERMCP_PT_bridge_panel(bpy.types.Panel):
 
         log_box = layout.box()
         log_box.label(text="Session Log", icon="CONSOLE")
-        for line in str(settings.log_text or "").split("\n")[-8:]:
+        for line in _session_log_lines(settings, active):
             log_box.label(text=_clip(line, 90))
 
 
@@ -127,6 +127,16 @@ def unregister():
         except RuntimeError:
             pass
 
+
+def _session_log_lines(settings, active):
+    lines = []
+    if active and getattr(active, "event_log", None):
+        for item in active.event_log[-8:]:
+            lines.append("{0} | {1} | {2} | {3}".format(item.get("time", ""), item.get("status", ""), item.get("action", ""), item.get("message", "")))
+    local_text = str(settings.log_text or "")
+    if local_text and local_text != "Bridge log is empty.":
+        lines.extend(local_text.split("\n")[-4:])
+    return lines[-8:] or ["Bridge log is empty."]
 
 def _append_log(settings, message):
     stamp = time.strftime("%H:%M:%S")

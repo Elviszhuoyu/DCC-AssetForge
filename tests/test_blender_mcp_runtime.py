@@ -137,6 +137,8 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
                 "blender_get_selection",
                 "blender_get_scene_summary",
                 "blender_get_latest_log",
+                "blender_get_bridge_event_log",
+                "blender_reload_asset_forge_addons",
                 "blender_scan_static_prop",
                 "blender_preflight_static_prop",
                 "blender_build_static_prop_package_contract",
@@ -167,6 +169,24 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
 
         self.assertIn("blender.mcp.bridge", payload["provider_ids"])
         self.assertIn("asset_forge.blender.provider", payload["provider_ids"])
+    def test_bridge_records_event_log_for_requests(self):
+        bridge_instance = BlenderBridge(port=8875, repo_root="")
+
+        response = bridge_instance.handle_request({"id": "1", "action": "blender_status", "params": {}})
+        log_response = bridge_instance.handle_request({"id": "2", "action": "blender_get_bridge_event_log", "params": {"tail": 5}})
+
+        self.assertTrue(response["ok"])
+        self.assertTrue(log_response["ok"])
+        self.assertGreaterEqual(log_response["result"]["event_count"], 1)
+        self.assertIn("blender_status", [item["action"] for item in log_response["result"]["events"]])
+
+    def test_bridge_reload_rejects_non_whitelisted_addons(self):
+        bridge_instance = BlenderBridge(port=8875, repo_root="")
+
+        response = bridge_instance.handle_request({"id": "1", "action": "blender_reload_asset_forge_addons", "params": {"addons": ["evil_addon"]}})
+
+        self.assertFalse(response["ok"])
+        self.assertIn("Unsupported reload", response["error"]["message"])
     def test_blender_instances_tool_reads_registry(self):
         path = self._registry_path()
         old_path = os.environ.get("BLENDER_MCP_REGISTRY_PATH")
