@@ -74,7 +74,10 @@ class BLENDERMCP_PT_bridge_panel(bpy.types.Panel):
         row.label(text="Blender MCP Bridge", icon="NETWORK_DRIVE")
         row.operator("blender_mcp.refresh_status", text="", icon="FILE_REFRESH")
         _status_row(box, _status_line(), "ok" if active else "warning")
-        box.label(text="Version: {0} | Action: {1}".format(BRIDGE_VERSION, settings.last_action), icon="INFO")
+        if active:
+            box.label(text="Version: {0} | 手动运行中".format(BRIDGE_VERSION), icon="INFO")
+        else:
+            box.label(text="Version: {0} | 默认不随 Blender 启动".format(BRIDGE_VERSION), icon="INFO")
 
         controls = box.row(align=True)
         start = controls.row(align=True)
@@ -149,19 +152,19 @@ def _append_log(settings, message):
 def _status_line():
     active = bridge.current_bridge()
     if not active:
-        return "Health: offline | Active: 0 | Action: idle"
+        return "Health: offline | Active: 0 | Action: waiting for Start"
     return "Health: healthy | Active: 1 | Action: running | Port: {0}".format(active.port)
 
 
 def _status_row(layout, text, state):
     row = layout.row(align=True)
-    row.alert = state in ("warning", "error")
+    row.alert = state == "error"
     row.label(text=_clip(text, 90), icon="CHECKMARK" if state == "ok" else "ERROR")
 
 
 def _detail_line(layout, key, value, state):
     row = layout.row(align=True)
-    row.alert = state == "warning"
+    row.alert = state == "error"
     row.label(text="{0}: {1}".format(key, _clip(value, 78)), icon="CHECKMARK" if state == "ok" else "INFO")
 
 

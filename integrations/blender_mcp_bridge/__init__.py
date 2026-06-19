@@ -13,8 +13,6 @@ bl_info = {
     "category": "System",
 }
 
-import os
-
 try:
     from . import _blender_mcp_bootstrap
 except Exception:
@@ -36,9 +34,7 @@ def register():
     from . import ui
 
     ui.register()
-    repo_root = _bootstrap_repo_root()
-    log_path = os.path.join(repo_root, "AssetForgeReports", "logs", "latest_blender_mcp.log") if repo_root else ""
-    return bridge.start_bridge(repo_root=repo_root, log_path=log_path)
+    return None
 
 
 def unregister():

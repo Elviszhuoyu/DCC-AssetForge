@@ -114,6 +114,19 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertTrue(scan["has_lightmap_uv"])
         self.assertTrue(scan["frozen_transform"])
 
+    def test_scanner_does_not_block_on_container_transform_when_meshes_are_frozen(self):
+        mesh = FakeObject("B_a", materials=["M_Body"])
+        container = FakeObject("B", object_type="EMPTY", children=[mesh], data=None, materials=[])
+        container.location = (12.0, 0.0, -3.0)
+        container.rotation_euler = (0.0, 0.0, 0.0)
+        container.scale = (1.0, 1.0, 1.0)
+        scanner = BlenderStaticPropScanner(bpy_module=FakeBpy(selected=[container], objects=[container, mesh]))
+
+        scan = scanner.scan_selection()
+
+        self.assertTrue(scan["frozen_transform"])
+        self.assertFalse(scan["container_frozen_transform"])
+        self.assertEqual(scan["asset_name"], "SM_B")
 
     def test_scanner_auto_prefixes_non_sm_source_name_without_renaming_scene(self):
         scanner = BlenderStaticPropScanner(bpy_module=FakeBpy(root_name="B"))
@@ -133,6 +146,19 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertEqual(result["scan"]["asset_name"], "SM_B")
         self.assertTrue(result["can_export"])
         self.assertEqual(result["validation"]["summary"]["errors"], 0)
+
+    def test_blender_transform_warning_does_not_block_export(self):
+        mesh = FakeObject("B")
+        mesh.scale = (0.01, 0.01, 0.01)
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(selected=[mesh], objects=[mesh]))
+
+        result = provider.preflight_static_prop({})
+        checks = dict((item["id"], item) for item in result["validation"]["checks"])
+
+        self.assertTrue(result["can_export"])
+        self.assertEqual(result["validation"]["summary"]["errors"], 0)
+        self.assertEqual(checks["frozen_transform"]["status"], "warning")
+
     def test_preflight_uses_shared_static_prop_rules(self):
         provider = BlenderAssetForgeProvider(bpy_module=FakeBpy())
 
@@ -175,6 +201,20 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertFalse(manifest["can_continue_to_ue"])
         self.assertEqual(report["package_contract_status"], "draft")
         self.assertFalse(os.path.exists(manifest["fbx_path"]))
+
+    def test_package_contract_sanitizes_blender_material_names_for_unreal_slots(self):
+        mesh = FakeObject("B", materials=["B_b1.001"])
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(selected=[mesh], objects=[mesh]))
+
+        result = provider.build_static_prop_package_contract({"export_root": self.temp_dir, "target_path": "/Game/Props/Blender"})
+        manifest = read_manifest(result["manifest_path"])
+
+        self.assertEqual(manifest["materials"][0]["material_name"], "B_b1_001")
+        self.assertEqual(manifest["materials"][0]["source_material_name"], "B_b1.001")
+        self.assertEqual(manifest["material_slots"][0]["name"], "B_b1_001")
+        self.assertEqual(manifest["material_slots"][0]["source_slot_name"], "B_b1.001")
+        self.assertEqual(manifest["material_texture_bindings"][0]["material_name"], "B_b1_001")
+        self.assertEqual(manifest["material_texture_bindings"][0]["ue_material_instance_path"], "/Game/Props/Blender/Materials/MI_B_b1_001")
 
     def test_empty_selection_returns_readable_bridge_error(self):
         port = allocate_port("127.0.0.1", 8900, 8999)

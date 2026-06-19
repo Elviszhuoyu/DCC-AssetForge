@@ -95,7 +95,10 @@ class BlenderFbxExporter(object):
             if objects_proxy is not None:
                 objects_proxy.active = active
             if hasattr(context, "active_object"):
-                context.active_object = active
+                try:
+                    context.active_object = active
+                except (AttributeError, TypeError):
+                    pass
         return selected
 
     def _objects_with_descendants(self, roots):

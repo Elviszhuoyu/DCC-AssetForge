@@ -251,7 +251,7 @@ class ASSETFORGE_PT_preflight_panel(bpy.types.Panel):
 
     def draw(self, context):
         s = context.scene.asset_forge_settings
-        _draw_text_block(self.layout, s.preflight_detail, alert=_issue_state(s) in ("blocked", "error"))
+        _draw_preflight_block(self.layout, s.preflight_detail)
 
 
 class ASSETFORGE_PT_policy_panel(bpy.types.Panel):
@@ -407,8 +407,20 @@ def _top_parent(obj):
     visited = set()
     while getattr(current, "parent", None) is not None and id(current) not in visited:
         visited.add(id(current))
+        parent = current.parent
+        if _is_organization_root(parent):
+            return current
         current = current.parent
     return current
+
+
+def _is_organization_root(obj):
+    name = str(getattr(obj, "name", "") or "").lower()
+    if name in ("collection", "scene", "root"):
+        return True
+    if name.startswith("group") and name[5:].isdigit():
+        return True
+    return False
 
 
 def _apply_result_to_settings(s, action, result, report_path):
@@ -595,7 +607,7 @@ def _status_card(row, text, state):
 
 def _status_line(layout, text, state):
     row = layout.row(align=True)
-    row.alert = state in ("error", "blocked", "warning")
+    row.alert = state in ("error", "blocked")
     row.label(text=_clip(text, 70), icon=_status_icon(state))
 
 
@@ -607,12 +619,42 @@ def _draw_text_block(layout, text, alert=False):
         row.label(text=_clip(line, 88))
 
 
+def _draw_preflight_block(layout, text):
+    box = layout.box()
+    for line in str(text or "").split("\n")[:16]:
+        state = _line_state(line)
+        row = box.row()
+        row.alert = state in ("error", "blocked")
+        row.label(text=_clip(_strip_check_marker(line), 88), icon=_status_icon(state))
+
+
 def _status_icon(state):
     return {"ok": "CHECKMARK", "warning": "ERROR", "blocked": "CANCEL", "error": "CANCEL", "info": "INFO", "waiting": "TIME"}.get(state, "INFO")
 
 
 def _check_marker(status):
     return {"pass": "[PASS]", "warning": "[WARN]", "error": "[BLOCK]", "info": "[INFO]"}.get(status, "[?]")
+
+
+def _line_state(line):
+    text = str(line or "")
+    if text.startswith("[BLOCK]") or text.startswith("[FAIL]") or "不可导出" in text or "阻断" in text or "失败" in text:
+        return "blocked"
+    if text.startswith("[WARN]") or "警告" in text:
+        return "warning"
+    if text.startswith("[PASS]") or "：通过" in text or " 通过" in text:
+        return "ok"
+    if text.startswith("[INFO]"):
+        return "info"
+    return "info"
+
+
+def _strip_check_marker(line):
+    text = str(line or "")
+    for marker in ("[PASS] ", "[WARN] ", "[BLOCK] ", "[FAIL] ", "[INFO] "):
+        if text.startswith(marker):
+            return text[len(marker) :]
+    return text
 
 
 def _yes(value):

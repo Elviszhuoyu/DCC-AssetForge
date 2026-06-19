@@ -43,7 +43,7 @@ class BlenderAssetForgeProvider(object):
         params = params or {}
         scan = self._scan(params)
         target_platform = params.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE
-        validation = self.validator.validate(scan, target_platform)
+        validation = self._validation(scan, target_platform)
         return {
             "status": "success" if validation.get("can_export") else "blocked",
             "can_accept": True,
@@ -64,7 +64,7 @@ class BlenderAssetForgeProvider(object):
         target_platform = params.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE
         use_asset_folder = params.get("use_asset_folder", True)
         scan = self._scan(params)
-        validation = self.validator.validate(scan, target_platform)
+        validation = self._validation(scan, target_platform)
         package = build_export_package(export_root, scan.get("asset_name", "Asset"), use_asset_folder)
         scan = self._prepare_package_textures(scan, package, target_path)
         manifest = self._build_manifest(scan, validation, package, target_path, target_platform, material_profile, params)
@@ -104,7 +104,7 @@ class BlenderAssetForgeProvider(object):
         target_platform = params.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE
         use_asset_folder = params.get("use_asset_folder", True)
         scan = self._scan(params)
-        validation = self.validator.validate(scan, target_platform)
+        validation = self._validation(scan, target_platform)
         package = build_export_package(export_root, scan.get("asset_name", "Asset"), use_asset_folder)
         if not validation.get("can_export"):
             report = self._build_export_report(scan, validation, {}, package, "blocked", "blocked", False)
@@ -199,6 +199,37 @@ class BlenderAssetForgeProvider(object):
             return self.scanner.scan_by_names(selection)
         return self.scanner.scan_selection()
 
+    def _validation(self, scan, target_platform):
+        validation = self.validator.validate(scan, target_platform)
+        return self._downgrade_blender_transform_warning(scan, validation)
+
+    def _downgrade_blender_transform_warning(self, scan, validation):
+        if not isinstance(validation, dict) or scan.get("source_dcc") != SOURCE_DCC_BLENDER:
+            return validation
+        changed = False
+        for check in validation.get("checks", []) or []:
+            if check.get("id") != "frozen_transform" or check.get("status") != "error":
+                continue
+            check["status"] = "warning"
+            check["severity"] = "warning"
+            check["message"] = "Blender 对象 Transform 未归零；导出层会保留层级变换，UE Gate 需复核比例和朝向。"
+            changed = True
+        if not changed:
+            return validation
+        summary = {"errors": 0, "warnings": 0, "passes": 0}
+        for check in validation.get("checks", []) or []:
+            status = check.get("status")
+            if status == "error":
+                summary["errors"] += 1
+            elif status == "warning":
+                summary["warnings"] += 1
+            elif status == "pass":
+                summary["passes"] += 1
+        validation["summary"] = summary
+        validation["status"] = "error" if summary["errors"] else "warning" if summary["warnings"] else "pass"
+        validation["can_export"] = summary["errors"] == 0
+        return validation
+
     def _export_name_map(self, scan):
         asset_name = scan.get("asset_name", "SM_Asset")
         result = {}
@@ -220,6 +251,7 @@ class BlenderAssetForgeProvider(object):
         return clean_asset + "_" + clean_mesh
     def _prepare_package_textures(self, scan, package, target_path):
         scan = json.loads(json.dumps(scan or {}, ensure_ascii=False))
+        scan = self._normalize_blender_material_names_for_ue(scan)
         materials = list(scan.get("materials", []) or [])
         texture_dir = os.path.join(package["package_dir"], "Textures")
         if not os.path.isdir(texture_dir):
@@ -264,6 +296,24 @@ class BlenderAssetForgeProvider(object):
         binding_report = create_material_texture_bindings(scan, target_path)
         scan["material_texture_bindings"] = binding_report.get("bindings", [])
         scan["material_texture_binding_risks"] = binding_report.get("risks", [])
+        return scan
+
+    def _normalize_blender_material_names_for_ue(self, scan):
+        for material in scan.get("materials", []) or []:
+            original = material.get("material_name") or material.get("name", "")
+            safe = self._safe_name(original)
+            if original and safe != original:
+                material.setdefault("source_material_name", original)
+                material.setdefault("blender_material_name", original)
+            material["name"] = safe
+            material["material_name"] = safe
+        for slot in scan.get("material_slot_details", []) or []:
+            original = slot.get("name", "")
+            safe = self._safe_name(original)
+            if original and safe != original:
+                slot.setdefault("source_slot_name", original)
+                slot.setdefault("blender_material_name", original)
+            slot["name"] = safe
         return scan
 
     def _write_placeholder_texture(self, texture_dir, asset_name, material, usage):
