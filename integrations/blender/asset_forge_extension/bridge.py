@@ -16,6 +16,7 @@ from integrations.blender_mcp.protocol import (
 )
 from integrations.blender_mcp_runtime.ports import allocate_port
 from integrations.blender_mcp_runtime.registry import register_instance, unregister_instance
+from asset_forge.blender.provider_asset_forge import BlenderAssetForgeProvider
 
 
 DEFAULT_HOST = "127.0.0.1"
@@ -36,6 +37,7 @@ class BlenderBridge(object):
         self.started_at_epoch = 0.0
         self._server = None
         self._thread = None
+        self._provider = None
 
     def start(self):
         if self._server:
@@ -60,6 +62,7 @@ class BlenderBridge(object):
             self._thread.join(2.0)
         self._server = None
         self._thread = None
+        self._provider = None
 
     def instance_payload(self):
         bpy_module = self._bpy()
@@ -118,6 +121,12 @@ class BlenderBridge(object):
             return self._scene_summary()
         if action == "blender_get_latest_log":
             return self._latest_log(int(params.get("tail") or DEFAULT_LOG_TAIL))
+        if action == "blender_scan_static_prop":
+            return self._asset_forge_provider().scan_static_prop(params)
+        if action == "blender_preflight_static_prop":
+            return self._asset_forge_provider().preflight_static_prop(params)
+        if action == "blender_build_static_prop_package_contract":
+            return self._asset_forge_provider().build_static_prop_package_contract(params)
         raise ValueError("Unsupported Blender bridge action: {0}".format(action))
 
     def _validate_token(self, request):
@@ -207,6 +216,10 @@ class BlenderBridge(object):
             "text": "".join(tail_lines),
         }
 
+    def _asset_forge_provider(self):
+        if self._provider is None:
+            self._provider = BlenderAssetForgeProvider(bpy_module=self._bpy())
+        return self._provider
 
 class _BridgeServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True

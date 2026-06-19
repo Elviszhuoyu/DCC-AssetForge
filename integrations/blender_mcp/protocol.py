@@ -19,6 +19,9 @@ SUPPORTED_ACTIONS = (
     "blender_get_selection",
     "blender_get_scene_summary",
     "blender_get_latest_log",
+    "blender_scan_static_prop",
+    "blender_preflight_static_prop",
+    "blender_build_static_prop_package_contract",
 )
 ALL_ACTIONS = LOCAL_ACTIONS + SUPPORTED_ACTIONS
 
