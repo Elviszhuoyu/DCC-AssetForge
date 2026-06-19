@@ -3,6 +3,8 @@
 
 from __future__ import absolute_import
 
+import re
+
 
 def _safe_list(value):
     return list(value or [])
@@ -45,15 +47,19 @@ class BlenderStaticPropScanner(object):
     def scan_objects(self, roots):
         roots = _safe_list(roots)
         meshes = self._unique_objects([mesh for root in roots for mesh in self._find_mesh_objects(root)])
-        asset_name = self._asset_name(roots)
+        identity = self._asset_identity(roots)
+        asset_name = identity["asset_name"]
         materials = self._materials(meshes)
         uv_sets = self._uv_sets(meshes)
         return {
             "asset_root": roots[0].name if roots else "",
             "asset_roots": [item.name for item in roots],
             "asset_name": asset_name,
-            "asset_name_source": "selected_root" if len(roots) == 1 else "first_selection",
+            "source_asset_name": identity["source_asset_name"],
+            "asset_name_source": identity["asset_name_source"],
+            "asset_name_source_name": identity["asset_name_source_name"],
             "asset_name_source_path": roots[0].name if roots else "",
+            "asset_name_candidates": identity["asset_name_candidates"],
             "mesh_count": len(meshes),
             "meshes": [item.name for item in meshes],
             "transform_count": len(roots),
@@ -95,10 +101,21 @@ class BlenderStaticPropScanner(object):
             result.extend(self._find_mesh_objects(child))
         return result
 
-    def _asset_name(self, roots):
-        if not roots:
-            return ""
-        return getattr(roots[0], "name", "Asset") or "Asset"
+    def _asset_identity(self, roots):
+        source_name = getattr(roots[0], "name", "Asset") if roots else "Asset"
+        clean_name = self._clean_asset_name(source_name)
+        asset_name = clean_name if clean_name.startswith("SM_") else "SM_" + clean_name
+        return {
+            "asset_name": asset_name,
+            "source_asset_name": source_name,
+            "asset_name_source": "selected_root_auto_prefix" if len(roots) == 1 else "first_selection_auto_prefix",
+            "asset_name_source_name": source_name,
+            "asset_name_candidates": [asset_name, clean_name, source_name],
+        }
+
+    def _clean_asset_name(self, name):
+        clean = re.sub(r"[^0-9A-Za-z_]+", "_", name or "Asset").strip("_")
+        return clean or "Asset"
 
     def _materials(self, meshes):
         result = []

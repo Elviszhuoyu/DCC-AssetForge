@@ -36,18 +36,18 @@ class FakePolygon(object):
 
 
 class FakeMeshData(object):
-    def __init__(self):
-        self.vertices = list(range(8))
-        self.polygons = [FakePolygon((0, 1, 2)), FakePolygon((0, 2, 3))]
-        self.loop_triangles = [0, 1]
+    def __init__(self, empty=False):
+        self.vertices = [] if empty else list(range(8))
+        self.polygons = [] if empty else [FakePolygon((0, 1, 2)), FakePolygon((0, 2, 3))]
+        self.loop_triangles = [] if empty else [0, 1]
         self.uv_layers = [FakeUvLayer("UVMap"), FakeUvLayer("LightmapUV")]
 
 
 class FakeObject(object):
-    def __init__(self, name):
+    def __init__(self, name, empty=False):
         self.name = name
         self.type = "MESH"
-        self.data = FakeMeshData()
+        self.data = FakeMeshData(empty=empty)
         self.children = []
         self.material_slots = [FakeMaterialSlot("M_Body")]
         self.location = (0.0, 0.0, 0.0)
@@ -111,8 +111,8 @@ class FakeOps(object):
 
 
 class FakeBpy(object):
-    def __init__(self, create_file=True, result=None, selected=True, bad_name=False):
-        mesh = FakeObject("BadName" if bad_name else "SM_BlenderCrate")
+    def __init__(self, create_file=True, result=None, selected=True, bad_name=False, root_name="SM_BlenderCrate", empty_mesh=False):
+        mesh = FakeObject("BadName" if bad_name else root_name, empty=empty_mesh)
         self.data = FakeData([mesh])
         self.context = FakeContext([mesh] if selected else [], mesh)
         self.ops = FakeOps(self, create_file=create_file, result=result)
@@ -167,15 +167,26 @@ class BlenderFbxExporterTest(unittest.TestCase):
         self.assertEqual(manifest["package_contract_status"], "ready")
         self.assertEqual(report["fbx_export_status"], "success")
 
+    def test_provider_exports_non_sm_source_name_as_sm_package(self):
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(root_name="B"))
+
+        result = provider.export_static_prop_package({"export_root": self.temp_dir})
+        manifest = read_manifest(result["manifest_path"])
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(manifest["asset_name"], "SM_B")
+        self.assertTrue(os.path.basename(result["fbx_path"]).startswith("SM_B"))
+        self.assertTrue(result["can_continue_to_ue"])
+
     def test_provider_does_not_fake_ready_package_when_preflight_blocks(self):
-        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(bad_name=True))
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(empty_mesh=True))
 
         result = provider.export_static_prop_package({"export_root": self.temp_dir})
 
         self.assertEqual(result["status"], "blocked")
         self.assertFalse(result["can_continue_to_ue"])
         self.assertEqual(result["fbx_export_status"], "blocked")
-        self.assertFalse(os.path.exists(os.path.join(result["package_dir"], "BadName.fbx")))
+        self.assertFalse(os.path.exists(os.path.join(result["package_dir"], "SM_BlenderCrate.fbx")))
 
     def test_bridge_socket_runs_export_action(self):
         port = allocate_port("127.0.0.1", 8900, 8999)

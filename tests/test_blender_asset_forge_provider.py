@@ -84,8 +84,8 @@ class FakeData(object):
 
 
 class FakeBpy(object):
-    def __init__(self, selected=None, objects=None):
-        mesh = FakeObject("SM_BlenderCrate", materials=["M_Body", "M_Trim"])
+    def __init__(self, selected=None, objects=None, root_name="SM_BlenderCrate"):
+        mesh = FakeObject(root_name, materials=["M_Body", "M_Trim"])
         self.objects = objects or [mesh]
         self.data = FakeData("E:/Scenes/ProviderTest.blend", self.objects)
         self.context = FakeContext(selected if selected is not None else [mesh], self.objects[0] if self.objects else None)
@@ -114,6 +114,25 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertTrue(scan["has_lightmap_uv"])
         self.assertTrue(scan["frozen_transform"])
 
+
+    def test_scanner_auto_prefixes_non_sm_source_name_without_renaming_scene(self):
+        scanner = BlenderStaticPropScanner(bpy_module=FakeBpy(root_name="B"))
+
+        scan = scanner.scan_selection()
+
+        self.assertEqual(scan["asset_name"], "SM_B")
+        self.assertEqual(scan["source_asset_name"], "B")
+        self.assertEqual(scan["asset_name_source_name"], "B")
+        self.assertIn("B", scan["asset_name_candidates"])
+
+    def test_preflight_allows_non_sm_source_name_after_auto_prefix(self):
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(root_name="B"))
+
+        result = provider.preflight_static_prop({})
+
+        self.assertEqual(result["scan"]["asset_name"], "SM_B")
+        self.assertTrue(result["can_export"])
+        self.assertEqual(result["validation"]["summary"]["errors"], 0)
     def test_preflight_uses_shared_static_prop_rules(self):
         provider = BlenderAssetForgeProvider(bpy_module=FakeBpy())
 
@@ -125,7 +144,7 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertEqual(result["validation"]["summary"]["errors"], 0)
 
     def test_package_contract_writes_blender_manifest_without_claiming_ue_ready(self):
-        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy())
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(root_name="B"))
 
         result = provider.build_static_prop_package_contract(
             {
@@ -141,7 +160,7 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertEqual(result["fbx_export_status"], "planned")
         self.assertFalse(result["can_continue_to_ue"])
         self.assertEqual(manifest["source_dcc"], "blender")
-        self.assertEqual(manifest["asset_name"], "SM_BlenderCrate")
+        self.assertEqual(manifest["asset_name"], "SM_B")
         self.assertEqual(manifest["target_path"], "/Game/Props/Blender")
         self.assertEqual(manifest["fbx_export_status"], "planned")
         self.assertFalse(manifest["can_continue_to_ue"])
