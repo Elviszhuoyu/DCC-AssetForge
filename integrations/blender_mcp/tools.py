@@ -36,6 +36,15 @@ def tool_definitions():
                 "use_asset_folder": {"type": "boolean", "default": True},
             },
             required=["export_root"],
+        ),        _static_prop_tool(
+            "blender_export_static_prop_package",
+            "导出 Blender Static Prop FBX，并写出 UE accept-flow 可消费的 Asset Forge package。",
+            extra={
+                "export_root": {"type": "string"},
+                "target_path": {"type": "string", "default": "/Game/Props"},
+                "use_asset_folder": {"type": "boolean", "default": True},
+            },
+            required=["export_root"],
         ),
     ]
 

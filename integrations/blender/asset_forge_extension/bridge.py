@@ -127,6 +127,8 @@ class BlenderBridge(object):
             return self._asset_forge_provider().preflight_static_prop(params)
         if action == "blender_build_static_prop_package_contract":
             return self._asset_forge_provider().build_static_prop_package_contract(params)
+        if action == "blender_export_static_prop_package":
+            return self._asset_forge_provider().export_static_prop_package(params)
         raise ValueError("Unsupported Blender bridge action: {0}".format(action))
 
     def _validate_token(self, request):

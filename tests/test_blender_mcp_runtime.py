@@ -138,6 +138,7 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
                 "blender_scan_static_prop",
                 "blender_preflight_static_prop",
                 "blender_build_static_prop_package_contract",
+                "blender_export_static_prop_package",
             ],
         )
         self.assertNotIn("blender_run_python", names)
