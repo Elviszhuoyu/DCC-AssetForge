@@ -127,8 +127,26 @@ class BlenderStaticPropScanner(object):
                 if not name or name in seen:
                     continue
                 seen.add(name)
-                result.append({"name": name, "material_name": name, "source_dcc": "blender"})
+                result.append(
+                    {
+                        "name": name,
+                        "material_name": name,
+                        "source_dcc": "blender",
+                        "base_color": self._material_base_color(material),
+                    }
+                )
         return result
+
+    def _material_base_color(self, material):
+        color = getattr(material, "diffuse_color", None)
+        if color is None:
+            return [0.72, 0.72, 0.72, 1.0]
+        values = list(color)
+        if len(values) < 3:
+            return [0.72, 0.72, 0.72, 1.0]
+        while len(values) < 4:
+            values.append(1.0)
+        return [float(max(0.0, min(1.0, item))) for item in values[:4]]
 
     def _material_slots(self, meshes, materials):
         slots = []

@@ -93,9 +93,11 @@ class FakeExportSceneOps(object):
         self.create_file = create_file
         self.result = result or {"FINISHED"}
         self.calls = []
+        self.selected_names_at_export = []
 
     def fbx(self, **kwargs):
         self.calls.append(kwargs)
+        self.selected_names_at_export = [obj.name for obj in getattr(getattr(self.owner, "data", None), "objects", []) if getattr(obj, "selected", False)]
         if self.create_file:
             parent = os.path.dirname(kwargs["filepath"])
             if parent and not os.path.isdir(parent):
@@ -148,8 +150,36 @@ class BlenderFbxExporterTest(unittest.TestCase):
 
         self.assertTrue(bpy.data.objects[0].selected)
         self.assertEqual(bpy.context.active_object.name, "SM_BlenderCrate")
-        self.assertEqual(bpy.context.selected_objects[0].name, "SM_BlenderCrate")
+        self.assertEqual(bpy.context.view_layer.objects.active.name, "SM_BlenderCrate")
 
+    def test_exporter_includes_child_meshes_when_root_is_named(self):
+        root = FakeObject("B")
+        root.type = "EMPTY"
+        child = FakeObject("B_a")
+        root.children = [child]
+        bpy = FakeBpy(selected=False, root_name="B")
+        bpy.data.objects = [root, child]
+        output_path = os.path.join(self.temp_dir, "SM_B.fbx")
+
+        BlenderFbxExporter(bpy_module=bpy).export_objects(["B"], output_path)
+
+        self.assertTrue(root.selected)
+        self.assertTrue(child.selected)
+        self.assertEqual(bpy.context.active_object.name, "B")
+    def test_exporter_temporarily_renames_children_for_static_mesh_export(self):
+        root = FakeObject("B")
+        root.type = "EMPTY"
+        child = FakeObject("B_a")
+        root.children = [child]
+        bpy = FakeBpy(selected=False, root_name="B")
+        bpy.data.objects = [root, child]
+        output_path = os.path.join(self.temp_dir, "SM_B.fbx")
+
+        BlenderFbxExporter(bpy_module=bpy).export_objects(["B"], output_path, rename_map={"B": "SM_B", "B_a": "SM_B_a"})
+
+        self.assertEqual(bpy.ops.export_scene.selected_names_at_export, ["SM_B", "SM_B_a"])
+        self.assertEqual(root.name, "B")
+        self.assertEqual(child.name, "B_a")
     def test_provider_exports_ready_package_after_fbx_exists(self):
         provider = BlenderAssetForgeProvider(bpy_module=FakeBpy())
 
@@ -165,6 +195,10 @@ class BlenderFbxExporterTest(unittest.TestCase):
         self.assertEqual(manifest["fbx_export_status"], "success")
         self.assertTrue(manifest["can_continue_to_ue"])
         self.assertEqual(manifest["package_contract_status"], "ready")
+        self.assertEqual(len(manifest["textures"]), 3)
+        self.assertEqual(manifest["textures"][0]["source_type"], "blender_placeholder")
+        self.assertEqual(len(manifest["material_texture_bindings"]), 1)
+        self.assertEqual(manifest["material_texture_bindings"][0]["texture_usages"], ["base_color", "normal", "packed_arm"])
         self.assertEqual(report["fbx_export_status"], "success")
 
     def test_provider_exports_non_sm_source_name_as_sm_package(self):

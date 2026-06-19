@@ -5,7 +5,10 @@ from __future__ import absolute_import
 
 import json
 import os
+import re
+import struct
 import time
+import zlib
 
 from asset_forge.blender.fbx_exporter import BlenderFbxExporter
 from asset_forge.blender.scanner import BlenderStaticPropScanner
@@ -13,8 +16,10 @@ from asset_forge.maya.export_package import build_export_package
 from asset_forge.maya.manifest_writer import IMPORT_PRESET_BY_PLATFORM
 from asset_forge.shared.constants import SOURCE_DCC_BLENDER, TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
+from asset_forge.shared.material_texture_bindings import create_material_texture_bindings
 from asset_forge.shared.path_utils import normalize_path
 from asset_forge.shared.rule_validator import StaticPropRuleValidator, checks_to_manifest_dict
+from asset_forge.shared.texture_metadata import apply_texture_metadata
 from asset_forge.shared.unreal_path import sanitize_unreal_package_path
 
 
@@ -61,6 +66,7 @@ class BlenderAssetForgeProvider(object):
         scan = self._scan(params)
         validation = self.validator.validate(scan, target_platform)
         package = build_export_package(export_root, scan.get("asset_name", "Asset"), use_asset_folder)
+        scan = self._prepare_package_textures(scan, package, target_path)
         manifest = self._build_manifest(scan, validation, package, target_path, target_platform, material_profile)
         manifest.update(
             {
@@ -113,8 +119,9 @@ class BlenderAssetForgeProvider(object):
                 "validation": validation,
                 "next_action": "修复 Blender Static Prop preflight 阻断项后再导出。",
             }
-        exported_fbx = self.exporter.export_objects(scan.get("asset_roots", []), package["fbx_path"])
+        exported_fbx = self.exporter.export_objects(scan.get("asset_roots", []), package["fbx_path"], rename_map=self._export_name_map(scan))
         fbx_exists = os.path.exists(exported_fbx)
+        scan = self._prepare_package_textures(scan, package, target_path)
         manifest = self._build_manifest(scan, validation, package, target_path, target_platform, material_profile)
         manifest.update(
             {
@@ -162,6 +169,8 @@ class BlenderAssetForgeProvider(object):
             package_dir=package["package_dir"],
             materials=scan.get("materials", []),
             material_slots=scan.get("material_slot_details", []),
+            material_texture_sets=scan.get("material_texture_sets", []),
+            material_texture_bindings=scan.get("material_texture_bindings", []),
             textures=scan.get("textures", []),
             material_profile=material_profile,
         )
@@ -186,6 +195,155 @@ class BlenderAssetForgeProvider(object):
         if selection:
             return self.scanner.scan_by_names(selection)
         return self.scanner.scan_selection()
+
+    def _export_name_map(self, scan):
+        asset_name = scan.get("asset_name", "SM_Asset")
+        result = {}
+        source_asset_name = scan.get("source_asset_name", "")
+        if source_asset_name and source_asset_name != asset_name:
+            result[source_asset_name] = asset_name
+        for mesh_name in scan.get("meshes", []) or []:
+            result[mesh_name] = self._static_mesh_export_name(asset_name, mesh_name)
+        return result
+
+    def _static_mesh_export_name(self, asset_name, mesh_name):
+        clean_mesh = self._safe_name(mesh_name)
+        if clean_mesh.startswith("SM_"):
+            return clean_mesh
+        clean_asset = self._safe_name(asset_name)
+        asset_stem = clean_asset[3:] if clean_asset.startswith("SM_") else clean_asset
+        if clean_mesh.startswith(asset_stem + "_"):
+            return "SM_" + clean_mesh
+        return clean_asset + "_" + clean_mesh
+    def _prepare_package_textures(self, scan, package, target_path):
+        scan = json.loads(json.dumps(scan or {}, ensure_ascii=False))
+        materials = list(scan.get("materials", []) or [])
+        texture_dir = os.path.join(package["package_dir"], "Textures")
+        if not os.path.isdir(texture_dir):
+            os.makedirs(texture_dir)
+
+        all_textures = []
+        texture_sets = []
+        for material in materials:
+            material_name = material.get("name", "") or material.get("material_name", "") or "Material"
+            existing = list(material.get("textures", []) or [])
+            by_usage = dict((item.get("usage", ""), item) for item in existing)
+            created = []
+            for usage in ("base_color", "normal", "packed_arm"):
+                texture = by_usage.get(usage)
+                if texture:
+                    created.append(texture)
+                    continue
+                texture = self._write_placeholder_texture(texture_dir, scan.get("asset_name", "SM_Asset"), material, usage)
+                created.append(texture)
+            material["textures"] = created
+            material["texture_set"] = self._texture_set_name(scan.get("asset_name", "SM_Asset"), material_name)
+            material["texture_set_short_name"] = material_name
+            material["texture_set_binding_source"] = "blender_material_placeholder"
+            all_textures.extend(created)
+            texture_sets.append(
+                {
+                    "status": "bound",
+                    "material_name": material_name,
+                    "shading_group": "",
+                    "texture_set": material["texture_set"],
+                    "texture_set_short_name": material["texture_set_short_name"],
+                    "binding_source": material["texture_set_binding_source"],
+                    "texture_count": len(created),
+                    "usages": sorted([item.get("usage", "") for item in created]),
+                    "textures": created,
+                }
+            )
+
+        scan["materials"] = materials
+        scan["textures"] = self._dedupe_textures(all_textures)
+        scan["material_texture_sets"] = texture_sets
+        binding_report = create_material_texture_bindings(scan, target_path)
+        scan["material_texture_bindings"] = binding_report.get("bindings", [])
+        scan["material_texture_binding_risks"] = binding_report.get("risks", [])
+        return scan
+
+    def _write_placeholder_texture(self, texture_dir, asset_name, material, usage):
+        material_name = material.get("name", "") or material.get("material_name", "") or "Material"
+        suffix = {"base_color": "BaseColor", "normal": "Normal", "packed_arm": "OcclusionRoughnessMetallic"}[usage]
+        file_name = "T_{0}_{1}_{2}.png".format(self._safe_name(asset_name), self._safe_name(material_name), suffix)
+        path = os.path.join(texture_dir, file_name)
+        rgba = self._placeholder_rgba(material, usage)
+        if not os.path.exists(path):
+            _write_png_rgba(path, 1, 1, [rgba])
+        texture = {
+            "node": "",
+            "path": normalize_path(path),
+            "source_path": normalize_path(path),
+            "package_path": normalize_path(path),
+            "copied": True,
+            "source_type": "blender_placeholder",
+            "source_label": "Blender 占位贴图",
+            "usage": usage,
+            "parameter": {"base_color": "BaseColor", "normal": "Normal", "packed_arm": "ARM"}[usage],
+            "srgb": usage == "base_color",
+            "compression": {"base_color": "default", "normal": "normalmap", "packed_arm": "masks"}[usage],
+            "match_mode": "blender_material_placeholder",
+            "selected_texture_set": self._texture_set_name(asset_name, material_name),
+            "width": 1,
+            "height": 1,
+        }
+        if usage == "packed_arm":
+            texture["channels"] = {"r": "ao", "g": "roughness", "b": "metallic"}
+        return apply_texture_metadata(texture, path)
+
+    def _placeholder_rgba(self, material, usage):
+        if usage == "normal":
+            return (128, 128, 255, 255)
+        if usage == "packed_arm":
+            return (255, 128, 0, 255)
+        color = material.get("base_color", [0.72, 0.72, 0.72, 1.0])
+        values = list(color or [0.72, 0.72, 0.72, 1.0])
+        while len(values) < 4:
+            values.append(1.0)
+        return tuple(int(max(0.0, min(1.0, float(item))) * 255.0 + 0.5) for item in values[:4])
+
+    def _texture_set_name(self, asset_name, material_name):
+        return "{0}_{1}".format(self._safe_name(asset_name), self._safe_name(material_name))
+
+    def _safe_name(self, value):
+        clean = re.sub(r"[^0-9A-Za-z_]+", "_", value or "Asset").strip("_")
+        return clean or "Asset"
+
+    def _dedupe_textures(self, textures):
+        result = []
+        seen = set()
+        for texture in textures:
+            key = (texture.get("usage", ""), texture.get("package_path", ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(texture)
+        return result
+
+
+def _write_png_rgba(path, width, height, pixels):
+    rows = []
+    for y in range(height):
+        row = bytearray([0])
+        for x in range(width):
+            row.extend(bytearray(pixels[y * width + x]))
+        rows.append(bytes(row))
+    raw = b"".join(rows)
+    payload = b"\x89PNG\r\n\x1a\n"
+    payload += _png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+    payload += _png_chunk(b"IDAT", zlib.compress(raw))
+    payload += _png_chunk(b"IEND", b"")
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent and not os.path.isdir(parent):
+        os.makedirs(parent)
+    with open(path, "wb") as stream:
+        stream.write(payload)
+
+
+def _png_chunk(kind, data):
+    body = kind + data
+    return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
 
 
 def _write_json(path, payload):
