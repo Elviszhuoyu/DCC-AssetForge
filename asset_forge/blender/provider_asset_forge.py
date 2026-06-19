@@ -67,7 +67,7 @@ class BlenderAssetForgeProvider(object):
         validation = self.validator.validate(scan, target_platform)
         package = build_export_package(export_root, scan.get("asset_name", "Asset"), use_asset_folder)
         scan = self._prepare_package_textures(scan, package, target_path)
-        manifest = self._build_manifest(scan, validation, package, target_path, target_platform, material_profile)
+        manifest = self._build_manifest(scan, validation, package, target_path, target_platform, material_profile, params)
         manifest.update(
             {
                 "fbx_export_status": "planned",
@@ -122,7 +122,7 @@ class BlenderAssetForgeProvider(object):
         exported_fbx = self.exporter.export_objects(scan.get("asset_roots", []), package["fbx_path"], rename_map=self._export_name_map(scan))
         fbx_exists = os.path.exists(exported_fbx)
         scan = self._prepare_package_textures(scan, package, target_path)
-        manifest = self._build_manifest(scan, validation, package, target_path, target_platform, material_profile)
+        manifest = self._build_manifest(scan, validation, package, target_path, target_platform, material_profile, params)
         manifest.update(
             {
                 "fbx_export_status": "success" if fbx_exists else "missing_file",
@@ -156,7 +156,8 @@ class BlenderAssetForgeProvider(object):
             "next_action": "运行 UE accept-flow 导入 Blender package。" if fbx_exists else "检查 Blender FBX exporter 输出文件。",
         }
 
-    def _build_manifest(self, scan, validation, package, target_path, target_platform, material_profile):
+    def _build_manifest(self, scan, validation, package, target_path, target_platform, material_profile, params=None):
+        params = params or {}
         return create_manifest(
             scan.get("asset_name", ""),
             package["fbx_path"],
@@ -173,6 +174,8 @@ class BlenderAssetForgeProvider(object):
             material_texture_bindings=scan.get("material_texture_bindings", []),
             textures=scan.get("textures", []),
             material_profile=material_profile,
+            texture_import_policy=params.get("texture_import_policy", {}) or {},
+            static_mesh_import_policy=params.get("static_mesh_import_policy", {}) or {},
         )
 
     def _build_export_report(self, scan, validation, manifest, package, status, fbx_export_status, can_continue_to_ue):

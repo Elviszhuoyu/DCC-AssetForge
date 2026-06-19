@@ -9,6 +9,8 @@ import unittest
 from integrations.blender_mcp.client import BlenderBridgeClient
 from integrations.blender_mcp.protocol import ALL_ACTIONS, validate_action, validate_bridge_action
 from integrations.blender_mcp.tools import call_tool, tool_definitions
+from integrations.blender_mcp.server import handle_message
+from integrations.blender_mcp_bridge.bridge import BlenderBridge
 from integrations.blender_mcp_runtime.ports import allocate_port
 from integrations.blender_mcp_runtime.registry import (
     AmbiguousBlenderInstanceError,
@@ -151,6 +153,20 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
         status_schema = [item for item in tool_definitions() if item["name"] == "blender_status"][0]
         self.assertIn("blender_pid", status_schema["inputSchema"]["properties"])
 
+    def test_blender_stdio_server_lists_tools(self):
+        response = handle_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+
+        names = [item["name"] for item in response["result"]["tools"]]
+        self.assertIn("blender_instances", names)
+        self.assertIn("blender_export_static_prop_package", names)
+
+    def test_independent_blender_bridge_advertises_generic_provider(self):
+        bridge_instance = BlenderBridge(port=8875, repo_root="")
+
+        payload = bridge_instance.instance_payload()
+
+        self.assertIn("blender.mcp.bridge", payload["provider_ids"])
+        self.assertIn("asset_forge.blender.provider", payload["provider_ids"])
     def test_blender_instances_tool_reads_registry(self):
         path = self._registry_path()
         old_path = os.environ.get("BLENDER_MCP_REGISTRY_PATH")

@@ -151,6 +151,8 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
                 "export_root": self.temp_dir,
                 "target_path": "/Game/Props/Blender",
                 "material_profile": "Props_Opaque_PainterUE_ARM",
+                "texture_import_policy": {"virtual_texture_policy": "force_off", "texture_streaming_policy": "streaming", "texture_group": "project_default"},
+                "static_mesh_import_policy": {"nanite_policy": "disable", "lod_group": "SmallProp", "import_lod_policy": "import_existing"},
             }
         )
         manifest = read_manifest(result["manifest_path"])
@@ -162,6 +164,9 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertEqual(manifest["source_dcc"], "blender")
         self.assertEqual(manifest["asset_name"], "SM_B")
         self.assertEqual(manifest["target_path"], "/Game/Props/Blender")
+        self.assertEqual(manifest["texture_import_policy"]["virtual_texture_policy"], "force_off")
+        self.assertEqual(manifest["static_mesh_import_policy"]["nanite_policy"], "disable")
+        self.assertEqual(manifest["static_mesh_import_policy"]["lod_group"], "SmallProp")
         self.assertEqual(len(manifest["textures"]), 6)
         self.assertEqual(manifest["textures"][0]["source_type"], "blender_placeholder")
         self.assertEqual(len(manifest["material_texture_bindings"]), 2)
