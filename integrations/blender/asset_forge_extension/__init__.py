@@ -13,6 +13,7 @@ bl_info = {
     "category": "Import-Export",
 }
 
+import importlib
 import os
 
 try:
@@ -34,7 +35,13 @@ def _bootstrap_repo_root():
 
 def register():
     """Register Asset Forge Blender workbench classes and start the local bridge."""
+    global bridge
+    if not callable(getattr(bridge, "current_bridge", None)):
+        bridge = importlib.reload(bridge)
     from . import ui
+    if not callable(getattr(ui, "_current_bridge", None)):
+        ui = importlib.reload(ui)
+    ui.bridge = bridge
 
     ui.register()
     repo_root = _bootstrap_repo_root()

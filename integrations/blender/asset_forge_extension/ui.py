@@ -289,15 +289,21 @@ def _apply_result_to_settings(settings, action, result, report_path):
         settings.last_summary = "Package: {0}".format(_clip(result.get("package_dir", ""), 80))
 
 
+def _current_bridge():
+    current = getattr(bridge, "current_bridge", None)
+    if callable(current):
+        return current()
+    return getattr(bridge, "_BRIDGE", None)
+
 def _bridge_line():
-    active_bridge = bridge.current_bridge()
+    active_bridge = _current_bridge()
     if not active_bridge:
         return "Bridge 未运行"
     return "Bridge 运行中 127.0.0.1:{0}".format(active_bridge.port)
 
 
 def _bridge_icon():
-    return "LINKED" if bridge.current_bridge() else "UNLINKED"
+    return "LINKED" if _current_bridge() else "UNLINKED"
 
 
 def _root_line(context):
