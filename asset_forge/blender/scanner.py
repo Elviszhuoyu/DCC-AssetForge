@@ -3,6 +3,7 @@
 
 from __future__ import absolute_import
 
+import os
 import re
 
 
@@ -21,16 +22,17 @@ class BlenderStaticPropScanner(object):
         if not self.is_available():
             return []
         context = getattr(self.bpy, "context", None)
-        return [item.name for item in _safe_list(getattr(context, "selected_objects", []))]
+        return [item.name for item in self._current_objects(context)]
 
     def scan_selection(self):
         if not self.is_available():
             raise RuntimeError("bpy is not available")
         context = getattr(self.bpy, "context", None)
-        selected = _safe_list(getattr(context, "selected_objects", []))
-        if not selected:
+        selected = self._current_objects(context)
+        roots = self._effective_roots(selected)
+        if not roots:
             raise RuntimeError("没有选中资产")
-        return self.scan_objects(selected)
+        return self.scan_objects(roots)
 
     def scan_by_names(self, names):
         if not self.is_available():
@@ -42,7 +44,7 @@ class BlenderStaticPropScanner(object):
                 objects.append(by_name[name])
         if not objects:
             raise RuntimeError("没有找到指定 Blender 对象")
-        return self.scan_objects(objects)
+        return self.scan_objects(self._effective_roots(objects))
 
     def scan_objects(self, roots):
         roots = _safe_list(roots)
@@ -95,6 +97,55 @@ class BlenderStaticPropScanner(object):
             return None
         return bpy
 
+    def _current_objects(self, context):
+        selected = _safe_list(getattr(context, "selected_objects", []))
+        if selected:
+            return selected
+        active = self._active_object(context)
+        return [active] if active is not None else []
+
+    def _active_object(self, context):
+        if context is None:
+            return None
+        view_layer = getattr(context, "view_layer", None)
+        active_proxy = getattr(view_layer, "objects", None) if view_layer else None
+        active = getattr(active_proxy, "active", None) if active_proxy else None
+        return active or getattr(context, "active_object", None)
+
+    def _effective_roots(self, objects):
+        roots = []
+        seen = set()
+        for obj in _safe_list(objects):
+            for root in self._asset_roots_from_object(obj):
+                identity = id(root)
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                roots.append(root)
+        return roots
+
+    def _asset_roots_from_object(self, obj):
+        if obj is None:
+            return []
+        if self._is_organization_root(obj):
+            children = [child for child in _safe_list(getattr(obj, "children", [])) if self._find_mesh_objects(child)]
+            return children or []
+        current = obj
+        visited = set()
+        while getattr(current, "parent", None) is not None and id(current) not in visited:
+            visited.add(id(current))
+            parent = current.parent
+            if self._is_organization_root(parent):
+                return [current]
+            current = parent
+        return [current]
+
+    def _is_organization_root(self, obj):
+        name = str(getattr(obj, "name", "") or "").lower()
+        if name in ("collection", "scene", "root"):
+            return True
+        return name.startswith("group") and name[5:].isdigit()
+
     def _find_mesh_objects(self, root):
         result = []
         if getattr(root, "type", "") == "MESH":
@@ -135,6 +186,7 @@ class BlenderStaticPropScanner(object):
                         "material_name": name,
                         "source_dcc": "blender",
                         "base_color": self._material_base_color(material),
+                        "textures": self._material_textures(material),
                     }
                 )
         return result
@@ -149,6 +201,110 @@ class BlenderStaticPropScanner(object):
         while len(values) < 4:
             values.append(1.0)
         return [float(max(0.0, min(1.0, item))) for item in values[:4]]
+
+    def _material_textures(self, material):
+        if material is None or not getattr(material, "use_nodes", False):
+            return []
+        node_tree = getattr(material, "node_tree", None)
+        textures = []
+        seen = set()
+        for node in _safe_list(getattr(node_tree, "nodes", [])):
+            if getattr(node, "type", "") != "TEX_IMAGE":
+                continue
+            image = getattr(node, "image", None)
+            path = self._image_path(image)
+            if not path:
+                continue
+            usage = self._texture_usage(node, path)
+            if not usage:
+                continue
+            key = (usage, path)
+            if key in seen:
+                continue
+            seen.add(key)
+            textures.append(self._texture_entry(node, image, path, usage))
+        return textures
+
+    def _image_path(self, image):
+        filepath = getattr(image, "filepath", "") if image is not None else ""
+        if not filepath:
+            return ""
+        bpy_path = getattr(self.bpy, "path", None) if self.bpy is not None else None
+        abspath = getattr(bpy_path, "abspath", None) if bpy_path is not None else None
+        if callable(abspath):
+            try:
+                filepath = abspath(filepath)
+            except TypeError:
+                filepath = abspath(filepath, library=getattr(image, "library", None))
+        elif filepath.startswith("//"):
+            scene_path = getattr(getattr(self.bpy, "data", None), "filepath", "") if self.bpy is not None else ""
+            filepath = os.path.join(os.path.dirname(scene_path), filepath[2:]) if scene_path else filepath[2:]
+        return os.path.abspath(filepath)
+
+    def _texture_usage(self, node, path):
+        link_usage = self._texture_usage_from_links(node)
+        file_usage = self._texture_usage_from_name(path)
+        return link_usage or file_usage
+
+    def _texture_usage_from_links(self, node):
+        for output in _safe_list(getattr(node, "outputs", [])):
+            for link in _safe_list(getattr(output, "links", [])):
+                usage = self._usage_from_link_target(link)
+                if usage:
+                    return usage
+        return ""
+
+    def _usage_from_link_target(self, link):
+        target_node = getattr(link, "to_node", None)
+        target_socket = getattr(link, "to_socket", None)
+        node_type = getattr(target_node, "type", "")
+        socket_name = str(getattr(target_socket, "name", "") or "").lower()
+        if node_type == "BSDF_PRINCIPLED":
+            if socket_name == "base color":
+                return "base_color"
+            if socket_name == "normal":
+                return "normal"
+        if node_type == "NORMAL_MAP":
+            return "normal"
+        return ""
+
+    def _texture_usage_from_name(self, path):
+        stem = os.path.splitext(os.path.basename(path or ""))[0].lower()
+        compact = re.sub(r"[^a-z0-9]+", "", stem)
+        tokens = [item for item in re.split(r"[^a-z0-9]+", stem) if item]
+        last_token = tokens[-1] if tokens else ""
+        if compact.endswith(("normal", "normalmap")) or last_token == "n":
+            return "normal"
+        if compact.endswith(("arm", "orm", "occlusionroughnessmetallic")):
+            return "packed_arm"
+        if compact.endswith(("basecolor", "basecolour", "bc", "color", "colour", "albedo", "diffuse")) or last_token == "b":
+            return "base_color"
+        return ""
+
+    def _texture_entry(self, node, image, path, usage):
+        entry = {
+            "node": getattr(node, "name", ""),
+            "path": path.replace("\\", "/"),
+            "source_path": path.replace("\\", "/"),
+            "package_path": "",
+            "copied": False,
+            "source_type": "blender_image_node",
+            "source_label": "Blender Image Texture 节点",
+            "usage": usage,
+            "parameter": {"base_color": "BaseColor", "normal": "Normal", "packed_arm": "ARM"}.get(usage, ""),
+            "srgb": usage == "base_color",
+            "compression": {"base_color": "default", "normal": "normalmap", "packed_arm": "masks"}.get(usage, "default"),
+            "match_mode": "blender_node_link_or_filename",
+            "image_name": getattr(image, "name", "") if image is not None else "",
+            "colorspace": self._image_colorspace(image),
+        }
+        if usage == "packed_arm":
+            entry["channels"] = {"r": "ao", "g": "roughness", "b": "metallic"}
+        return entry
+
+    def _image_colorspace(self, image):
+        settings = getattr(image, "colorspace_settings", None) if image is not None else None
+        return getattr(settings, "name", "") if settings is not None else ""
 
     def _material_slots(self, meshes, materials):
         slots = []

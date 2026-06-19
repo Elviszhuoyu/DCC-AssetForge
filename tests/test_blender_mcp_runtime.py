@@ -187,6 +187,51 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
 
         self.assertFalse(response["ok"])
         self.assertIn("Unsupported reload", response["error"]["message"])
+
+    def test_bridge_reload_refreshes_asset_forge_provider_modules(self):
+        bridge_instance = BlenderBridge(port=8875, repo_root="")
+
+        class FakeAddonUtils(object):
+            @staticmethod
+            def check(addon):
+                return (True, False)
+
+            @staticmethod
+            def disable(addon, default_set=True):
+                return None
+
+            @staticmethod
+            def enable(addon, default_set=True, persistent=True):
+                return None
+
+        class FakeBpy(object):
+            class ops(object):
+                class wm(object):
+                    @staticmethod
+                    def save_userpref():
+                        raise AssertionError("reload must not save user preferences by default")
+
+        import sys
+
+        old_addon_utils = sys.modules.get("addon_utils")
+        old_bpy = sys.modules.get("bpy")
+        sys.modules["addon_utils"] = FakeAddonUtils
+        sys.modules["bpy"] = FakeBpy
+        try:
+            response = bridge_instance.handle_request({"id": "1", "action": "blender_reload_asset_forge_addons", "params": {}})
+        finally:
+            if old_addon_utils is None:
+                sys.modules.pop("addon_utils", None)
+            else:
+                sys.modules["addon_utils"] = old_addon_utils
+            if old_bpy is None:
+                sys.modules.pop("bpy", None)
+            else:
+                sys.modules["bpy"] = old_bpy
+
+        self.assertTrue(response["ok"])
+        self.assertIn("asset_forge.blender.provider_asset_forge", response["result"]["refreshed_modules"])
+        self.assertIsNone(bridge_instance._provider)
     def test_blender_instances_tool_reads_registry(self):
         path = self._registry_path()
         old_path = os.environ.get("BLENDER_MCP_REGISTRY_PATH")

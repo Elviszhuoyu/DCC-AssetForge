@@ -3,6 +3,7 @@
 
 from __future__ import absolute_import
 
+import importlib
 import os
 import socketserver
 import threading
@@ -280,11 +281,13 @@ class BlenderBridge(object):
             results.append({"addon": addon, "before": list(before), "after": list(after), "status": "reloaded" if after[0] else "failed"})
         if bool(params.get("save_userpref", False)):
             bpy.ops.wm.save_userpref()
+        refresh = _refresh_asset_forge_blender_modules()
         self._provider = None
         return {
             "status": "success",
             "can_accept": True,
             "reloaded": results,
+            "refreshed_modules": refresh,
             "next_action": "Asset Forge Blender add-on 已安全重载，可继续刷新 UI 或运行扫描。",
         }
 
@@ -400,3 +403,22 @@ def _action_message(result):
     if result.get("event_count") is not None:
         return "events={0}".format(result.get("event_count"))
     return result.get("status", "")
+
+
+def _refresh_asset_forge_blender_modules():
+    """Refresh cached Blender provider modules after a safe add-on reload."""
+    global BlenderAssetForgeProvider
+    modules = [
+        "asset_forge.blender.scanner",
+        "asset_forge.blender.fbx_exporter",
+        "asset_forge.blender.provider_asset_forge",
+    ]
+    refreshed = []
+    for module_name in modules:
+        module = importlib.import_module(module_name)
+        importlib.reload(module)
+        refreshed.append(module_name)
+    from asset_forge.blender.provider_asset_forge import BlenderAssetForgeProvider as refreshed_provider
+
+    BlenderAssetForgeProvider = refreshed_provider
+    return refreshed

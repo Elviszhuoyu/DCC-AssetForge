@@ -2,6 +2,7 @@ from __future__ import absolute_import
 
 import json
 import os
+from pathlib import Path
 import tempfile
 import unittest
 
@@ -141,6 +142,19 @@ class BlenderMcpBridgeTest(unittest.TestCase):
                 os.environ.pop("BLENDER_MCP_REGISTRY_PATH", None)
             else:
                 os.environ["BLENDER_MCP_REGISTRY_PATH"] = old_path
+
+    def test_blender_addon_register_paths_do_not_auto_start_bridge(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        paths = [
+            repo_root / "integrations" / "blender_mcp_bridge" / "__init__.py",
+            repo_root / "integrations" / "blender" / "asset_forge_extension" / "__init__.py",
+        ]
+        for path in paths:
+            text = path.read_text(encoding="utf-8")
+            register_body = text.split("def register():", 1)[1].split("def unregister():", 1)[0]
+
+            self.assertNotIn("start_bridge(", register_body)
+            self.assertNotIn("register_extension(", register_body)
 
 
 if __name__ == "__main__":

@@ -106,6 +106,7 @@ class UnrealCommandletRunnerTest(unittest.TestCase):
         self.assertEqual(report["pid"], 42)
         self.assertEqual(report["ddc_mode"], "InstalledNoZenLocalFallback")
         self.assertTrue(report["crash_reporter_cleanup"]["closed"])
+        self.assertTrue(report["post_launch_crash_reporter_cleanup"]["closed"])
         self.assertIn("-ddc=InstalledNoZenLocalFallback", report["command"])
 
     def test_launch_unreal_editor_safe_reuses_existing_editor_by_default(self):
@@ -122,6 +123,7 @@ class UnrealCommandletRunnerTest(unittest.TestCase):
         self.assertEqual(report["launch_state"], "already_running")
         self.assertFalse(report["did_launch"])
         self.assertEqual(report["pid"], 64776)
+        self.assertTrue(report["post_launch_crash_reporter_cleanup"]["closed"])
 
     def test_find_running_unreal_editors_parses_tasklist_csv(self):
         rows = find_running_unreal_editors(

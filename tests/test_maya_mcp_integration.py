@@ -2,6 +2,7 @@ from __future__ import absolute_import
 
 import json
 import os
+import shutil
 import socket
 import sys
 import tempfile
@@ -575,6 +576,26 @@ class MayaMcpIntegrationTest(unittest.TestCase):
         self.assertEqual(policy["build_reversed_index_buffer"], "enabled")
         self.assertEqual(policy["generate_lightmap_uvs"], "disabled")
         self.assertEqual(policy["collision_complexity"], "use_complex_as_simple")
+
+    def test_ui_flow_settings_aliases_non_ascii_texture_root_for_maya_ui(self):
+        temp_dir = tempfile.mkdtemp()
+        old_repo_root = mcp_actions._repo_root
+        try:
+            mcp_actions._repo_root = lambda: temp_dir
+            texture_root = os.path.join(temp_dir, "测试贴图")
+            os.makedirs(texture_root)
+
+            settings = mcp_actions._ui_flow_settings({"texture_dir": texture_root})
+
+            if os.name == "nt":
+                self.assertNotEqual(settings["texture_root"], texture_root.replace("\\", "/"))
+                settings["texture_root"].encode("ascii")
+                self.assertTrue(os.path.isdir(settings["texture_root"]))
+            else:
+                self.assertEqual(settings["texture_root"], texture_root.replace("\\", "/"))
+        finally:
+            mcp_actions._repo_root = old_repo_root
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     def test_static_prop_ui_flow_prefix_fix_also_covers_internal_mesh_transforms(self):
         self.assertTrue(

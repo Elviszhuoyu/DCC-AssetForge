@@ -75,6 +75,9 @@ def main(argv=None):
     parser.add_argument("--output-root", required=True)
     parser.add_argument("--report-path", required=True)
     parser.add_argument("--target-path", default="/Game/Props/BlenderSmoke")
+    parser.add_argument("--blend-file", default="")
+    parser.add_argument("--selection", action="append", default=[])
+    parser.add_argument("--texture-folder", default="")
     args = parser.parse_args(argv)
 
     repo_root = os.path.abspath(args.repo_root)
@@ -86,7 +89,13 @@ def main(argv=None):
     from integrations.blender_mcp.client import BlenderBridgeClient
     from integrations.blender_mcp_runtime.ports import allocate_port
 
-    root = _make_scene(bpy)
+    if args.blend_file:
+        bpy.ops.wm.open_mainfile(filepath=os.path.abspath(args.blend_file))
+        root = None
+        selection = list(args.selection or ["B"])
+    else:
+        root = _make_scene(bpy)
+        selection = list(args.selection or [root.name])
     registry_path = os.path.join(args.output_root, "instances.json")
     port = allocate_port("127.0.0.1", 8950, 8999)
     registered = bridge.start_bridge(
@@ -99,24 +108,30 @@ def main(argv=None):
     )
     client = BlenderBridgeClient.from_instance(registered)
     status = client.call("blender_status", {})
-    scan = client.call("blender_scan_static_prop", {"selection": ["B"]})
+    scan_params = {"selection": selection}
+    export_params = {
+        "selection": selection,
+        "export_root": os.path.join(args.output_root, "packages"),
+        "target_path": args.target_path,
+    }
+    if args.texture_folder:
+        export_params["texture_folder"] = os.path.abspath(args.texture_folder)
+    scan = client.call("blender_scan_static_prop", scan_params)
+    preflight = client.call("blender_preflight_static_prop", export_params)
     export = client.call(
         "blender_export_static_prop_package",
-        {
-            "selection": ["B"],
-            "export_root": os.path.join(args.output_root, "packages"),
-            "target_path": args.target_path,
-        },
+        export_params,
     )
     summary = {
         "status": "success" if export.get("can_continue_to_ue") else "blocked",
         "created_at_epoch": time.time(),
         "blender_version": getattr(bpy.app, "version_string", ""),
-        "scene_root": root.name,
+        "scene_root": root.name if root is not None else ",".join(selection),
         "registered": registered,
         "bridge_status": status,
         "scan_asset_name": scan.get("scan", {}).get("asset_name", ""),
         "source_asset_name": scan.get("scan", {}).get("source_asset_name", ""),
+        "preflight": preflight,
         "export": export,
         "fbx_exists": os.path.exists(export.get("fbx_path", "")),
         "can_continue_to_ue": bool(export.get("can_continue_to_ue")),

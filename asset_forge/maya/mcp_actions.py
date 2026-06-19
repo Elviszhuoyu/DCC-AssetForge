@@ -5,10 +5,12 @@ from __future__ import absolute_import, print_function
 
 import contextlib
 import copy
+import hashlib
 import io
 import json
 import os
 import re
+import subprocess
 import sys
 import traceback
 
@@ -620,7 +622,43 @@ def _ui_flow_settings(params):
     active["mesh_prefix"] = params.get("mesh_prefix") or active.get("mesh_prefix") or DEFAULT_MESH_PREFIX
     active["texture_prefix"] = params.get("texture_prefix") or active.get("texture_prefix") or DEFAULT_TEXTURE_PREFIX
     active["material_profile"] = params.get("material_profile") or active.get("material_profile") or DEFAULT_MATERIAL_PROFILE
+    active["texture_root"] = _ascii_safe_maya_ui_path(active.get("texture_root", ""))
     return normalize_project_settings(active)
+
+
+def _ascii_safe_maya_ui_path(path):
+    normalized = normalize_path(path or "")
+    if not normalized or _is_ascii(normalized) or not os.path.isdir(normalized):
+        return normalized
+    if os.name != "nt":
+        return normalized
+    native_target = os.path.abspath(path)
+    alias_root = os.path.join(_repo_root(), "AssetForgeReports", "runtime_alias")
+    digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:10]
+    base_name = re.sub(r"[^0-9A-Za-z_]+", "_", os.path.basename(normalized)).strip("_") or "path"
+    alias_path = os.path.join(alias_root, "{0}_{1}".format(base_name, digest))
+    if os.path.isdir(alias_path):
+        return normalize_path(alias_path)
+    if os.path.exists(alias_path):
+        return normalized
+    if not os.path.isdir(alias_root):
+        os.makedirs(alias_root)
+    completed = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", alias_path, native_target],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return normalize_path(alias_path) if completed.returncode == 0 and os.path.isdir(alias_path) else normalized
+
+
+def _is_ascii(value):
+    try:
+        value.encode("ascii")
+        return True
+    except UnicodeEncodeError:
+        return False
 
 
 def _get_or_create_static_prop_ui_window():

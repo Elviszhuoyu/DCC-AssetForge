@@ -12,6 +12,16 @@ from asset_forge.shared.asset_health_report import create_asset_health_report
 from asset_forge.shared.constants import SOURCE_DCC_MAYA, TARGET_ENGINE_UNREAL, TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.material_profile_schema import get_project_material_profiles, resolve_material_profile, write_material_profiles
 from asset_forge.shared.material_profile_validator import validate_material_texture_coverage
+from asset_forge.shared.material_texture_set_mapping import (
+    build_material_texture_set_mapping,
+    infer_texture_set_token_from_materials,
+    match_material_to_texture_set,
+    material_texture_set_entry,
+    selected_texture_set_infos,
+    short_texture_set_name,
+    texture_set_info,
+    tokenize_for_binding,
+)
 from asset_forge.shared.material_texture_bindings import create_material_texture_bindings
 from asset_forge.shared.manifest_schema import ASSET_FORGE_SCHEMA_VERSION
 from asset_forge.shared.report_schema import REPORT_VERSION, create_acceptance_summary, create_export_report, summarize_validation, write_report
@@ -289,24 +299,7 @@ class MayaStaticPropPipeline(object):
         return result
 
     def _infer_texture_set_token_from_materials(self, materials, texture_sets):
-        if not materials or not texture_sets:
-            return ""
-        selected = []
-        selected_names = set()
-        candidates = [
-            {"set_name": item.get("set_name", ""), "short_name": item.get("short_name", _short_texture_set_name(item.get("set_name", "")))}
-            for item in texture_sets
-            if item.get("set_name", "")
-        ]
-        for material in materials:
-            match = self._match_material_to_texture_set(material.get("name", ""), candidates, selected_names)
-            if not match:
-                continue
-            set_name = match.get("set_name", "")
-            short_name = match.get("short_name", "") or _short_texture_set_name(set_name)
-            selected_names.add(set_name)
-            selected.append(short_name or set_name)
-        return ",".join(selected)
+        return infer_texture_set_token_from_materials(materials, texture_sets)
 
     def _apply_material_profile_validation(self, scan_result, material_profile):
         result = dict(scan_result)
@@ -394,116 +387,19 @@ class MayaStaticPropPipeline(object):
         return self._build_material_texture_set_mapping(materials, textures, {}, asset_name)["materials"]
 
     def _build_material_texture_set_mapping(self, materials, textures, folder_scan, asset_name):
-        material_entries = [dict(material, textures=[]) for material in (materials or [])]
-        if not material_entries:
-            material_entries.append({"name": "M_{0}".format(asset_name or "Asset"), "textures": []})
-
-        textures_by_set = {}
-        for texture in textures or []:
-            set_name = texture.get("selected_texture_set", "") or ""
-            textures_by_set.setdefault(set_name, []).append(texture)
-
-        selected_sets = self._selected_texture_set_infos(folder_scan, textures_by_set)
-        assigned_sets = set()
-        mapping = []
-
-        for material in material_entries:
-            binding = self._match_material_to_texture_set(material.get("name", ""), selected_sets, assigned_sets)
-            if not binding and len(material_entries) == 1 and len(selected_sets) == 1:
-                binding = dict(selected_sets[0], binding_source="single_material_fallback")
-            if binding:
-                set_name = binding.get("set_name", "")
-                assigned_sets.add(set_name)
-                assigned_textures = list(textures_by_set.get(set_name, []))
-                material["textures"] = assigned_textures
-                material.update(
-                    {
-                        "texture_set": set_name,
-                        "texture_set_short_name": binding.get("short_name", ""),
-                        "texture_set_binding_source": binding.get("binding_source", "material_name"),
-                    }
-                )
-                mapping.append(self._material_texture_set_entry(material, binding, assigned_textures, "bound"))
-            elif len(material_entries) == 1 and textures:
-                assigned_textures = list(textures or [])
-                material["textures"] = assigned_textures
-                material.update(
-                    {
-                        "texture_set": ",".join([item.get("set_name", "") for item in selected_sets if item.get("set_name", "")]),
-                        "texture_set_short_name": ",".join([item.get("short_name", "") for item in selected_sets if item.get("short_name", "")]),
-                        "texture_set_binding_source": "single_material_multi_set_fallback",
-                    }
-                )
-                for item in selected_sets:
-                    assigned_sets.add(item.get("set_name", ""))
-                mapping.append(self._material_texture_set_entry(material, {"binding_source": "single_material_multi_set_fallback"}, assigned_textures, "bound"))
-            else:
-                mapping.append(self._material_texture_set_entry(material, {"binding_source": "unmatched_material"}, [], "unmatched_material"))
-
-        for item in selected_sets:
-            set_name = item.get("set_name", "")
-            if set_name in assigned_sets:
-                continue
-            mapping.append(
-                {
-                    "status": "unassigned_texture_set",
-                    "material_name": "",
-                    "texture_set": set_name,
-                    "texture_set_short_name": item.get("short_name", ""),
-                    "binding_source": "no_matching_material",
-                    "texture_count": len(textures_by_set.get(set_name, [])),
-                    "usages": sorted(set(texture.get("usage", "") for texture in textures_by_set.get(set_name, []) if texture.get("usage", ""))),
-                    "textures": list(textures_by_set.get(set_name, [])),
-                }
-            )
-
-        return {"materials": material_entries, "material_texture_sets": mapping}
+        return build_material_texture_set_mapping(materials, textures, folder_scan, asset_name)
 
     def _selected_texture_set_infos(self, folder_scan, textures_by_set):
-        texture_sets = folder_scan.get("texture_sets", []) if isinstance(folder_scan, dict) else []
-        selected_names = folder_scan.get("selected_texture_sets", []) if isinstance(folder_scan, dict) else []
-        result = []
-        for set_name in selected_names:
-            info = self._texture_set_info(texture_sets, set_name)
-            result.append({"set_name": set_name, "short_name": info.get("short_name", _short_texture_set_name(set_name))})
-        for set_name in sorted(textures_by_set.keys()):
-            if set_name and set_name not in selected_names:
-                info = self._texture_set_info(texture_sets, set_name)
-                result.append({"set_name": set_name, "short_name": info.get("short_name", _short_texture_set_name(set_name))})
-        return result
+        return selected_texture_set_infos(folder_scan, textures_by_set)
 
     def _texture_set_info(self, texture_sets, set_name):
-        for item in texture_sets or []:
-            if item.get("set_name", "") == set_name:
-                return item
-        return {}
+        return texture_set_info(texture_sets, set_name)
 
     def _match_material_to_texture_set(self, material_name, selected_sets, assigned_sets, allow_assigned=False):
-        normalized_material = _tokenize_for_binding(material_name)
-        for item in selected_sets:
-            set_name = item.get("set_name", "")
-            if set_name in assigned_sets and not allow_assigned:
-                continue
-            short_name = item.get("short_name", "")
-            if short_name and "|{0}|".format(short_name.lower()) in normalized_material:
-                return dict(item, binding_source="material_name_short_token")
-            normalized_set = _tokenize_for_binding(set_name)
-            if normalized_set and normalized_set in normalized_material:
-                return dict(item, binding_source="material_name_full_set")
-        return None
+        return match_material_to_texture_set(material_name, selected_sets, assigned_sets, allow_assigned=allow_assigned)
 
     def _material_texture_set_entry(self, material, binding, textures, status):
-        return {
-            "status": status,
-            "material_name": material.get("name", ""),
-            "shading_group": material.get("shading_group", ""),
-            "texture_set": material.get("texture_set", ""),
-            "texture_set_short_name": material.get("texture_set_short_name", ""),
-            "binding_source": binding.get("binding_source", ""),
-            "texture_count": len(textures or []),
-            "usages": sorted(set(texture.get("usage", "") for texture in textures or [] if texture.get("usage", ""))),
-            "textures": list(textures or []),
-        }
+        return material_texture_set_entry(material, binding, textures, status)
 
     def analyze(self, scan_result, validation_result):
         return analyze_validation(scan_result, validation_result, self.rules, self.ai_client)
@@ -608,19 +504,8 @@ def _first_blocker(validation_result):
 
 
 def _short_texture_set_name(value):
-    parts = [item for item in (value or "").replace("-", "_").split("_") if item]
-    return parts[-1] if parts else value or ""
+    return short_texture_set_name(value)
 
 
 def _tokenize_for_binding(value):
-    tokens = []
-    current = []
-    for char in (value or "").lower():
-        if char.isalnum():
-            current.append(char)
-        elif current:
-            tokens.append("".join(current))
-            current = []
-    if current:
-        tokens.append("".join(current))
-    return "|" + "|".join(tokens) + "|" if tokens else ""
+    return tokenize_for_binding(value)

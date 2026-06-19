@@ -6,6 +6,7 @@ from __future__ import absolute_import
 import json
 import os
 import re
+import shutil
 import struct
 import time
 import zlib
@@ -16,10 +17,16 @@ from asset_forge.maya.export_package import build_export_package
 from asset_forge.maya.manifest_writer import IMPORT_PRESET_BY_PLATFORM
 from asset_forge.shared.constants import SOURCE_DCC_BLENDER, TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
+from asset_forge.shared.material_profile_schema import resolve_material_profile
+from asset_forge.shared.material_texture_set_mapping import (
+    build_material_texture_set_mapping,
+    infer_texture_set_token_from_materials,
+)
 from asset_forge.shared.material_texture_bindings import create_material_texture_bindings
 from asset_forge.shared.path_utils import normalize_path
 from asset_forge.shared.rule_validator import StaticPropRuleValidator, checks_to_manifest_dict
 from asset_forge.shared.texture_metadata import apply_texture_metadata
+from asset_forge.shared.texture_folder_scanner import TextureFolderScanner
 from asset_forge.shared.unreal_path import sanitize_unreal_package_path
 
 
@@ -41,7 +48,7 @@ class BlenderAssetForgeProvider(object):
 
     def preflight_static_prop(self, params=None):
         params = params or {}
-        scan = self._scan(params)
+        scan = self._scan_for_validation(params)
         target_platform = params.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE
         validation = self._validation(scan, target_platform)
         return {
@@ -51,6 +58,7 @@ class BlenderAssetForgeProvider(object):
             "can_continue_to_package_contract": bool(validation.get("can_export")),
             "scan": scan,
             "validation": validation,
+            "texture_folder_scan": scan.get("texture_folder_scan", {}),
             "next_action": "生成 package contract；真实 UE 导入仍需 Blender FBX exporter。",
         }
 
@@ -63,10 +71,11 @@ class BlenderAssetForgeProvider(object):
         material_profile = params.get("material_profile") or "Props_Opaque_PainterUE_ARM"
         target_platform = params.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE
         use_asset_folder = params.get("use_asset_folder", True)
-        scan = self._scan(params)
+        scan = self._scan_for_validation(dict(params, target_path=target_path))
         validation = self._validation(scan, target_platform)
         package = build_export_package(export_root, scan.get("asset_name", "Asset"), use_asset_folder)
-        scan = self._prepare_package_textures(scan, package, target_path)
+        if validation.get("can_export"):
+            scan = self._prepare_package_textures(scan, package, target_path, params)
         manifest = self._build_manifest(scan, validation, package, target_path, target_platform, material_profile, params)
         manifest.update(
             {
@@ -103,7 +112,7 @@ class BlenderAssetForgeProvider(object):
         material_profile = params.get("material_profile") or "Props_Opaque_PainterUE_ARM"
         target_platform = params.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE
         use_asset_folder = params.get("use_asset_folder", True)
-        scan = self._scan(params)
+        scan = self._scan_for_validation(dict(params, target_path=target_path))
         validation = self._validation(scan, target_platform)
         package = build_export_package(export_root, scan.get("asset_name", "Asset"), use_asset_folder)
         if not validation.get("can_export"):
@@ -121,7 +130,7 @@ class BlenderAssetForgeProvider(object):
             }
         exported_fbx = self.exporter.export_objects(scan.get("asset_roots", []), package["fbx_path"], rename_map=self._export_name_map(scan))
         fbx_exists = os.path.exists(exported_fbx)
-        scan = self._prepare_package_textures(scan, package, target_path)
+        scan = self._prepare_package_textures(scan, package, target_path, params)
         manifest = self._build_manifest(scan, validation, package, target_path, target_platform, material_profile, params)
         manifest.update(
             {
@@ -172,7 +181,9 @@ class BlenderAssetForgeProvider(object):
             material_slots=scan.get("material_slot_details", []),
             material_texture_sets=scan.get("material_texture_sets", []),
             material_texture_bindings=scan.get("material_texture_bindings", []),
+            material_texture_binding_risks=scan.get("material_texture_binding_risks", []),
             textures=scan.get("textures", []),
+            texture_folder_scan=scan.get("texture_folder_scan", {}),
             material_profile=material_profile,
             texture_import_policy=params.get("texture_import_policy", {}) or {},
             static_mesh_import_policy=params.get("static_mesh_import_policy", {}) or {},
@@ -199,9 +210,82 @@ class BlenderAssetForgeProvider(object):
             return self.scanner.scan_by_names(selection)
         return self.scanner.scan_selection()
 
+    def _scan_for_validation(self, params):
+        params = params or {}
+        scan = self._scan(params)
+        target_path = sanitize_unreal_package_path(params.get("target_path") or "/Game/Props")
+        return self._prepare_validation_scan(scan, target_path, params)
+
+    def _prepare_validation_scan(self, scan, target_path, params=None):
+        params = params or {}
+        scan = json.loads(json.dumps(scan or {}, ensure_ascii=False))
+        scan = self._normalize_blender_material_names_for_ue(scan)
+        scan = self._apply_texture_folder(scan, params)
+        binding_report = create_material_texture_bindings(scan, target_path)
+        scan["material_texture_bindings"] = binding_report.get("bindings", [])
+        scan["material_texture_binding_risks"] = binding_report.get("risks", [])
+        return scan
+
     def _validation(self, scan, target_platform):
         validation = self.validator.validate(scan, target_platform)
-        return self._downgrade_blender_transform_warning(scan, validation)
+        validation = self._downgrade_blender_transform_warning(scan, validation)
+        validation = self._attach_texture_set_selection_gate(scan, validation)
+        validation = self._attach_material_texture_binding_gate(scan, validation)
+        return validation
+
+    def _attach_texture_set_selection_gate(self, scan, validation):
+        folder_scan = scan.get("texture_folder_scan", {}) or {}
+        if not folder_scan.get("requires_texture_set_selection"):
+            return validation
+        result = dict(validation)
+        checks = list(result.get("checks", []) or [])
+        checks.append(
+            {
+                "id": "texture_set_selection",
+                "label": "贴图集选择",
+                "status": "error",
+                "severity": "error",
+                "object": folder_scan.get("texture_folder", ""),
+                "value": ", ".join([item.get("set_name", "") for item in folder_scan.get("texture_sets", []) or []]),
+                "limit": "选择一个贴图集",
+                "message": "贴图目录内存在多个完整贴图集，导出前需要确认本模型使用哪一套贴图。",
+                "next_action": "填写 texture_set_token，或把 Blender 材质命名为能匹配贴图集的短 token 后重新预检。",
+            }
+        )
+        result["checks"] = checks
+        return self._mark_validation_blocked(result, 1)
+
+    def _attach_material_texture_binding_gate(self, scan, validation):
+        blocking = [item for item in scan.get("material_texture_binding_risks", []) or [] if item.get("severity") == "error"]
+        if not blocking:
+            return validation
+        result = dict(validation)
+        checks = list(result.get("checks", []) or [])
+        for item in blocking:
+            checks.append(
+                {
+                    "id": item.get("id", "material_texture_binding"),
+                    "label": "材质贴图绑定",
+                    "status": "error",
+                    "severity": "error",
+                    "object": item.get("material_name", "") or item.get("texture_set", ""),
+                    "value": item.get("slot_name", "") or item.get("texture_count", 0),
+                    "limit": "每个 Blender 材质必须匹配对应贴图集",
+                    "message": item.get("message", "材质贴图绑定失败"),
+                    "next_action": "检查 texture_folder 与材质命名，或填写 texture_set_token 后重新预检。",
+                }
+            )
+        result["checks"] = checks
+        return self._mark_validation_blocked(result, len(blocking))
+
+    def _mark_validation_blocked(self, validation, error_count):
+        result = dict(validation)
+        result["status"] = "error"
+        result["can_export"] = False
+        summary = dict(result.get("summary", {}) or {})
+        summary["errors"] = int(summary.get("errors", 0)) + int(error_count)
+        result["summary"] = summary
+        return result
 
     def _downgrade_blender_transform_warning(self, scan, validation):
         if not isinstance(validation, dict) or scan.get("source_dcc") != SOURCE_DCC_BLENDER:
@@ -249,9 +333,11 @@ class BlenderAssetForgeProvider(object):
         if clean_mesh.startswith(asset_stem + "_"):
             return "SM_" + clean_mesh
         return clean_asset + "_" + clean_mesh
-    def _prepare_package_textures(self, scan, package, target_path):
+    def _prepare_package_textures(self, scan, package, target_path, params=None):
+        params = params or {}
         scan = json.loads(json.dumps(scan or {}, ensure_ascii=False))
         scan = self._normalize_blender_material_names_for_ue(scan)
+        scan = self._apply_texture_folder(scan, params)
         materials = list(scan.get("materials", []) or [])
         texture_dir = os.path.join(package["package_dir"], "Textures")
         if not os.path.isdir(texture_dir):
@@ -262,6 +348,7 @@ class BlenderAssetForgeProvider(object):
         for material in materials:
             material_name = material.get("name", "") or material.get("material_name", "") or "Material"
             existing = list(material.get("textures", []) or [])
+            existing = [self._copy_existing_texture(texture_dir, scan.get("asset_name", "SM_Asset"), material_name, item) for item in existing]
             by_usage = dict((item.get("usage", ""), item) for item in existing)
             created = []
             for usage in ("base_color", "normal", "packed_arm"):
@@ -272,9 +359,15 @@ class BlenderAssetForgeProvider(object):
                 texture = self._write_placeholder_texture(texture_dir, scan.get("asset_name", "SM_Asset"), material, usage)
                 created.append(texture)
             material["textures"] = created
-            material["texture_set"] = self._texture_set_name(scan.get("asset_name", "SM_Asset"), material_name)
-            material["texture_set_short_name"] = material_name
-            material["texture_set_binding_source"] = "blender_material_placeholder"
+            material["texture_set"] = material.get("texture_set") or self._texture_set_name(scan.get("asset_name", "SM_Asset"), material_name)
+            material["texture_set_short_name"] = material.get("texture_set_short_name") or material_name
+            existing_binding_source = material.get("texture_set_binding_source", "")
+            if existing_binding_source:
+                material["texture_set_binding_source"] = existing_binding_source
+            elif any(item.get("source_type") != "blender_placeholder" for item in created):
+                material["texture_set_binding_source"] = "blender_image_node"
+            else:
+                material["texture_set_binding_source"] = "blender_material_placeholder"
             all_textures.extend(created)
             texture_sets.append(
                 {
@@ -297,6 +390,90 @@ class BlenderAssetForgeProvider(object):
         scan["material_texture_bindings"] = binding_report.get("bindings", [])
         scan["material_texture_binding_risks"] = binding_report.get("risks", [])
         return scan
+
+    def _apply_texture_folder(self, scan, params):
+        texture_folder = params.get("texture_folder") or params.get("texture_root") or params.get("texture_dir") or ""
+        if not texture_folder:
+            return scan
+        profile = resolve_material_profile(params.get("material_profile") or "Props_Opaque_PainterUE_ARM")
+        scanner = TextureFolderScanner(recursive=bool(params.get("texture_recursive", False)))
+        folder_scan = scanner.scan(texture_folder, scan.get("asset_name", ""), profile, texture_set_token=params.get("texture_set_token", ""))
+        if not params.get("texture_set_token"):
+            inferred_token = infer_texture_set_token_from_materials(scan.get("materials", []), folder_scan.get("texture_sets", []))
+            if inferred_token:
+                folder_scan = scanner.scan(texture_folder, scan.get("asset_name", ""), profile, texture_set_token=inferred_token)
+                folder_scan["auto_selected_texture_sets"] = True
+                folder_scan["auto_material_texture_set_token"] = inferred_token
+        result = dict(scan)
+        result["texture_folder_scan"] = folder_scan
+        result["asset_name_candidates"] = folder_scan.get("asset_name_candidates", scan.get("asset_name_candidates", []))
+        if folder_scan.get("requires_texture_set_selection"):
+            mapping = build_material_texture_set_mapping(scan.get("materials", []), [], folder_scan, scan.get("asset_name", ""), allow_shared_texture_sets=True)
+            result["materials"] = self._merge_material_texture_sources(scan.get("materials", []), mapping["materials"])
+            result["material_texture_sets"] = mapping["material_texture_sets"]
+            result["textures"] = []
+            return result
+        mapping = build_material_texture_set_mapping(scan.get("materials", []), folder_scan.get("textures", []), folder_scan, scan.get("asset_name", ""), allow_shared_texture_sets=True)
+        result["materials"] = self._merge_material_texture_sources(scan.get("materials", []), mapping["materials"])
+        result["textures"] = list(folder_scan.get("textures", []))
+        result["material_texture_sets"] = mapping["material_texture_sets"]
+        result["texture_folder_scan"] = dict(folder_scan, material_texture_sets=mapping["material_texture_sets"])
+        return result
+
+    def _merge_material_texture_sources(self, original_materials, folder_materials):
+        originals = dict((item.get("name", "") or item.get("material_name", ""), item) for item in (original_materials or []))
+        result = []
+        for material in folder_materials or []:
+            name = material.get("name", "") or material.get("material_name", "")
+            original = originals.get(name, {})
+            merged = dict(material)
+            merged["textures"] = self._merge_textures_by_usage(original.get("textures", []), material.get("textures", []))
+            if original.get("textures") and material.get("textures"):
+                merged["texture_set_binding_source"] = "blender_image_node+texture_folder"
+            result.append(merged)
+        return result
+
+    def _merge_textures_by_usage(self, primary, secondary):
+        result = []
+        seen = set()
+        for texture in list(primary or []) + list(secondary or []):
+            usage = texture.get("usage", "")
+            if usage in seen:
+                continue
+            result.append(texture)
+            seen.add(usage)
+        return result
+
+    def _copy_existing_texture(self, texture_dir, asset_name, material_name, texture):
+        texture = dict(texture or {})
+        source = texture.get("source_path") or texture.get("path") or texture.get("package_path") or ""
+        usage = texture.get("usage", "")
+        if not source or not usage:
+            return texture
+        source_path = os.path.abspath(source)
+        if not os.path.isfile(source_path):
+            texture["copy_status"] = "missing_source"
+            return texture
+        target = texture.get("package_path") or self._packaged_texture_path(texture_dir, asset_name, material_name, usage, source_path)
+        target_path = os.path.abspath(target)
+        if os.path.abspath(source_path) != target_path:
+            parent = os.path.dirname(target_path)
+            if parent and not os.path.isdir(parent):
+                os.makedirs(parent)
+            shutil.copy2(source_path, target_path)
+        texture["path"] = normalize_path(target_path)
+        texture["package_path"] = normalize_path(target_path)
+        texture["source_path"] = normalize_path(source_path)
+        texture["copied"] = True
+        texture["copy_status"] = "copied"
+        texture.setdefault("selected_texture_set", self._texture_set_name(asset_name, material_name))
+        return apply_texture_metadata(texture, target_path)
+
+    def _packaged_texture_path(self, texture_dir, asset_name, material_name, usage, source_path):
+        suffix = {"base_color": "BaseColor", "normal": "Normal", "packed_arm": "OcclusionRoughnessMetallic"}.get(usage, self._safe_name(usage))
+        extension = os.path.splitext(source_path)[1] or ".png"
+        file_name = "T_{0}_{1}_{2}{3}".format(self._safe_name(asset_name), self._safe_name(material_name), suffix, extension.lower())
+        return os.path.join(texture_dir, file_name)
 
     def _normalize_blender_material_names_for_ue(self, scan):
         for material in scan.get("materials", []) or []:

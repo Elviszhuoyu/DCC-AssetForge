@@ -51,7 +51,7 @@ def material_texture_binding_risks(bindings):
                     "severity": "error",
                     "material_name": item.get("material_name", ""),
                     "slot_name": item.get("slot_name", ""),
-                    "message": "Maya material has no matching texture set; export is blocked to avoid default material textures.",
+                    "message": "DCC material has no matching texture set; export is blocked to avoid default material textures.",
                 }
             )
         elif item.get("status") == "unassigned_texture_set":
@@ -61,7 +61,7 @@ def material_texture_binding_risks(bindings):
                     "severity": "warning",
                     "texture_set": item.get("texture_set", ""),
                     "texture_count": item.get("texture_count", 0),
-                    "message": "Texture set has no matching Maya material slot; export can continue but the set will not bind to a slot automatically.",
+                    "message": "Texture set has no matching DCC material slot; export can continue but the set will not bind to a slot automatically.",
                 }
             )
 
@@ -162,7 +162,7 @@ def _shared_texture_set_risks(bindings):
                 "severity": "warning",
                 "texture_set": set_name,
                 "materials": sorted(materials),
-                "message": "Texture set is bound to multiple Maya materials; confirm this is intentional material sharing.",
+                "message": "Texture set is bound to multiple DCC materials; confirm this is intentional material sharing.",
             }
         )
     return risks
@@ -189,7 +189,7 @@ def _shared_texture_file_risks(bindings):
                 "severity": "warning",
                 "path": path,
                 "materials": active,
-                "message": "Texture file is referenced by multiple Maya materials; confirm this shared skin is intended.",
+                "message": "Texture file is referenced by multiple DCC materials; confirm this shared skin is intended.",
             }
         )
     return risks
@@ -214,7 +214,7 @@ def _shared_material_instance_risks(bindings):
                 "severity": "warning",
                 "ue_material_instance": instance,
                 "materials": sorted(materials),
-                "message": "Multiple Maya materials resolve to the same UE Material Instance name; rename materials or confirm intentional sharing.",
+                "message": "Multiple DCC materials resolve to the same UE Material Instance name; rename materials or confirm intentional sharing.",
             }
         )
     return risks
@@ -239,7 +239,7 @@ def _shared_slot_index_risks(bindings):
                 "severity": "warning",
                 "slot_index": index,
                 "materials": sorted(materials),
-                "message": "Multiple Maya materials resolve to the same Static Mesh material slot index; confirm slot extraction before import.",
+                "message": "Multiple DCC materials resolve to the same Static Mesh material slot index; confirm slot extraction before import.",
             }
         )
     return risks

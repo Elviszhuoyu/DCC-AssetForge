@@ -312,6 +312,9 @@ def launch_unreal_editor_safe(
         extra_args=extra_args,
     )
     if running_editors and not force_new:
+        post_cleanup = {"status": "skipped", "closed": False}
+        if close_crash_reporters:
+            post_cleanup = close_unreal_crash_reporters(runner=crash_reporter_runner)
         return {
             "version": "0.1",
             "stage": "unreal_editor_safe_launch",
@@ -324,6 +327,7 @@ def launch_unreal_editor_safe(
             "command": list(command),
             "ddc_mode": ddc_mode,
             "crash_reporter_cleanup": cleanup,
+            "post_launch_crash_reporter_cleanup": post_cleanup,
             "next_action": "检测到 UE Editor 已在运行；已避免重复启动，可继续窗口级复核。",
         }
     launcher = popen or subprocess.Popen
@@ -331,6 +335,9 @@ def launch_unreal_editor_safe(
     if wait_seconds:
         time.sleep(float(wait_seconds))
     exited = process.poll() is not None
+    post_cleanup = {"status": "skipped", "closed": False}
+    if close_crash_reporters:
+        post_cleanup = close_unreal_crash_reporters(runner=crash_reporter_runner)
     return {
         "version": "0.1",
         "stage": "unreal_editor_safe_launch",
@@ -342,6 +349,7 @@ def launch_unreal_editor_safe(
         "command": list(command),
         "ddc_mode": ddc_mode,
         "crash_reporter_cleanup": cleanup,
+        "post_launch_crash_reporter_cleanup": post_cleanup,
         "next_action": "UE Editor 已保持运行，可继续窗口级复核。" if not exited else "查看 UE Saved/Logs，修复启动错误后重新使用安全启动器。",
     }
 

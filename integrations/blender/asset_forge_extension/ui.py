@@ -3,8 +3,10 @@
 
 from __future__ import absolute_import
 
+import importlib
 import json
 import os
+import sys
 import time
 import traceback
 
@@ -42,7 +44,7 @@ class ASSETFORGE_PG_settings(bpy.types.PropertyGroup):
     last_issue_status: bpy.props.StringProperty(name="风险", default="未预检")  # type: ignore
     last_export_status: bpy.props.StringProperty(name="发布", default="等待扫描")  # type: ignore
     asset_detail: bpy.props.StringProperty(name="资产详情", default="当前资产根节点：未扫描\n当前导出资产名：未扫描\n来源：未扫描")  # type: ignore
-    texture_detail: bpy.props.StringProperty(name="贴图详情", default="贴图匹配：未扫描\nBlender 当前阶段会读取材质 Base Color，并为 UE Gate 生成可追踪占位贴图。")  # type: ignore
+    texture_detail: bpy.props.StringProperty(name="贴图详情", default="贴图匹配：未扫描\nBlender 会读取材质 Image Texture 节点；缺失槽位会生成可追踪占位贴图。")  # type: ignore
     preflight_detail: bpy.props.StringProperty(name="检查详情", default="风险检查：未预检")  # type: ignore
     result_detail: bpy.props.StringProperty(name="结果", default="等待操作")  # type: ignore
     last_report_path: bpy.props.StringProperty(name="报告", default="")  # type: ignore
@@ -318,6 +320,7 @@ CLASSES = (
 
 
 def register():
+    _refresh_asset_forge_blender_modules()
     _register_previews()
     for cls in CLASSES:
         bpy.utils.register_class(cls)
@@ -363,6 +366,23 @@ def _run_provider_action(context, action):
         settings.result_detail = "操作失败，已写入调试报告。"
         settings.last_report_path = _write_ui_report(action, {"status": "error", "message": str(exc), "traceback": traceback.format_exc()})
         return {"CANCELLED"}
+
+
+def _refresh_asset_forge_blender_modules():
+    """Refresh cached provider modules after a safe add-on reload."""
+    global BlenderAssetForgeProvider
+    module_names = (
+        "asset_forge.blender.scanner",
+        "asset_forge.blender.fbx_exporter",
+        "asset_forge.blender.provider_asset_forge",
+    )
+    for name in module_names:
+        module = sys.modules.get(name)
+        if module is not None:
+            importlib.reload(module)
+    from asset_forge.blender.provider_asset_forge import BlenderAssetForgeProvider as refreshed_provider
+
+    BlenderAssetForgeProvider = refreshed_provider
 
 
 def _params(context):
@@ -436,7 +456,7 @@ def _apply_result_to_settings(s, action, result, report_path):
     asset_name = scan.get("asset_name") or result.get("asset_name") or "未命名"
     s.last_report_path = report_path
     s.last_asset_name = "资产 | {0}".format(asset_name)
-    s.last_texture_status = "贴图 | {0} 材质 / {1} 贴图".format(len(scan.get("materials", []) or []), len(scan.get("textures", []) or []))
+    s.last_texture_status = "贴图 | {0} 材质 / {1} 贴图".format(len(scan.get("materials", []) or []), _texture_count_from_scan(scan))
     s.asset_detail = _format_asset_detail(scan)
     s.texture_detail = _format_texture_detail(scan)
     if action == "scan":
@@ -485,13 +505,33 @@ def _format_asset_detail(scan):
 
 def _format_texture_detail(scan):
     materials = scan.get("materials", []) if isinstance(scan, dict) else []
-    textures = scan.get("textures", []) if isinstance(scan, dict) else []
+    textures = _textures_from_scan(scan) if isinstance(scan, dict) else []
     lines = ["贴图匹配：{0} 材质 / {1} 贴图".format(len(materials), len(textures))]
     if not textures:
-        lines.append("当前 Blender 阶段读取材质 Base Color，并在导出时生成 BaseColor/Normal/ARM 占位贴图，UE Gate 可追踪。")
+        lines.append("未发现 Image Texture 节点；导出时会生成 BaseColor/Normal/ARM 占位贴图，UE Gate 可追踪。")
+    else:
+        usages = sorted(set(item.get("usage", "") for item in textures if item.get("usage")))
+        lines.append("已发现节点贴图：{0}".format(", ".join(usages)))
     for material in materials[:8]:
-        lines.append("- {0} | BaseColor {1}".format(material.get("name", ""), _compact_color(material.get("base_color", []))))
+        material_textures = list(material.get("textures", []) or [])
+        texture_usages = sorted(set(item.get("usage", "") for item in material_textures if item.get("usage")))
+        usage_text = ", ".join(texture_usages) if texture_usages else "占位待导出"
+        lines.append("- {0} | {1} | BaseColor {2}".format(material.get("name", ""), usage_text, _compact_color(material.get("base_color", []))))
     return "\n".join(lines)
+
+
+def _texture_count_from_scan(scan):
+    return len(_textures_from_scan(scan))
+
+
+def _textures_from_scan(scan):
+    textures = list(scan.get("textures", []) or []) if isinstance(scan, dict) else []
+    if textures:
+        return textures
+    result = []
+    for material in scan.get("materials", []) or []:
+        result.extend(list(material.get("textures", []) or []))
+    return result
 
 
 def _format_preflight_detail(validation):
