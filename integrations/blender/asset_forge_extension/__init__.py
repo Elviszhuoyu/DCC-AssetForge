@@ -8,8 +8,8 @@ bl_info = {
     "author": "TA_MyTools",
     "version": (0, 1, 0),
     "blender": (4, 2, 0),
-    "location": "Asset Forge MCP Bridge",
-    "description": "Local Asset Forge bridge for Blender to Unreal static prop packages.",
+    "location": "View3D > Sidebar > Asset Forge",
+    "description": "Local Asset Forge workbench and bridge for Blender to Unreal static prop packages.",
     "category": "Import-Export",
 }
 
@@ -33,12 +33,20 @@ def _bootstrap_repo_root():
 
 
 def register():
-    """Register Asset Forge Blender extension classes and start the local bridge."""
+    """Register Asset Forge Blender workbench classes and start the local bridge."""
+    from . import ui
+
+    ui.register()
     repo_root = _bootstrap_repo_root()
     log_path = os.path.join(repo_root, "AssetForgeReports", "logs", "latest_blender.log") if repo_root else ""
     return bridge.start_bridge(repo_root=repo_root, log_path=log_path)
 
 
 def unregister():
-    """Unregister Asset Forge Blender extension classes and stop the local bridge."""
-    return bridge.unregister_extension()
+    """Unregister Asset Forge Blender workbench classes and stop the local bridge."""
+    bridge.unregister_extension()
+    try:
+        from . import ui
+    except Exception:
+        return None
+    return ui.unregister()

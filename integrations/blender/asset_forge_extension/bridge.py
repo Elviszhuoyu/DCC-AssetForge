@@ -252,6 +252,10 @@ def start_bridge(host=DEFAULT_HOST, port=None, token="", bpy_module=None, repo_r
     return _BRIDGE.start()
 
 
+
+def current_bridge():
+    """Return the running in-process bridge, if any."""
+    return _BRIDGE
 def stop_bridge():
     global _BRIDGE
     if _BRIDGE:
