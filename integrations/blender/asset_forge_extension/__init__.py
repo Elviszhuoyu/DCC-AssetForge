@@ -3,6 +3,16 @@
 
 from __future__ import absolute_import
 
+bl_info = {
+    "name": "Asset Forge",
+    "author": "TA_MyTools",
+    "version": (0, 1, 0),
+    "blender": (4, 2, 0),
+    "location": "Asset Forge MCP Bridge",
+    "description": "Local Asset Forge bridge for Blender to Unreal static prop packages.",
+    "category": "Import-Export",
+}
+
 import os
 
 try:
