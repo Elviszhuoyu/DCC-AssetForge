@@ -146,11 +146,14 @@ class ASSETFORGE_PT_main_panel(bpy.types.Panel):
         settings = context.scene.asset_forge_settings
         box = layout.box()
         row = box.row(align=True)
+        title = row.row(align=True)
         icon_value = _logo_icon_value()
         if icon_value:
-            row.label(text="Asset Forge Blender 发布工作台", icon_value=icon_value)
+            title.label(text="Asset Forge Blender 发布工作台", icon_value=icon_value)
         else:
-            row.label(text="Asset Forge Blender 发布工作台", icon="PLUGIN")
+            title.label(text="Asset Forge Blender 发布工作台", icon="PLUGIN")
+        mcp = row.row(align=True)
+        _draw_mcp_header_controls(mcp)
         row.operator("asset_forge.refresh_status", text="", icon="FILE_REFRESH")
         _status_line(box, _bridge_line(), _bridge_state())
         _status_line(box, _root_line(context), "info")
@@ -550,6 +553,19 @@ def _bridge_line():
     if not active:
         return "MCP：未运行 | 来源 {0}".format(source)
     return "MCP：{0} 运行中 127.0.0.1:{1}".format(source, active.port)
+
+
+def _draw_mcp_header_controls(layout):
+    active = _current_bridge()
+    status = layout.row(align=True)
+    if active:
+        status.label(text="MCP: {0} 运行中".format(active.port), icon="CHECKMARK")
+    else:
+        status.label(text="MCP: 未运行", icon="TIME")
+    start = layout.row(align=True)
+    start.enabled = not bool(active)
+    start.operator("asset_forge.start_bridge", text="启动", icon="PLAY")
+    layout.operator("asset_forge.refresh_status", text="状态", icon="INFO")
 
 
 def _bridge_state():
