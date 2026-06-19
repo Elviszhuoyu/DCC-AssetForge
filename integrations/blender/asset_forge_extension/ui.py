@@ -685,7 +685,7 @@ def _draw_preflight_block(layout, text):
 
 
 def _status_icon(state):
-    return {"ok": "CHECKMARK", "warning": "ERROR", "blocked": "CANCEL", "error": "CANCEL", "info": "INFO", "waiting": "TIME"}.get(state, "INFO")
+    return {"ok": "CHECKMARK", "warning": "QUESTION", "blocked": "CANCEL", "error": "CANCEL", "info": "INFO", "waiting": "TIME"}.get(state, "INFO")
 
 
 def _check_marker(status):
@@ -694,6 +694,10 @@ def _check_marker(status):
 
 def _line_state(line):
     text = str(line or "")
+    if text.startswith("状态：可导出"):
+        return "warning" if "警告/阻断：0/0" not in text else "ok"
+    if text.startswith("状态：不可导出"):
+        return "blocked"
     if text.startswith("[BLOCK]") or text.startswith("[FAIL]") or "不可导出" in text or "阻断" in text or "失败" in text:
         return "blocked"
     if text.startswith("[WARN]") or "警告" in text:
