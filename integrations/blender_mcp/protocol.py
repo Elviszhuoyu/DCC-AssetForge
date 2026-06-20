@@ -21,6 +21,7 @@ SUPPORTED_ACTIONS = (
     "blender_get_latest_log",
     "blender_get_bridge_event_log",
     "blender_reload_asset_forge_addons",
+    "blender_refresh_asset_forge_modules",
     "blender_scan_static_prop",
     "blender_preflight_static_prop",
     "blender_build_static_prop_package_contract",

@@ -214,6 +214,7 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
                 "blender_get_latest_log",
                 "blender_get_bridge_event_log",
                 "blender_reload_asset_forge_addons",
+                "blender_refresh_asset_forge_modules",
                 "blender_scan_static_prop",
                 "blender_preflight_static_prop",
                 "blender_build_static_prop_package_contract",
@@ -244,6 +245,7 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
 
         self.assertIn("blender.mcp.bridge", payload["provider_ids"])
         self.assertIn("asset_forge.blender.provider", payload["provider_ids"])
+        self.assertIn("bridge_version", payload)
     def test_bridge_records_event_log_for_requests(self):
         bridge_instance = BlenderBridge(port=8875, repo_root="")
 
@@ -307,6 +309,18 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
         self.assertTrue(response["ok"])
         self.assertIn("asset_forge.blender.provider_asset_forge", response["result"]["refreshed_modules"])
         self.assertIsNone(bridge_instance._provider)
+
+    def test_bridge_can_refresh_asset_forge_modules_without_addon_reload(self):
+        bridge_instance = BlenderBridge(port=8875, repo_root="")
+        bridge_instance._provider = object()
+
+        response = bridge_instance.handle_request({"id": "1", "action": "blender_refresh_asset_forge_modules", "params": {}})
+
+        self.assertTrue(response["ok"])
+        self.assertIn("asset_forge.blender.provider_asset_forge", response["result"]["refreshed_modules"])
+        self.assertIsNone(bridge_instance._provider)
+        self.assertIn("bridge_version", response["result"])
+
     def test_blender_instances_tool_reads_registry(self):
         path = self._registry_path()
         old_path = os.environ.get("BLENDER_MCP_REGISTRY_PATH")

@@ -59,6 +59,12 @@ class BlenderUiStateTest(unittest.TestCase):
         self.assertIn("packed_arm[占位]", text)
         self.assertNotIn("已发现节点贴图", text)
 
+    def test_restart_bridge_operator_is_registered_and_visible(self):
+        ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
+
+        self.assertIn(ui.ASSETFORGE_OT_restart_bridge, ui.CLASSES)
+        self.assertEqual(ui.ASSETFORGE_OT_restart_bridge.bl_idname, "asset_forge.restart_bridge")
+
 
 if __name__ == "__main__":
     unittest.main()

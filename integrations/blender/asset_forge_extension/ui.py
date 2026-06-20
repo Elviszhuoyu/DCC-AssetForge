@@ -92,6 +92,33 @@ class ASSETFORGE_OT_stop_bridge(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class ASSETFORGE_OT_restart_bridge(bpy.types.Operator):
+    bl_idname = "asset_forge.restart_bridge"
+    bl_label = "重启 MCP"
+    bl_description = "安全停止当前 MCP Bridge，重新加载独立 bridge 模块后启动；不保存 .blend 或用户偏好"
+
+    def execute(self, context):
+        settings = context.scene.asset_forge_settings
+        module, source = _bridge_module()
+        if module is None:
+            settings.last_status = "MCP：独立 Blender MCP Bridge 未安装或未启用"
+            return {"CANCELLED"}
+        try:
+            stop = getattr(module, "stop_bridge", None)
+            if callable(stop):
+                stop()
+            if source == "independent":
+                module = importlib.reload(module)
+            payload = module.start_bridge(repo_root=_repo_root(), log_path=_default_log_path())
+        except Exception as exc:
+            settings.last_status = "MCP：重启失败 {0}".format(exc)
+            settings.next_action = "下一步 | 查看 Blender MCP 日志后重试。"
+            return {"CANCELLED"}
+        settings.last_status = "MCP：{0} 已重启 {1}:{2}".format(source, payload.get("host", "127.0.0.1"), payload.get("port", ""))
+        settings.next_action = "下一步 | 重新扫描资产，确认贴图目录和风险状态。"
+        return {"FINISHED"}
+
+
 class ASSETFORGE_OT_scan_selection(bpy.types.Operator):
     bl_idname = "asset_forge.scan_selection"
     bl_label = "1 扫描资产"
@@ -195,6 +222,7 @@ class ASSETFORGE_PT_actions_panel(bpy.types.Panel):
         layout.operator("asset_forge.export_package", text="3 导出 Package 给 UE Gate", icon="EXPORT")
         bridge_row = layout.row(align=True)
         bridge_row.operator("asset_forge.start_bridge", text="启动 MCP", icon="PLAY")
+        bridge_row.operator("asset_forge.restart_bridge", text="重启 MCP", icon="FILE_REFRESH")
         bridge_row.operator("asset_forge.stop_bridge", text="停止 MCP", icon="PAUSE")
 
 
@@ -303,6 +331,7 @@ CLASSES = (
     ASSETFORGE_OT_refresh_status,
     ASSETFORGE_OT_start_bridge,
     ASSETFORGE_OT_stop_bridge,
+    ASSETFORGE_OT_restart_bridge,
     ASSETFORGE_OT_scan_selection,
     ASSETFORGE_OT_preflight_selection,
     ASSETFORGE_OT_export_package,
@@ -624,7 +653,9 @@ def _bridge_line():
     module, source = _bridge_module()
     if not active:
         return "MCP：未运行 | 来源 {0}".format(source)
-    return "MCP：{0} 运行中 127.0.0.1:{1}".format(source, active.port)
+    version = getattr(module, "BRIDGE_VERSION", "")
+    version_text = " | v{0}".format(version) if version else ""
+    return "MCP：{0} 运行中 127.0.0.1:{1}{2}".format(source, active.port, version_text)
 
 
 def _draw_mcp_header_controls(layout):
@@ -637,6 +668,9 @@ def _draw_mcp_header_controls(layout):
     start = layout.row(align=True)
     start.enabled = not bool(active)
     start.operator("asset_forge.start_bridge", text="启动", icon="PLAY")
+    restart = layout.row(align=True)
+    restart.enabled = bool(active)
+    restart.operator("asset_forge.restart_bridge", text="重启", icon="FILE_REFRESH")
     layout.operator("asset_forge.refresh_status", text="状态", icon="INFO")
 
 

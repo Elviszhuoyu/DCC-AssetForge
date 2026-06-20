@@ -23,6 +23,7 @@ from asset_forge.blender.provider_asset_forge import BlenderAssetForgeProvider
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_LOG_TAIL = 200
 ALLOWED_RELOAD_ADDONS = ("asset_forge_extension",)
+BRIDGE_VERSION = "0.2.0"
 _BRIDGE = None
 
 
@@ -83,6 +84,7 @@ class BlenderBridge(object):
             "started_at_epoch": self.started_at_epoch or time.time(),
             "token_required": bool(self.token),
             "provider_ids": ["blender.mcp.bridge", "asset_forge.blender.provider"],
+            "bridge_version": BRIDGE_VERSION,
         }
         if self.token:
             payload["token"] = self.token
@@ -154,6 +156,8 @@ class BlenderBridge(object):
             return self._latest_log(int(params.get("tail") or DEFAULT_LOG_TAIL))
         if action == "blender_get_bridge_event_log":
             return self._bridge_event_log(int(params.get("tail") or 50))
+        if action == "blender_refresh_asset_forge_modules":
+            return self._refresh_asset_forge_modules()
         if action == "blender_reload_asset_forge_addons":
             return self._reload_asset_forge_addons(params)
         if action == "blender_scan_static_prop":
@@ -187,6 +191,7 @@ class BlenderBridge(object):
             "bridge": {
                 "host": self.host,
                 "port": self.port,
+                "version": BRIDGE_VERSION,
                 "started_at_epoch": self.started_at_epoch,
                 "token_required": bool(self.token),
                 "event_count": len(self.event_log),
@@ -281,14 +286,24 @@ class BlenderBridge(object):
             results.append({"addon": addon, "before": list(before), "after": list(after), "status": "reloaded" if after[0] else "failed"})
         if bool(params.get("save_userpref", False)):
             bpy.ops.wm.save_userpref()
+        refresh_result = self._refresh_asset_forge_modules()
+        return {
+            "status": "success",
+            "can_accept": True,
+            "reloaded": results,
+            "refreshed_modules": refresh_result["refreshed_modules"],
+            "next_action": "Asset Forge Blender add-on 已安全重载，可继续刷新 UI 或运行扫描。",
+        }
+
+    def _refresh_asset_forge_modules(self):
         refresh = _refresh_asset_forge_blender_modules()
         self._provider = None
         return {
             "status": "success",
             "can_accept": True,
-            "reloaded": results,
+            "bridge_version": BRIDGE_VERSION,
             "refreshed_modules": refresh,
-            "next_action": "Asset Forge Blender add-on 已安全重载，可继续刷新 UI 或运行扫描。",
+            "next_action": "Asset Forge Blender 业务模块已刷新，可重新扫描、预检或导出。",
         }
 
     def _asset_forge_provider(self):

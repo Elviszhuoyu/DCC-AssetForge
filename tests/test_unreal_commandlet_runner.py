@@ -181,6 +181,49 @@ class UnrealCommandletRunnerTest(unittest.TestCase):
         self.assertEqual(report["post_import_validation"], "pass")
         self.assertTrue(os.path.exists(log_path))
 
+    def test_run_accept_flow_commandlet_absolutizes_report_and_log_paths(self):
+        local_temp_dir = tempfile.mkdtemp(dir=os.getcwd())
+        self.addCleanup(lambda: os.path.isdir(local_temp_dir) and shutil.rmtree(local_temp_dir))
+        abs_report_path = os.path.join(local_temp_dir, "relative_flow.json")
+        rel_report_path = os.path.relpath(abs_report_path, os.getcwd())
+        rel_package_dir = os.path.relpath(os.path.join(local_temp_dir, "Package"), os.getcwd())
+        rel_log_path = os.path.relpath(os.path.join(local_temp_dir, "relative_flow.log"), os.getcwd())
+        os.makedirs(os.path.join(local_temp_dir, "Package"))
+
+        def fake_runner(command, **kwargs):
+            script_arg = [item for item in command if item.startswith("-script=")][0]
+            self.assertIn(abs_report_path.replace("\\", "/"), script_arg)
+            self.assertIn(os.path.abspath(rel_package_dir).replace("\\", "/"), script_arg)
+            with open(abs_report_path, "w", encoding="utf-8") as stream:
+                json.dump(
+                    {
+                        "status": "success",
+                        "gate_status": "pass",
+                        "gate_passed": True,
+                        "can_accept": True,
+                        "can_import": True,
+                        "warnings": [],
+                        "errors": [],
+                        "import": {"status": "success", "post_import_validation": {"status": "pass"}},
+                    },
+                    stream,
+                )
+            return FakeCompleted(returncode=0, stdout="Python script executed successfully", stderr="")
+
+        report = run_accept_flow_commandlet(
+            "UECmd.exe",
+            "Project.uproject",
+            rel_package_dir,
+            rel_report_path,
+            log_path=rel_log_path,
+            repo_root=self.temp_dir,
+            runner=fake_runner,
+        )
+
+        self.assertEqual(report["status"], "success")
+        self.assertTrue(os.path.exists(abs_report_path))
+        self.assertTrue(os.path.exists(os.path.abspath(rel_log_path)))
+
     def test_run_accept_flow_commandlet_flags_missing_report_as_error(self):
         report_path = os.path.join(self.temp_dir, "missing.json")
 

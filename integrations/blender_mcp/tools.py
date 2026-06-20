@@ -34,6 +34,11 @@ def tool_definitions():
                 "save_userpref": {"type": "boolean", "default": False},
             },
         ),
+        _tool(
+            "blender_refresh_asset_forge_modules",
+            "刷新 Asset Forge Blender 业务模块缓存并清空 provider 单例，不保存 .blend 或用户偏好。",
+            {},
+        ),
         _static_prop_tool("blender_scan_static_prop", "扫描当前 Blender selection，返回 Asset Forge Static Prop 分析结果。"),
         _static_prop_tool("blender_preflight_static_prop", "执行 Blender Static Prop 共享规则预检，但不导出 FBX。"),
         _static_prop_tool(

@@ -29,7 +29,9 @@ def run_accept_flow_commandlet(
 ):
     repo_root = repo_root or _repo_root()
     script_path = os.path.join(repo_root, "scripts", "ue_cleanup_accept_flow.py")
-    log_path = log_path or _default_log_path(report_path)
+    package_dir = _abs_path(package_dir)
+    report_path = _abs_path(report_path)
+    log_path = _abs_path(log_path or _default_log_path(report_path))
     command = build_accept_flow_command(
         unreal_editor_cmd,
         uproject_path,
@@ -61,6 +63,11 @@ def run_accept_flow_with_material_evidence_commandlet(
     null_rhi=True,
     runner=None,
 ):
+    package_dir = _abs_path(package_dir)
+    report_path = _abs_path(report_path)
+    log_path = _abs_path(log_path) if log_path else ""
+    material_report_path = _abs_path(material_report_path) if material_report_path else ""
+    material_log_path = _abs_path(material_log_path) if material_log_path else ""
     accept_summary = run_accept_flow_commandlet(
         unreal_editor_cmd,
         uproject_path,
@@ -134,7 +141,9 @@ def run_material_evidence_commandlet(
 ):
     repo_root = repo_root or _repo_root()
     script_path = os.path.join(repo_root, "scripts", "unreal_collect_material_evidence.py")
-    log_path = log_path or _default_log_path(material_report_path)
+    import_report_path = _abs_path(import_report_path)
+    material_report_path = _abs_path(material_report_path)
+    log_path = _abs_path(log_path or _default_log_path(material_report_path))
     command = build_material_evidence_command(
         unreal_editor_cmd,
         uproject_path,
@@ -477,6 +486,10 @@ def _first_comment_blocks(real_graph):
 
 def _repo_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def _abs_path(path):
+    return os.path.abspath(str(path)) if path else ""
 
 
 def _ue_path(path):
