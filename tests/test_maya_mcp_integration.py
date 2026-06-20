@@ -681,6 +681,57 @@ class MayaMcpIntegrationTest(unittest.TestCase):
         self.assertFalse(response["ok"])
         self.assertIn("token", response["error"]["message"])
 
+    def test_bridge_ping_does_not_enter_maya_main_thread(self):
+        server = asset_forge_maya_bridge.AssetForgeMayaBridgeServer(("127.0.0.1", 0), asset_forge_maya_bridge.AssetForgeMayaBridgeHandler, token="", repo_root="E:/Repo")
+        thread = threading.Thread(target=server.handle_request)
+        thread.daemon = True
+        thread.start()
+        old_execute = asset_forge_maya_bridge._execute_in_maya_main_thread
+        try:
+            asset_forge_maya_bridge._execute_in_maya_main_thread = lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("bridge_ping should stay on the socket thread"))
+            with socket.create_connection(server.server_address, 5) as sock:
+                sock.sendall(encode_message({"id": "ping", "action": "bridge_ping", "params": {}}))
+                raw = _read_line(sock)
+        finally:
+            asset_forge_maya_bridge._execute_in_maya_main_thread = old_execute
+            server.server_close()
+            thread.join(2)
+
+        response = json.loads(raw.decode("utf-8"))
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["result"]["status"], "running")
+        self.assertEqual(response["result"]["repo_root"], "E:/Repo")
+
+    def test_bridge_socket_health_uses_ping_response(self):
+        server = asset_forge_maya_bridge.AssetForgeMayaBridgeServer(("127.0.0.1", 0), asset_forge_maya_bridge.AssetForgeMayaBridgeHandler, token="", repo_root="E:/Repo")
+        thread = threading.Thread(target=server.handle_request)
+        thread.daemon = True
+        thread.start()
+        try:
+            healthy = asset_forge_maya_bridge._bridge_socket_healthy(server, timeout=1.0)
+        finally:
+            server.server_close()
+            thread.join(2)
+
+        self.assertTrue(healthy)
+
+    def test_bridge_socket_health_rejects_unresponsive_listener(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
+
+        class UnresponsiveServer(object):
+            server_address = sock.getsockname()
+            repo_root = "E:/Repo"
+            instance_id = ""
+
+        try:
+            healthy = asset_forge_maya_bridge._bridge_socket_healthy(UnresponsiveServer(), timeout=0.05)
+        finally:
+            sock.close()
+
+        self.assertFalse(healthy)
+
     def test_install_bridge_shelf_button_creates_one_click_launcher(self):
         fake_cmds = FakeMayaCmds()
         fake_mel = types.ModuleType("maya.mel")

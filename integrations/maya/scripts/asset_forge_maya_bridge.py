@@ -5,6 +5,7 @@ from __future__ import absolute_import, print_function
 
 import json
 import os
+import socket
 import socketserver
 import sys
 import threading
@@ -60,6 +61,13 @@ class AssetForgeMayaBridgeHandler(socketserver.StreamRequestHandler):
             action = request.get("action")
             params = request.get("params") or {}
             params.setdefault("repo_root", self.server.repo_root)
+            if action == "bridge_ping":
+                return {
+                    "id": request_id,
+                    "ok": True,
+                    "result": _bridge_ping_status(self.server),
+                    "error": None,
+                }
             _register_bridge_instance(self.server)
             _mark_request_start(action, request_id, self.client_address[0])
             result = _execute_in_maya_main_thread(action, params)
@@ -80,6 +88,14 @@ def start_bridge(host=None, port=None, token=None, repo_root=None):
     global _SERVER, _THREAD
     if _SERVER is not None:
         if _bridge_thread_alive():
+            if not _bridge_socket_healthy(_SERVER):
+                _discard_dead_server("start_bridge", "Maya MCP bridge socket is not responding.")
+            else:
+                status = bridge_status()
+                _safe_show_status_window(status)
+                _notify_status_listeners(status)
+                return status
+        if _SERVER is not None and _bridge_thread_alive():
             status = bridge_status()
             _safe_show_status_window(status)
             _notify_status_listeners(status)
@@ -307,7 +323,40 @@ def _bridge_thread_alive():
     return _SERVER is not None and _THREAD is not None and _THREAD.is_alive()
 
 
-def _discard_dead_server(action=""):
+def _bridge_ping_status(server):
+    return {
+        "status": "running",
+        "health": "healthy",
+        "bridge_version": BRIDGE_VERSION,
+        "instance_id": getattr(server, "instance_id", ""),
+        "pid": os.getpid(),
+        "host": server.server_address[0],
+        "port": server.server_address[1],
+        "repo_root": getattr(server, "repo_root", ""),
+    }
+
+
+def _bridge_socket_healthy(server, timeout=0.75):
+    try:
+        request = {"id": "bridge-health-probe", "action": "bridge_ping", "params": {}}
+        with socket.create_connection(server.server_address, timeout=timeout) as stream:
+            stream.settimeout(timeout)
+            stream.sendall((json.dumps(request, ensure_ascii=False) + "\n").encode("utf-8"))
+            raw = b""
+            while not raw.endswith(b"\n") and len(raw) < 8192:
+                chunk = stream.recv(4096)
+                if not chunk:
+                    break
+                raw += chunk
+        if not raw:
+            return False
+        response = json.loads(raw.decode("utf-8"))
+        return bool(response.get("ok") and response.get("result", {}).get("status") == "running")
+    except Exception:
+        return False
+
+
+def _discard_dead_server(action="", reason="Maya MCP bridge thread is not listening."):
     global _SERVER, _THREAD
     if _SERVER is None:
         return
@@ -317,17 +366,22 @@ def _discard_dead_server(action=""):
         _unregister_bridge_instance(instance_id=instance_id, port=_SERVER.server_address[1])
     finally:
         try:
+            if _bridge_thread_alive():
+                _SERVER.shutdown()
+        except Exception:
+            pass
+        try:
             _SERVER.server_close()
         except Exception:
             pass
         _SERVER = None
         _THREAD = None
-        _set_metrics_status("error", action or "mcp_bridge_restart", "Maya MCP bridge thread is not listening.")
+        _set_metrics_status("error", action or "mcp_bridge_restart", reason)
         _log_bridge_event(
             "mcp_bridge_discard_dead_server",
             "warning",
             repo_root,
-            errors=[{"message": "Maya MCP bridge thread is not listening."}],
+            errors=[{"message": reason}],
         )
 
 
