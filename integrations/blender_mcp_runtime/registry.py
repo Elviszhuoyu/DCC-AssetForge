@@ -55,7 +55,7 @@ def load_instances(path=None, include_stale=False, now=None):
     registry_path = path or default_registry_path()
     if not os.path.exists(registry_path):
         return []
-    with open(registry_path, "r", encoding="utf-8") as stream:
+    with open(registry_path, "r", encoding="utf-8-sig") as stream:
         data = json.load(stream)
     instances = data.get("instances", data if isinstance(data, list) else [])
     normalized = [_normalize_instance(item) for item in instances if isinstance(item, dict)]
@@ -64,7 +64,7 @@ def load_instances(path=None, include_stale=False, now=None):
     return [
         describe_instance(item)
         for item in normalized
-        if not _is_stale(item, now=now) and _is_endpoint_alive(item)
+        if not _is_stale(item, now=now) and _is_instance_live(item)
     ]
 
 
@@ -123,7 +123,7 @@ def resolve_instance(selector=None, path=None):
     matches = _filter_instances(instances, selector)
     if not matches and _has_selector(selector):
         stale_matches = _filter_instances(load_instances(path=path, include_stale=True), selector)
-        matches = [item for item in stale_matches if _is_endpoint_alive(item)]
+        matches = [item for item in stale_matches if _is_instance_live(item)]
     if not matches:
         raise BlenderInstanceNotFoundError("No matching Blender MCP instance is registered.")
     if len(matches) > 1:
@@ -226,6 +226,43 @@ def _is_endpoint_alive(instance, timeout=0.25):
             return True
     except (OSError, ValueError):
         return False
+
+
+def _is_instance_live(instance):
+    return _is_process_alive(instance) and _is_endpoint_alive(instance)
+
+
+def _is_process_alive(instance):
+    pid = instance.get("pid")
+    if pid in (None, ""):
+        return True
+    try:
+        active_pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if active_pid <= 0:
+        return False
+    if os.name == "nt":
+        return _is_windows_pid_alive(active_pid)
+    try:
+        os.kill(active_pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _is_windows_pid_alive(pid):
+    try:
+        import ctypes
+    except Exception:
+        return True
+    process_query_limited_information = 0x1000
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(process_query_limited_information, False, int(pid))
+    if handle:
+        kernel32.CloseHandle(handle)
+        return True
+    return int(kernel32.GetLastError() or 0) == 5
 
 
 def _same_endpoint(left, right):

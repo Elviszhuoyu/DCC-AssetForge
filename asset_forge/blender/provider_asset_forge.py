@@ -3,11 +3,13 @@
 
 from __future__ import absolute_import
 
+import importlib
 import json
 import os
 import re
 import shutil
 import struct
+import sys
 import time
 import zlib
 
@@ -18,6 +20,21 @@ from asset_forge.maya.manifest_writer import IMPORT_PRESET_BY_PLATFORM
 from asset_forge.shared.constants import SOURCE_DCC_BLENDER, TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
 from asset_forge.shared.material_profile_schema import resolve_material_profile
+
+
+def _refresh_shared_texture_modules_for_hot_reload():
+    for module_name in (
+        "asset_forge.shared.texture_folder_scanner",
+        "asset_forge.shared.material_texture_set_mapping",
+        "asset_forge.shared.material_texture_bindings",
+    ):
+        module = sys.modules.get(module_name)
+        if module is not None:
+            importlib.reload(module)
+
+
+_refresh_shared_texture_modules_for_hot_reload()
+
 from asset_forge.shared.material_texture_set_mapping import (
     build_material_texture_set_mapping,
     infer_texture_set_token_from_materials,

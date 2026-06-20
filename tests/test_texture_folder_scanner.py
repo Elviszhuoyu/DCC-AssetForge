@@ -275,6 +275,20 @@ class TextureFolderScannerTest(unittest.TestCase):
         self.assertEqual(result["selected_texture_set_short_names"], ["a1", "d1"])
         self.assertEqual(len([texture for texture in result["textures"] if texture["usage"] == "base_color"]), 2)
 
+    def test_texture_set_token_asset_family_selects_all_matching_sets(self):
+        for set_name in ["a1", "b1", "d1"]:
+            for suffix in ["BaseColor", "Normal", "OcclusionRoughnessMetallic"]:
+                self._write_texture("HK416_D_B_{0}_{1}.png".format(set_name, suffix))
+        for suffix in ["BaseColor", "Normal", "OcclusionRoughnessMetallic"]:
+            self._write_texture("HK416_D_H_a_{0}.png".format(suffix))
+
+        result = TextureFolderScanner().scan(self.temp_dir, "SM_B", self.profile, texture_set_token="B")
+
+        self.assertEqual(result["matched_count"], 9)
+        self.assertEqual(result["selected_texture_set_short_names"], ["a1", "b1", "d1"])
+        self.assertEqual(len([texture for texture in result["textures"] if texture["usage"] == "base_color"]), 3)
+        self.assertNotIn("a", result["selected_texture_set_short_names"])
+
     def test_full_texture_set_name_selection_is_case_insensitive(self):
         for name in [
             "HK416_D_B_a1_BaseColor.png",

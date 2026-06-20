@@ -1,11 +1,14 @@
 from __future__ import absolute_import
 
 import os
+import json
 import socket
 import tempfile
 import unittest
+from unittest import mock
 
 from integrations.maya.scripts import asset_forge_maya_bridge
+from integrations.maya_mcp_runtime import registry as maya_registry
 from integrations.maya_mcp_runtime.ports import allocate_port
 from integrations.maya_mcp.client import MayaBridgeClient
 from integrations.maya_mcp_runtime.registry import (
@@ -21,6 +24,11 @@ from integrations.maya_mcp_runtime.registry import (
 
 
 class MayaMcpRuntimeTest(unittest.TestCase):
+    def setUp(self):
+        self._pid_patch = mock.patch.object(maya_registry, "_is_process_alive", return_value=True)
+        self._pid_patch.start()
+        self.addCleanup(self._pid_patch.stop)
+
     def test_registry_registers_and_resolves_instances(self):
         path = self._registry_path()
         with self._listening_socket() as port_a, self._listening_socket() as port_b:
@@ -88,6 +96,35 @@ class MayaMcpRuntimeTest(unittest.TestCase):
         self.assertEqual(load_instances(path=path), [])
         with self.assertRaises(MayaInstanceNotFoundError):
             resolve_instance({}, path=path)
+
+    def test_registry_filters_live_endpoint_when_pid_is_dead(self):
+        path = self._registry_path()
+        with self._listening_socket() as port:
+            save_instances(
+                [
+                    {
+                        "instance_id": "maya-dead-pid",
+                        "pid": 101,
+                        "host": "127.0.0.1",
+                        "port": port,
+                        "updated_at_epoch": __import__("time").time(),
+                    }
+                ],
+                path=path,
+            )
+
+            with mock.patch.object(maya_registry, "_is_process_alive", return_value=False):
+                self.assertEqual(load_instances(path=path), [])
+                with self.assertRaises(MayaInstanceNotFoundError):
+                    resolve_instance({"maya_port": port}, path=path)
+
+    def test_registry_reads_utf8_bom_file(self):
+        path = self._registry_path()
+        with self._listening_socket() as port:
+            with open(path, "w", encoding="utf-8-sig") as stream:
+                json.dump({"instances": [{"instance_id": "maya-bom", "pid": 101, "port": port}]}, stream)
+
+            self.assertEqual(load_instances(path=path)[0]["instance_id"], "maya-bom")
 
     def test_registry_resolves_stale_but_live_selected_instance(self):
         path = self._registry_path()

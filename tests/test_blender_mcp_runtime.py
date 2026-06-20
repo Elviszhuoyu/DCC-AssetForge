@@ -5,7 +5,9 @@ import os
 import socket
 import tempfile
 import unittest
+from unittest import mock
 
+from integrations.blender_mcp_runtime import registry as blender_registry
 from integrations.blender_mcp.client import BlenderBridgeClient
 from integrations.blender_mcp.protocol import ALL_ACTIONS, validate_action, validate_bridge_action
 from integrations.blender_mcp.tools import call_tool, tool_definitions
@@ -25,6 +27,11 @@ from integrations.blender_mcp_runtime.registry import (
 
 
 class BlenderMcpRuntimeTest(unittest.TestCase):
+    def setUp(self):
+        self._pid_patch = mock.patch.object(blender_registry, "_is_process_alive", return_value=True)
+        self._pid_patch.start()
+        self.addCleanup(self._pid_patch.stop)
+
     def test_registry_registers_and_resolves_instances(self):
         path = self._registry_path()
         with self._listening_socket() as port_a, self._listening_socket() as port_b:
@@ -92,6 +99,35 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
         self.assertEqual(load_instances(path=path), [])
         with self.assertRaises(BlenderInstanceNotFoundError):
             resolve_instance({}, path=path)
+
+    def test_registry_filters_live_endpoint_when_pid_is_dead(self):
+        path = self._registry_path()
+        with self._listening_socket() as port:
+            save_instances(
+                [
+                    {
+                        "instance_id": "blender-dead-pid",
+                        "pid": 201,
+                        "host": "127.0.0.1",
+                        "port": port,
+                        "updated_at_epoch": __import__("time").time(),
+                    }
+                ],
+                path=path,
+            )
+
+            with mock.patch.object(blender_registry, "_is_process_alive", return_value=False):
+                self.assertEqual(load_instances(path=path), [])
+                with self.assertRaises(BlenderInstanceNotFoundError):
+                    resolve_instance({"blender_port": port}, path=path)
+
+    def test_registry_reads_utf8_bom_file(self):
+        path = self._registry_path()
+        with self._listening_socket() as port:
+            with open(path, "w", encoding="utf-8-sig") as stream:
+                json.dump({"instances": [{"instance_id": "blender-bom", "pid": 201, "port": port}]}, stream)
+
+            self.assertEqual(load_instances(path=path)[0]["instance_id"], "blender-bom")
 
     def test_registry_resolves_stale_but_live_selected_instance(self):
         path = self._registry_path()

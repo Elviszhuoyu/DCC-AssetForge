@@ -435,6 +435,34 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertEqual(textures_by_usage["packed_arm"]["source_type"], "texture_folder")
         self.assertEqual(result["scan"]["material_texture_bindings"][0]["texture_usages"], ["base_color", "normal", "packed_arm"])
 
+    def test_preflight_texture_family_token_binds_blender_duplicate_material_suffixes(self):
+        texture_root = os.path.join(self.temp_dir, "textures")
+        for set_name in ["a1", "b1", "d1"]:
+            for suffix in ["BaseColor", "Normal", "OcclusionRoughnessMetallic"]:
+                _write_png_rgba(os.path.join(texture_root, "T_HK416_D_B_{0}_{1}.png".format(set_name, suffix)), 1, 1, [(128, 128, 128, 255)])
+        for suffix in ["BaseColor", "Normal", "OcclusionRoughnessMetallic"]:
+            _write_png_rgba(os.path.join(texture_root, "T_HK416_D_H_a_{0}.png".format(suffix)), 1, 1, [(128, 128, 128, 255)])
+        mesh = FakeObject("B", materials=["B_a1", "B_b1.001", "B_d1.002", "B_d1.001"])
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(selected=[mesh], objects=[mesh]))
+
+        result = provider.preflight_static_prop(
+            {
+                "texture_folder": texture_root,
+                "texture_set_token": "B",
+                "target_path": "/Game/Props/Blender",
+            }
+        )
+
+        bindings = dict((item["material_name"], item) for item in result["scan"]["material_texture_bindings"])
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(result["can_export"])
+        self.assertEqual(result["texture_folder_scan"]["selected_texture_set_short_names"], ["a1", "b1", "d1"])
+        self.assertEqual(bindings["B_a1"]["texture_set_short_name"], "a1")
+        self.assertEqual(bindings["B_b1_001"]["texture_set_short_name"], "b1")
+        self.assertEqual(bindings["B_d1_002"]["texture_set_short_name"], "d1")
+        self.assertEqual(bindings["B_d1_001"]["texture_set_short_name"], "d1")
+        self.assertFalse([item for item in result["scan"]["material_texture_binding_risks"] if item.get("id") == "unmatched_material"])
+
     def test_preflight_blocks_ambiguous_texture_folder_without_material_token(self):
         texture_root = os.path.join(self.temp_dir, "textures")
         for name in [

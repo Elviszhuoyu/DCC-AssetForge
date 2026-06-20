@@ -329,18 +329,28 @@ class TextureFolderScanner(object):
             selected_names = set()
             for token in tokens:
                 normalized_token = _normalize_name(token)
-                matched = None
+                exact_matches = []
+                token_matches = []
+                substring_matches = []
                 for item in texture_sets:
                     set_name = item.get("set_name", "")
                     normalized_set = _normalize_name(set_name)
                     normalized_short = _normalize_name(_short_texture_set_name(set_name))
-                    if normalized_token in (normalized_set, normalized_short) or normalized_token in normalized_set:
-                        matched = item
-                        break
-                if matched and matched.get("set_name", "") not in selected_names:
-                    selected.append(matched)
-                    selected_names.add(matched.get("set_name", ""))
-                elif not matched:
+                    if normalized_token in (normalized_set, normalized_short):
+                        exact_matches.append(item)
+                    elif normalized_token in [_normalize_name(part) for part in _tokens(set_name)]:
+                        token_matches.append(item)
+                    elif normalized_token in normalized_set:
+                        substring_matches.append(item)
+
+                matches = exact_matches or token_matches or substring_matches[:1]
+                if matches:
+                    for matched in matches:
+                        if matched.get("set_name", "") in selected_names:
+                            continue
+                        selected.append(matched)
+                        selected_names.add(matched.get("set_name", ""))
+                else:
                     issues.append({"status": "warning", "id": "texture_set_selection_unmatched", "message": "贴图集关键词未匹配到候选：{0}".format(token), "token": token})
             return selected, issues, False, bool(issues)
 
