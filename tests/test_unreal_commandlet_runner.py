@@ -381,6 +381,23 @@ class UnrealCommandletRunnerTest(unittest.TestCase):
         self.assertEqual(args.material_report, "flow_material.json")
         self.assertEqual(args.material_log, "flow_material.log")
 
+    def test_parse_args_accepts_explicit_target_and_log_options(self):
+        args = parse_args(
+            [
+                "UECmd.exe",
+                "Project.uproject",
+                "Package",
+                "flow.json",
+                "--target-path",
+                "/Game/Props/Test",
+                "--log-path",
+                "flow.log",
+            ]
+        )
+
+        self.assertEqual(args.target_path, "/Game/Props/Test")
+        self.assertEqual(args.log_path, "flow.log")
+
 
 class FakeCompleted(object):
     def __init__(self, returncode=0, stdout="", stderr=""):

@@ -23,6 +23,7 @@ def usage_text():
             "Usage:",
             "  unreal_run_accept_flow_commandlet.py <UnrealEditor-Cmd.exe> <uproject> <package_dir> <report_path> [target_path] [log_path]",
             "  unreal_run_accept_flow_commandlet.py <UnrealEditor-Cmd.exe> <uproject> <package_dir> <report_path> [target_path] [log_path] --with-material-evidence",
+            "  unreal_run_accept_flow_commandlet.py <UnrealEditor-Cmd.exe> <uproject> <package_dir> <report_path> --target-path /Game/Props --log-path flow.log",
             "",
             "Defaults:",
             "  Uses -ddc=InstalledNoZenLocalFallback and forward-slash paths to avoid Zen/DDC and Windows escape noise.",
@@ -40,6 +41,18 @@ def parse_args(argv):
     parser.add_argument("target_path", nargs="?", default="")
     parser.add_argument("log_path", nargs="?", default="")
     parser.add_argument(
+        "--target-path",
+        dest="target_path_option",
+        default="",
+        help="Optional UE target path override. Prefer this over the legacy positional target path.",
+    )
+    parser.add_argument(
+        "--log-path",
+        dest="log_path_option",
+        default="",
+        help="Optional commandlet log path. Prefer this over the legacy positional log path.",
+    )
+    parser.add_argument(
         "--with-material-evidence",
         action="store_true",
         help="Run material cold-start evidence after accept-flow succeeds.",
@@ -54,7 +67,12 @@ def parse_args(argv):
         default="",
         help="Output path for the material evidence commandlet log.",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.target_path_option:
+        args.target_path = args.target_path_option
+    if args.log_path_option:
+        args.log_path = args.log_path_option
+    return args
 
 
 def main(argv=None):
