@@ -91,7 +91,6 @@ class BLENDERMCP_OT_refresh_asset_forge_modules(bpy.types.Operator):
         settings.last_action = "refresh_modules_failed"
         _append_log(settings, "刷新模块失败 | {0}".format(result.get("error", {}).get("message", "")))
         return {"CANCELLED"}
-        return {"FINISHED"}
 
 
 class BLENDERMCP_PT_bridge_panel(bpy.types.Panel):

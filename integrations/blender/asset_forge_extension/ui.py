@@ -221,10 +221,7 @@ class ASSETFORGE_PT_actions_panel(bpy.types.Panel):
         row.operator("asset_forge.scan_selection", text="1 扫描", icon="VIEWZOOM")
         row.operator("asset_forge.preflight_selection", text="2 检查", icon="CHECKMARK")
         layout.operator("asset_forge.export_package", text="3 导出 Package 给 UE Gate", icon="EXPORT")
-        bridge_row = layout.row(align=True)
-        bridge_row.operator("asset_forge.start_bridge", text="启动 MCP", icon="PLAY")
-        bridge_row.operator("asset_forge.restart_bridge", text="重启 MCP", icon="FILE_REFRESH")
-        bridge_row.operator("asset_forge.stop_bridge", text="停止 MCP", icon="PAUSE")
+        _draw_mcp_action_controls(layout)
 
 
 class ASSETFORGE_PT_target_panel(bpy.types.Panel):
@@ -629,7 +626,7 @@ def _bridge_module(try_enable=False):
         if try_enable:
             try:
                 import addon_utils  # type: ignore
-                addon_utils.enable("blender_mcp_bridge", default_set=True, persistent=True)
+                addon_utils.enable("blender_mcp_bridge", default_set=False, persistent=False)
                 import blender_mcp_bridge.bridge as module  # type: ignore
                 return module, "independent"
             except Exception:
@@ -664,6 +661,7 @@ def _bridge_line():
 
 
 def _draw_mcp_header_controls(layout):
+    state = _mcp_control_state()
     active = _current_bridge()
     status = layout.row(align=True)
     if active:
@@ -671,22 +669,57 @@ def _draw_mcp_header_controls(layout):
     else:
         status.label(text="MCP: 未运行", icon="TIME")
     start = layout.row(align=True)
-    start.enabled = not bool(active)
-    start.operator("asset_forge.start_bridge", text="启动", icon="PLAY")
+    start.enabled = state["can_start"]
+    start.operator("asset_forge.start_bridge", text=state["start_label"], icon="PLAY")
     restart = layout.row(align=True)
-    restart.enabled = bool(active)
-    restart.operator("asset_forge.restart_bridge", text="重启", icon="FILE_REFRESH")
+    restart.enabled = state["can_restart"]
+    restart.operator("asset_forge.restart_bridge", text=state["restart_label"], icon="FILE_REFRESH")
     layout.operator("asset_forge.refresh_status", text="状态", icon="INFO")
+
+
+def _draw_mcp_action_controls(layout):
+    state = _mcp_control_state()
+    bridge_row = layout.row(align=True)
+    start = bridge_row.row(align=True)
+    start.enabled = state["can_start"]
+    start.operator("asset_forge.start_bridge", text=state["start_label"], icon="PLAY")
+    restart = bridge_row.row(align=True)
+    restart.enabled = state["can_restart"]
+    restart.operator("asset_forge.restart_bridge", text=state["restart_label"], icon="FILE_REFRESH")
+    stop = bridge_row.row(align=True)
+    stop.enabled = state["can_stop"]
+    stop.operator("asset_forge.stop_bridge", text="停止 MCP", icon="PAUSE")
+
+
+def _mcp_control_state(active=None, module=None):
+    if active is None:
+        active = _current_bridge()
+    if module is None:
+        module, _source = _bridge_module()
+    running = bool(active)
+    stale = running and _bridge_module_needs_restart(module)
+    return {
+        "can_start": not running,
+        "can_restart": running,
+        "can_stop": running,
+        "start_label": "启动 MCP",
+        "restart_label": "重启刷新" if stale else "重启 MCP",
+        "state": "stale" if stale else "running" if running else "stopped",
+    }
 
 
 def _bridge_state():
     if not _current_bridge():
         return "warning"
     module, _source = _bridge_module()
-    version = _bridge_version(module)
-    if not version or _version_tuple(version) < _version_tuple(MIN_BRIDGE_VERSION):
+    if _bridge_module_needs_restart(module):
         return "warning"
     return "ok"
+
+
+def _bridge_module_needs_restart(module):
+    version = _bridge_version(module)
+    return (not version) or _version_tuple(version) < _version_tuple(MIN_BRIDGE_VERSION)
 
 
 def _bridge_version(module):

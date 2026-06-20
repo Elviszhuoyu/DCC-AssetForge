@@ -108,6 +108,29 @@ class BlenderUiStateTest(unittest.TestCase):
         self.assertLess(ui._version_tuple(ui._bridge_version(OldModule)), ui._version_tuple(ui.MIN_BRIDGE_VERSION))
         self.assertEqual(ui._version_tuple(ui._bridge_version(NewModule)), ui._version_tuple(ui.MIN_BRIDGE_VERSION))
 
+    def test_mcp_controls_make_stale_bridge_restart_the_primary_action(self):
+        ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
+
+        class ActiveBridge(object):
+            port = 8875
+
+        class OldModule(object):
+            BRIDGE_VERSION = "0.1.0"
+
+        class NewModule(object):
+            BRIDGE_VERSION = "0.2.0"
+
+        stopped = ui._mcp_control_state(active=False, module=NewModule)
+        stale = ui._mcp_control_state(active=ActiveBridge(), module=OldModule)
+        current = ui._mcp_control_state(active=ActiveBridge(), module=NewModule)
+
+        self.assertTrue(stopped["can_start"])
+        self.assertFalse(stopped["can_restart"])
+        self.assertEqual(stale["state"], "stale")
+        self.assertEqual(stale["restart_label"], "重启刷新")
+        self.assertEqual(current["state"], "running")
+        self.assertEqual(current["restart_label"], "重启 MCP")
+
     def test_independent_bridge_ui_exposes_chinese_restart_and_refresh_modules(self):
         bridge_ui = importlib.import_module("integrations.blender_mcp_bridge.ui")
 
