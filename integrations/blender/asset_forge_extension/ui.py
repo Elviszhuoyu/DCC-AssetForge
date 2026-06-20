@@ -422,6 +422,8 @@ def _params(context):
         "target_platform": s.target_platform,
         "target_path": s.target_path or DEFAULT_TARGET_PATH,
         "material_profile": s.material_profile or DEFAULT_MATERIAL_PROFILE,
+        "mesh_prefix": s.mesh_prefix or "SM_",
+        "triangle_budget": int(s.triangle_budget or 0),
         "texture_folder": bpy.path.abspath(s.texture_root) if s.texture_root else "",
         "texture_set_token": s.texture_set_token,
         "export_root": bpy.path.abspath(s.export_root) if s.export_root else "",

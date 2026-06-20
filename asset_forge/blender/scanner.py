@@ -6,9 +6,18 @@ from __future__ import absolute_import
 import os
 import re
 
+DEFAULT_STATIC_MESH_PREFIX = "SM_"
+
 
 def _safe_list(value):
     return list(value or [])
+
+
+def clean_asset_name_prefix(value):
+    clean = re.sub(r"[^0-9A-Za-z_]+", "_", value or DEFAULT_STATIC_MESH_PREFIX).strip("_")
+    if not clean:
+        return DEFAULT_STATIC_MESH_PREFIX
+    return clean if clean.endswith("_") else clean + "_"
 
 
 class BlenderStaticPropScanner(object):
@@ -24,7 +33,7 @@ class BlenderStaticPropScanner(object):
         context = getattr(self.bpy, "context", None)
         return [item.name for item in self._current_objects(context)]
 
-    def scan_selection(self):
+    def scan_selection(self, name_prefix=None):
         if not self.is_available():
             raise RuntimeError("bpy is not available")
         context = getattr(self.bpy, "context", None)
@@ -32,9 +41,9 @@ class BlenderStaticPropScanner(object):
         roots = self._effective_roots(selected)
         if not roots:
             raise RuntimeError("没有选中资产")
-        return self.scan_objects(roots)
+        return self.scan_objects(roots, name_prefix=name_prefix)
 
-    def scan_by_names(self, names):
+    def scan_by_names(self, names, name_prefix=None):
         if not self.is_available():
             raise RuntimeError("bpy is not available")
         objects = []
@@ -44,12 +53,12 @@ class BlenderStaticPropScanner(object):
                 objects.append(by_name[name])
         if not objects:
             raise RuntimeError("没有找到指定 Blender 对象")
-        return self.scan_objects(self._effective_roots(objects))
+        return self.scan_objects(self._effective_roots(objects), name_prefix=name_prefix)
 
-    def scan_objects(self, roots):
+    def scan_objects(self, roots, name_prefix=None):
         roots = _safe_list(roots)
         meshes = self._unique_objects([mesh for root in roots for mesh in self._find_mesh_objects(root)])
-        identity = self._asset_identity(roots)
+        identity = self._asset_identity(roots, name_prefix=name_prefix)
         asset_name = identity["asset_name"]
         materials = self._materials(meshes)
         uv_sets = self._uv_sets(meshes)
@@ -58,6 +67,7 @@ class BlenderStaticPropScanner(object):
             "asset_roots": [item.name for item in roots],
             "asset_name": asset_name,
             "source_asset_name": identity["source_asset_name"],
+            "asset_name_prefix": identity["asset_name_prefix"],
             "asset_name_source": identity["asset_name_source"],
             "asset_name_source_name": identity["asset_name_source_name"],
             "asset_name_source_path": roots[0].name if roots else "",
@@ -154,13 +164,15 @@ class BlenderStaticPropScanner(object):
             result.extend(self._find_mesh_objects(child))
         return result
 
-    def _asset_identity(self, roots):
+    def _asset_identity(self, roots, name_prefix=None):
+        prefix = clean_asset_name_prefix(name_prefix)
         source_name = getattr(roots[0], "name", "Asset") if roots else "Asset"
         clean_name = self._clean_asset_name(source_name)
-        asset_name = clean_name if clean_name.startswith("SM_") else "SM_" + clean_name
+        asset_name = clean_name if clean_name.startswith(prefix) else prefix + clean_name
         return {
             "asset_name": asset_name,
             "source_asset_name": source_name,
+            "asset_name_prefix": prefix,
             "asset_name_source": "selected_root_auto_prefix" if len(roots) == 1 else "first_selection_auto_prefix",
             "asset_name_source_name": source_name,
             "asset_name_candidates": [asset_name, clean_name, source_name],

@@ -65,6 +65,33 @@ class BlenderUiStateTest(unittest.TestCase):
         self.assertIn(ui.ASSETFORGE_OT_restart_bridge, ui.CLASSES)
         self.assertEqual(ui.ASSETFORGE_OT_restart_bridge.bl_idname, "asset_forge.restart_bridge")
 
+    def test_params_include_publish_rule_fields(self):
+        ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
+        settings = types.SimpleNamespace(
+            target_platform="high_end_mobile",
+            target_path="/Game/Props/Blender",
+            material_profile="Props_Opaque_PainterUE_ARM",
+            mesh_prefix="AF_",
+            triangle_budget=123,
+            texture_root="",
+            texture_set_token="",
+            export_root="",
+            virtual_texture_policy="project_default",
+            texture_streaming_policy="project_default",
+            texture_group="project_default",
+            nanite_policy="project_default",
+            static_mesh_lod_group="project_default",
+            static_mesh_lod_import_policy="import_existing",
+        )
+        root = types.SimpleNamespace(name="B", parent=None)
+        context = types.SimpleNamespace(scene=types.SimpleNamespace(asset_forge_settings=settings), selected_objects=[root], active_object=root)
+
+        params = ui._params(context)
+
+        self.assertEqual(params["selection"], ["B"])
+        self.assertEqual(params["mesh_prefix"], "AF_")
+        self.assertEqual(params["triangle_budget"], 123)
+
     def test_bridge_state_warns_when_bridge_version_is_missing_or_old(self):
         ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
 

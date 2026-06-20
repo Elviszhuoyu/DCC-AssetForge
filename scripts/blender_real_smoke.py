@@ -78,6 +78,8 @@ def main(argv=None):
     parser.add_argument("--blend-file", default="")
     parser.add_argument("--selection", action="append", default=[])
     parser.add_argument("--texture-folder", default="")
+    parser.add_argument("--mesh-prefix", default="")
+    parser.add_argument("--triangle-budget", type=int, default=0)
     args = parser.parse_args(argv)
 
     repo_root = os.path.abspath(args.repo_root)
@@ -114,6 +116,12 @@ def main(argv=None):
         "export_root": os.path.join(args.output_root, "packages"),
         "target_path": args.target_path,
     }
+    if args.mesh_prefix:
+        scan_params["mesh_prefix"] = args.mesh_prefix
+        export_params["mesh_prefix"] = args.mesh_prefix
+    if args.triangle_budget > 0:
+        scan_params["triangle_budget"] = args.triangle_budget
+        export_params["triangle_budget"] = args.triangle_budget
     if args.texture_folder:
         export_params["texture_folder"] = os.path.abspath(args.texture_folder)
     scan = client.call("blender_scan_static_prop", scan_params)
@@ -130,6 +138,7 @@ def main(argv=None):
         "registered": registered,
         "bridge_status": status,
         "scan_asset_name": scan.get("scan", {}).get("asset_name", ""),
+        "scan_asset_name_prefix": scan.get("scan", {}).get("asset_name_prefix", ""),
         "source_asset_name": scan.get("scan", {}).get("source_asset_name", ""),
         "preflight": preflight,
         "export": export,

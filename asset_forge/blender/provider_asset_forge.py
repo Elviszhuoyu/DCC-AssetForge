@@ -12,7 +12,7 @@ import time
 import zlib
 
 from asset_forge.blender.fbx_exporter import BlenderFbxExporter
-from asset_forge.blender.scanner import BlenderStaticPropScanner
+from asset_forge.blender.scanner import BlenderStaticPropScanner, clean_asset_name_prefix
 from asset_forge.maya.export_package import build_export_package
 from asset_forge.maya.manifest_writer import IMPORT_PRESET_BY_PLATFORM
 from asset_forge.shared.constants import SOURCE_DCC_BLENDER, TARGET_PLATFORM_HIGH_END_MOBILE
@@ -50,7 +50,7 @@ class BlenderAssetForgeProvider(object):
         params = params or {}
         scan = self._scan_for_validation(params)
         target_platform = params.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE
-        validation = self._validation(scan, target_platform)
+        validation = self._validation(scan, target_platform, params)
         return {
             "status": "success" if validation.get("can_export") else "blocked",
             "can_accept": True,
@@ -72,7 +72,7 @@ class BlenderAssetForgeProvider(object):
         target_platform = params.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE
         use_asset_folder = params.get("use_asset_folder", True)
         scan = self._scan_for_validation(dict(params, target_path=target_path))
-        validation = self._validation(scan, target_platform)
+        validation = self._validation(scan, target_platform, params)
         package = build_export_package(export_root, scan.get("asset_name", "Asset"), use_asset_folder)
         if validation.get("can_export"):
             scan = self._prepare_package_textures(scan, package, target_path, params)
@@ -113,7 +113,7 @@ class BlenderAssetForgeProvider(object):
         target_platform = params.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE
         use_asset_folder = params.get("use_asset_folder", True)
         scan = self._scan_for_validation(dict(params, target_path=target_path))
-        validation = self._validation(scan, target_platform)
+        validation = self._validation(scan, target_platform, params)
         package = build_export_package(export_root, scan.get("asset_name", "Asset"), use_asset_folder)
         if not validation.get("can_export"):
             report = self._build_export_report(scan, validation, {}, package, "blocked", "blocked", False)
@@ -206,9 +206,10 @@ class BlenderAssetForgeProvider(object):
 
     def _scan(self, params):
         selection = params.get("selection") or []
+        name_prefix = clean_asset_name_prefix(params.get("mesh_prefix"))
         if selection:
-            return self.scanner.scan_by_names(selection)
-        return self.scanner.scan_selection()
+            return self.scanner.scan_by_names(selection, name_prefix=name_prefix)
+        return self.scanner.scan_selection(name_prefix=name_prefix)
 
     def _scan_for_validation(self, params):
         params = params or {}
@@ -226,12 +227,25 @@ class BlenderAssetForgeProvider(object):
         scan["material_texture_binding_risks"] = binding_report.get("risks", [])
         return scan
 
-    def _validation(self, scan, target_platform):
-        validation = self.validator.validate(scan, target_platform)
+    def _validation(self, scan, target_platform, params=None):
+        validator = self._active_validator(target_platform, params or {})
+        validation = validator.validate(scan, target_platform)
         validation = self._downgrade_blender_transform_warning(scan, validation)
         validation = self._attach_texture_set_selection_gate(scan, validation)
         validation = self._attach_material_texture_binding_gate(scan, validation)
         return validation
+
+    def _active_validator(self, target_platform, params):
+        rules = json.loads(json.dumps(getattr(self.validator, "rules", {}) or {}, ensure_ascii=False))
+        if not rules:
+            return self.validator
+        rules["name_prefix"] = clean_asset_name_prefix(params.get("mesh_prefix"))
+        triangle_budget = _safe_int(params.get("triangle_budget"), 0)
+        if triangle_budget > 0:
+            budgets = dict(rules.get("max_triangles", {}) or {})
+            budgets[target_platform] = triangle_budget
+            rules["max_triangles"] = budgets
+        return StaticPropRuleValidator(rules)
 
     def _attach_texture_set_selection_gate(self, scan, validation):
         folder_scan = scan.get("texture_folder_scan", {}) or {}
@@ -316,23 +330,26 @@ class BlenderAssetForgeProvider(object):
 
     def _export_name_map(self, scan):
         asset_name = scan.get("asset_name", "SM_Asset")
+        name_prefix = clean_asset_name_prefix(scan.get("asset_name_prefix"))
         result = {}
         source_asset_name = scan.get("source_asset_name", "")
         if source_asset_name and source_asset_name != asset_name:
             result[source_asset_name] = asset_name
         for mesh_name in scan.get("meshes", []) or []:
-            result[mesh_name] = self._static_mesh_export_name(asset_name, mesh_name)
+            result[mesh_name] = self._static_mesh_export_name(asset_name, mesh_name, name_prefix)
         return result
 
-    def _static_mesh_export_name(self, asset_name, mesh_name):
+    def _static_mesh_export_name(self, asset_name, mesh_name, name_prefix="SM_"):
+        name_prefix = clean_asset_name_prefix(name_prefix)
         clean_mesh = self._safe_name(mesh_name)
-        if clean_mesh.startswith("SM_"):
+        if clean_mesh.startswith(name_prefix):
             return clean_mesh
         clean_asset = self._safe_name(asset_name)
-        asset_stem = clean_asset[3:] if clean_asset.startswith("SM_") else clean_asset
+        asset_stem = clean_asset[len(name_prefix) :] if clean_asset.startswith(name_prefix) else clean_asset
         if clean_mesh.startswith(asset_stem + "_"):
-            return "SM_" + clean_mesh
+            return name_prefix + clean_mesh
         return clean_asset + "_" + clean_mesh
+
     def _prepare_package_textures(self, scan, package, target_path, params=None):
         params = params or {}
         scan = json.loads(json.dumps(scan or {}, ensure_ascii=False))
@@ -569,6 +586,13 @@ def _write_png_rgba(path, width, height, pixels):
         os.makedirs(parent)
     with open(path, "wb") as stream:
         stream.write(payload)
+
+
+def _safe_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _png_chunk(kind, data):

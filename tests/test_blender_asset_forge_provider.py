@@ -259,6 +259,21 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertTrue(result["can_export"])
         self.assertEqual(result["validation"]["summary"]["errors"], 0)
 
+    def test_preflight_uses_blender_ui_prefix_and_triangle_budget(self):
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(root_name="B"))
+
+        result = provider.preflight_static_prop({"mesh_prefix": "AF_", "triangle_budget": 1})
+        checks = dict((item["id"], item) for item in result["validation"]["checks"])
+
+        self.assertEqual(result["scan"]["asset_name"], "AF_B")
+        self.assertEqual(result["scan"]["asset_name_prefix"], "AF_")
+        self.assertEqual(result["validation"]["asset_name"], "AF_B")
+        self.assertEqual(checks["name_prefix"]["status"], "pass")
+        self.assertEqual(checks["name_prefix"]["limit"], "AF_")
+        self.assertEqual(checks["triangle_budget"]["status"], "warning")
+        self.assertEqual(checks["triangle_budget"]["limit"], 1)
+        self.assertTrue(result["can_export"])
+
     def test_blender_transform_warning_does_not_block_export(self):
         mesh = FakeObject("B")
         mesh.scale = (0.01, 0.01, 0.01)
@@ -313,6 +328,17 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertFalse(manifest["can_continue_to_ue"])
         self.assertEqual(report["package_contract_status"], "draft")
         self.assertFalse(os.path.exists(manifest["fbx_path"]))
+
+    def test_package_contract_uses_custom_prefix_for_asset_identity(self):
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(root_name="B"))
+
+        result = provider.build_static_prop_package_contract({"export_root": self.temp_dir, "mesh_prefix": "AF_", "triangle_budget": 1})
+        manifest = read_manifest(result["manifest_path"])
+        checks = dict((item["id"], item) for item in result["validation"]["checks"])
+
+        self.assertEqual(manifest["asset_name"], "AF_B")
+        self.assertEqual(checks["name_prefix"]["limit"], "AF_")
+        self.assertEqual(checks["triangle_budget"]["limit"], 1)
 
     def test_package_contract_sanitizes_blender_material_names_for_unreal_slots(self):
         mesh = FakeObject("B", materials=["B_b1.001"])
