@@ -32,7 +32,9 @@ _STATUS_LISTENERS = []
 
 
 class AssetForgeMayaBridgeServer(socketserver.ThreadingTCPServer):
-    allow_reuse_address = False
+    allow_reuse_address = True
+    daemon_threads = True
+    block_on_close = False
 
     def __init__(self, server_address, request_handler, token="", repo_root="", instance_id=""):
         socketserver.ThreadingTCPServer.__init__(self, server_address, request_handler)
@@ -129,14 +131,15 @@ def stop_bridge():
         _safe_show_status_window(status)
         _notify_status_listeners(status)
         return status
-    repo_root = _SERVER.repo_root
-    instance_id = getattr(_SERVER, "instance_id", "")
-    port = _SERVER.server_address[1]
-    _SERVER.shutdown()
-    _SERVER.server_close()
-    _unregister_bridge_instance(instance_id=instance_id, port=port)
+    server = _SERVER
+    thread = _THREAD
+    repo_root = server.repo_root
+    instance_id = getattr(server, "instance_id", "")
+    port = server.server_address[1]
     _SERVER = None
     _THREAD = None
+    _unregister_bridge_instance(instance_id=instance_id, port=port)
+    _close_server_without_blocking_ui(server, thread, "stop_bridge")
     status = _stopped_status(repo_root)
     _set_metrics_status("stopped", "mcp_bridge_stop", "")
     _log_bridge_event("mcp_bridge_stop", "success", repo_root, outputs=status)
@@ -356,26 +359,40 @@ def _bridge_socket_healthy(server, timeout=0.75):
         return False
 
 
+def _close_server_without_blocking_ui(server, thread=None, action=""):
+    def _close():
+        try:
+            if thread is not None and thread.is_alive():
+                server.shutdown()
+        except Exception as exc:
+            print("[AssetForgeMayaBridge] server shutdown failed during {0}: {1}".format(action, exc))
+        try:
+            server.server_close()
+        except Exception as exc:
+            print("[AssetForgeMayaBridge] server close failed during {0}: {1}".format(action, exc))
+
+    if thread is not None and thread.is_alive():
+        closer = threading.Thread(target=_close)
+        closer.daemon = True
+        closer.start()
+    else:
+        _close()
+
+
 def _discard_dead_server(action="", reason="Maya MCP bridge thread is not listening."):
     global _SERVER, _THREAD
     if _SERVER is None:
         return
+    server = _SERVER
+    thread = _THREAD
     repo_root = getattr(_SERVER, "repo_root", "") or _repo_root()
     instance_id = getattr(_SERVER, "instance_id", "")
     try:
         _unregister_bridge_instance(instance_id=instance_id, port=_SERVER.server_address[1])
     finally:
-        try:
-            if _bridge_thread_alive():
-                _SERVER.shutdown()
-        except Exception:
-            pass
-        try:
-            _SERVER.server_close()
-        except Exception:
-            pass
         _SERVER = None
         _THREAD = None
+        _close_server_without_blocking_ui(server, thread, action or "discard_dead_server")
         _set_metrics_status("error", action or "mcp_bridge_restart", reason)
         _log_bridge_event(
             "mcp_bridge_discard_dead_server",

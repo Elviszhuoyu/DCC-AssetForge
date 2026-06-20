@@ -247,6 +247,46 @@ class MayaMcpRuntimeTest(unittest.TestCase):
         self.assertTrue(dead_server.closed)
         self.assertEqual(removed[0]["instance_id"], "maya-dead")
 
+    def test_stop_bridge_detaches_server_before_closing(self):
+        class FakeServer(object):
+            repo_root = "E:/Repo"
+            instance_id = "maya-live"
+            server_address = ("127.0.0.1", 8765)
+            token = ""
+            registry_path = ""
+
+        class FakeThread(object):
+            def is_alive(self):
+                return True
+
+        old_server = asset_forge_maya_bridge._SERVER
+        old_thread = asset_forge_maya_bridge._THREAD
+        old_unregister = asset_forge_maya_bridge._unregister_bridge_instance
+        old_close = asset_forge_maya_bridge._close_server_without_blocking_ui
+        old_log = asset_forge_maya_bridge._log_bridge_event
+        old_show = asset_forge_maya_bridge._safe_show_status_window
+        closed = []
+        try:
+            asset_forge_maya_bridge._SERVER = FakeServer()
+            asset_forge_maya_bridge._THREAD = FakeThread()
+            asset_forge_maya_bridge._unregister_bridge_instance = lambda **_kwargs: []
+            asset_forge_maya_bridge._close_server_without_blocking_ui = lambda server, thread, action: closed.append((server, thread, action, asset_forge_maya_bridge._SERVER))
+            asset_forge_maya_bridge._log_bridge_event = lambda *args, **kwargs: {}
+            asset_forge_maya_bridge._safe_show_status_window = lambda _status: None
+
+            status = asset_forge_maya_bridge.stop_bridge()
+        finally:
+            asset_forge_maya_bridge._SERVER = old_server
+            asset_forge_maya_bridge._THREAD = old_thread
+            asset_forge_maya_bridge._unregister_bridge_instance = old_unregister
+            asset_forge_maya_bridge._close_server_without_blocking_ui = old_close
+            asset_forge_maya_bridge._log_bridge_event = old_log
+            asset_forge_maya_bridge._safe_show_status_window = old_show
+
+        self.assertEqual(status["status"], "stopped")
+        self.assertEqual(closed[0][2], "stop_bridge")
+        self.assertIsNone(closed[0][3])
+
     def _registry_path(self):
         if not hasattr(self, "_temp_dir"):
             self._temp_dir = tempfile.mkdtemp()
