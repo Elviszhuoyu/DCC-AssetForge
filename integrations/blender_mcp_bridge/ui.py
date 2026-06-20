@@ -10,49 +10,87 @@ import bpy  # type: ignore
 from . import bridge
 
 
-BRIDGE_VERSION = "0.1.0"
+BRIDGE_VERSION = getattr(bridge, "BRIDGE_VERSION", "0.2.0")
 
 
 class BLENDERMCP_PG_settings(bpy.types.PropertyGroup):
-    last_action: bpy.props.StringProperty(name="Action", default="idle")  # type: ignore
-    log_text: bpy.props.StringProperty(name="Log", default="Bridge log is empty.")  # type: ignore
+    last_action: bpy.props.StringProperty(name="动作", default="idle")  # type: ignore
+    log_text: bpy.props.StringProperty(name="日志", default="Bridge 日志为空。")  # type: ignore
 
 
 class BLENDERMCP_OT_refresh_status(bpy.types.Operator):
     bl_idname = "blender_mcp.refresh_status"
-    bl_label = "Refresh"
-    bl_description = "Refresh Blender MCP Bridge status"
+    bl_label = "刷新状态"
+    bl_description = "刷新 Blender MCP Bridge 状态"
 
     def execute(self, context):
         settings = context.scene.blender_mcp_settings
         settings.last_action = "refresh"
-        _append_log(settings, "Refresh status | {0}".format(_status_line()))
+        _append_log(settings, "刷新状态 | {0}".format(_status_line()))
         return {"FINISHED"}
 
 
 class BLENDERMCP_OT_start_bridge(bpy.types.Operator):
     bl_idname = "blender_mcp.start_bridge"
-    bl_label = "Start Bridge"
-    bl_description = "Start the independent Blender MCP Bridge"
+    bl_label = "启动 Bridge"
+    bl_description = "启动独立 Blender MCP Bridge"
 
     def execute(self, context):
         settings = context.scene.blender_mcp_settings
         payload = bridge.start_bridge()
         settings.last_action = "start"
-        _append_log(settings, "Start Bridge | {0}:{1} | instance {2}".format(payload.get("host", "127.0.0.1"), payload.get("port", ""), payload.get("instance_id", "")))
+        _append_log(settings, "启动 Bridge | {0}:{1} | 实例 {2}".format(payload.get("host", "127.0.0.1"), payload.get("port", ""), payload.get("instance_id", "")))
         return {"FINISHED"}
 
 
 class BLENDERMCP_OT_stop_bridge(bpy.types.Operator):
     bl_idname = "blender_mcp.stop_bridge"
-    bl_label = "Stop Bridge"
-    bl_description = "Stop the independent Blender MCP Bridge"
+    bl_label = "停止 Bridge"
+    bl_description = "停止独立 Blender MCP Bridge"
 
     def execute(self, context):
         settings = context.scene.blender_mcp_settings
         bridge.stop_bridge()
         settings.last_action = "stop"
-        _append_log(settings, "Stop Bridge")
+        _append_log(settings, "停止 Bridge")
+        return {"FINISHED"}
+
+
+class BLENDERMCP_OT_restart_bridge(bpy.types.Operator):
+    bl_idname = "blender_mcp.restart_bridge"
+    bl_label = "重启 Bridge"
+    bl_description = "安全停止并重新启动独立 Blender MCP Bridge；不保存 .blend 或用户偏好"
+
+    def execute(self, context):
+        settings = context.scene.blender_mcp_settings
+        bridge.stop_bridge()
+        payload = bridge.start_bridge()
+        settings.last_action = "restart"
+        _append_log(settings, "重启 Bridge | {0}:{1} | 实例 {2}".format(payload.get("host", "127.0.0.1"), payload.get("port", ""), payload.get("instance_id", "")))
+        return {"FINISHED"}
+
+
+class BLENDERMCP_OT_refresh_asset_forge_modules(bpy.types.Operator):
+    bl_idname = "blender_mcp.refresh_asset_forge_modules"
+    bl_label = "刷新 Asset Forge 模块"
+    bl_description = "刷新 Asset Forge Blender 业务模块缓存，不保存 .blend 或用户偏好"
+
+    def execute(self, context):
+        settings = context.scene.blender_mcp_settings
+        active = bridge.current_bridge()
+        if not active:
+            settings.last_action = "refresh_modules_failed"
+            _append_log(settings, "刷新模块失败 | Bridge 未运行")
+            return {"CANCELLED"}
+        result = active.handle_request({"id": "ui-refresh-modules", "action": "blender_refresh_asset_forge_modules", "params": {}})
+        if result.get("ok"):
+            settings.last_action = "refresh_modules"
+            modules = ", ".join(result.get("result", {}).get("refreshed_modules", []))
+            _append_log(settings, "刷新模块 | {0}".format(modules or "完成"))
+            return {"FINISHED"}
+        settings.last_action = "refresh_modules_failed"
+        _append_log(settings, "刷新模块失败 | {0}".format(result.get("error", {}).get("message", "")))
+        return {"CANCELLED"}
         return {"FINISHED"}
 
 
@@ -75,33 +113,39 @@ class BLENDERMCP_PT_bridge_panel(bpy.types.Panel):
         row.operator("blender_mcp.refresh_status", text="", icon="FILE_REFRESH")
         _status_row(box, _status_line(), "ok" if active else "warning")
         if active:
-            box.label(text="Version: {0} | 手动运行中".format(BRIDGE_VERSION), icon="INFO")
+            box.label(text="版本：{0} | 手动运行中".format(BRIDGE_VERSION), icon="INFO")
         else:
-            box.label(text="Version: {0} | 默认不随 Blender 启动".format(BRIDGE_VERSION), icon="INFO")
+            box.label(text="版本：{0} | 默认不随 Blender 启动".format(BRIDGE_VERSION), icon="INFO")
 
         controls = box.row(align=True)
         start = controls.row(align=True)
         start.enabled = not bool(active)
-        start.operator("blender_mcp.start_bridge", text="Start", icon="PLAY")
+        start.operator("blender_mcp.start_bridge", text="启动", icon="PLAY")
+        restart = controls.row(align=True)
+        restart.enabled = bool(active)
+        restart.operator("blender_mcp.restart_bridge", text="重启", icon="FILE_REFRESH")
         stop = controls.row(align=True)
         stop.enabled = bool(active)
-        stop.operator("blender_mcp.stop_bridge", text="Stop", icon="PAUSE")
+        stop.operator("blender_mcp.stop_bridge", text="停止", icon="PAUSE")
+        refresh_modules = box.row(align=True)
+        refresh_modules.enabled = bool(active)
+        refresh_modules.operator("blender_mcp.refresh_asset_forge_modules", text="刷新 Asset Forge 模块", icon="FILE_REFRESH")
 
         detail = layout.box()
-        detail.label(text="Bridge Details", icon="TEXT")
-        _detail_line(detail, "Status", "running" if active else "stopped", "ok" if active else "warning")
-        _detail_line(detail, "Health", "healthy" if active else "offline", "ok" if active else "warning")
-        _detail_line(detail, "Instance", payload.get("instance_id", "-"), "info")
+        detail.label(text="Bridge 详情", icon="TEXT")
+        _detail_line(detail, "状态", "运行中" if active else "已停止", "ok" if active else "warning")
+        _detail_line(detail, "健康", "可用" if active else "离线", "ok" if active else "warning")
+        _detail_line(detail, "实例", payload.get("instance_id", "-"), "info")
         _detail_line(detail, "PID", payload.get("pid", "-"), "info")
         _detail_line(detail, "Host", payload.get("host", "127.0.0.1"), "info")
-        _detail_line(detail, "Port", payload.get("port", "-"), "info")
-        _detail_line(detail, "Scene", _scene_label(payload.get("scene_path") or _scene_path()), "info")
+        _detail_line(detail, "端口", payload.get("port", "-"), "info")
+        _detail_line(detail, "场景", _scene_label(payload.get("scene_path") or _scene_path()), "info")
         if active:
             uptime = max(0, int(time.time() - float(getattr(active, "started_at_epoch", time.time()) or time.time())))
-            _detail_line(detail, "Uptime", "{0}s".format(uptime), "info")
+            _detail_line(detail, "运行时长", "{0}s".format(uptime), "info")
 
         log_box = layout.box()
-        log_box.label(text="Session Log", icon="CONSOLE")
+        log_box.label(text="会话日志", icon="CONSOLE")
         for line in _session_log_lines(settings, active):
             log_box.label(text=_clip(line, 90))
 
@@ -111,6 +155,8 @@ CLASSES = (
     BLENDERMCP_OT_refresh_status,
     BLENDERMCP_OT_start_bridge,
     BLENDERMCP_OT_stop_bridge,
+    BLENDERMCP_OT_restart_bridge,
+    BLENDERMCP_OT_refresh_asset_forge_modules,
     BLENDERMCP_PT_bridge_panel,
 )
 
@@ -137,14 +183,14 @@ def _session_log_lines(settings, active):
         for item in active.event_log[-8:]:
             lines.append("{0} | {1} | {2} | {3}".format(item.get("time", ""), item.get("status", ""), item.get("action", ""), item.get("message", "")))
     local_text = str(settings.log_text or "")
-    if local_text and local_text != "Bridge log is empty.":
+    if local_text and local_text not in ("Bridge log is empty.", "Bridge 日志为空。"):
         lines.extend(local_text.split("\n")[-4:])
-    return lines[-8:] or ["Bridge log is empty."]
+    return lines[-8:] or ["Bridge 日志为空。"]
 
 def _append_log(settings, message):
     stamp = time.strftime("%H:%M:%S")
     existing = str(settings.log_text or "")
-    if existing == "Bridge log is empty.":
+    if existing in ("Bridge log is empty.", "Bridge 日志为空。"):
         existing = ""
     settings.log_text = (existing + "\n" + stamp + " | " + message).strip()
 
@@ -152,8 +198,8 @@ def _append_log(settings, message):
 def _status_line():
     active = bridge.current_bridge()
     if not active:
-        return "Health: offline | Active: 0 | Action: waiting for Start"
-    return "Health: healthy | Active: 1 | Action: running | Port: {0}".format(active.port)
+        return "健康：离线 | 活跃：0 | 操作：等待启动"
+    return "健康：可用 | 活跃：1 | 操作：运行中 | 端口：{0}".format(active.port)
 
 
 def _status_row(layout, text, state):
@@ -173,7 +219,7 @@ def _scene_path():
 
 
 def _scene_label(path):
-    return path if path else "Unsaved Scene"
+    return path if path else "未保存场景"
 
 
 def _clip(text, limit):

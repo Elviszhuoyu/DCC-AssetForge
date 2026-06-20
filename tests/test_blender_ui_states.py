@@ -81,6 +81,46 @@ class BlenderUiStateTest(unittest.TestCase):
         self.assertLess(ui._version_tuple(ui._bridge_version(OldModule)), ui._version_tuple(ui.MIN_BRIDGE_VERSION))
         self.assertEqual(ui._version_tuple(ui._bridge_version(NewModule)), ui._version_tuple(ui.MIN_BRIDGE_VERSION))
 
+    def test_independent_bridge_ui_exposes_chinese_restart_and_refresh_modules(self):
+        bridge_ui = importlib.import_module("integrations.blender_mcp_bridge.ui")
+
+        self.assertEqual(bridge_ui.BRIDGE_VERSION, "0.2.0")
+        self.assertIn(bridge_ui.BLENDERMCP_OT_restart_bridge, bridge_ui.CLASSES)
+        self.assertIn(bridge_ui.BLENDERMCP_OT_refresh_asset_forge_modules, bridge_ui.CLASSES)
+        self.assertEqual(bridge_ui.BLENDERMCP_OT_restart_bridge.bl_idname, "blender_mcp.restart_bridge")
+        self.assertEqual(bridge_ui.BLENDERMCP_OT_refresh_asset_forge_modules.bl_label, "刷新 Asset Forge 模块")
+        self.assertIn("健康：离线", bridge_ui._status_line())
+
+    def test_independent_bridge_ui_refresh_modules_uses_whitelisted_action(self):
+        bridge_ui = importlib.import_module("integrations.blender_mcp_bridge.ui")
+        calls = []
+
+        class FakeActiveBridge(object):
+            def handle_request(self, request):
+                calls.append(request)
+                return {
+                    "ok": True,
+                    "result": {
+                        "refreshed_modules": ["asset_forge.blender.provider_asset_forge"],
+                    },
+                }
+
+        class FakeSettings(object):
+            last_action = ""
+            log_text = "Bridge 日志为空。"
+
+        context = types.SimpleNamespace(scene=types.SimpleNamespace(blender_mcp_settings=FakeSettings()))
+        old_current_bridge = bridge_ui.bridge.current_bridge
+        bridge_ui.bridge.current_bridge = lambda: FakeActiveBridge()
+        try:
+            result = bridge_ui.BLENDERMCP_OT_refresh_asset_forge_modules().execute(context)
+        finally:
+            bridge_ui.bridge.current_bridge = old_current_bridge
+
+        self.assertEqual(result, {"FINISHED"})
+        self.assertEqual(calls[0]["action"], "blender_refresh_asset_forge_modules")
+        self.assertIn("asset_forge.blender.provider_asset_forge", context.scene.blender_mcp_settings.log_text)
+
 
 if __name__ == "__main__":
     unittest.main()
