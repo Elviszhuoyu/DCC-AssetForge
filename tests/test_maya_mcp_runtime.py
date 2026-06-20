@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 
 import os
+import socket
 import tempfile
 import unittest
 
@@ -8,9 +9,11 @@ from integrations.maya_mcp_runtime.ports import allocate_port
 from integrations.maya_mcp.client import MayaBridgeClient
 from integrations.maya_mcp_runtime.registry import (
     AmbiguousMayaInstanceError,
+    MayaInstanceNotFoundError,
     load_instances,
     register_instance,
     resolve_instance,
+    save_instances,
     strip_target_arguments,
     unregister_instance,
 )
@@ -60,6 +63,79 @@ class MayaMcpRuntimeTest(unittest.TestCase):
 
         self.assertEqual(len(caught.exception.instances), 2)
 
+    def test_registry_resolves_stale_but_live_selected_instance(self):
+        path = self._registry_path()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
+        live_port = sock.getsockname()[1]
+        try:
+            save_instances(
+                [
+                    {
+                        "instance_id": "maya-stale-live",
+                        "pid": 101,
+                        "host": "127.0.0.1",
+                        "port": live_port,
+                        "updated_at_epoch": 1,
+                    }
+                ],
+                path=path,
+            )
+
+            resolved = resolve_instance({"maya_port": live_port}, path=path)
+        finally:
+            sock.close()
+
+        self.assertEqual(resolved["instance_id"], "maya-stale-live")
+
+    def test_registry_rejects_stale_dead_selected_instance(self):
+        path = self._registry_path()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        dead_port = sock.getsockname()[1]
+        sock.close()
+        save_instances(
+            [
+                {
+                    "instance_id": "maya-stale-live",
+                    "pid": 101,
+                    "host": "127.0.0.1",
+                    "port": dead_port,
+                    "updated_at_epoch": 1,
+                }
+            ],
+            path=path,
+        )
+
+        with self.assertRaises(MayaInstanceNotFoundError):
+            resolve_instance({"maya_port": dead_port}, path=path)
+
+    def test_registry_does_not_guess_stale_live_instance_without_selector(self):
+        path = self._registry_path()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
+        live_port = sock.getsockname()[1]
+        try:
+            save_instances(
+                [
+                    {
+                        "instance_id": "maya-stale-live",
+                        "pid": 101,
+                        "host": "127.0.0.1",
+                        "port": live_port,
+                        "updated_at_epoch": 1,
+                    }
+                ],
+                path=path,
+            )
+
+            with self.assertRaises(MayaInstanceNotFoundError):
+                resolve_instance({}, path=path)
+        finally:
+            sock.close()
+
     def test_client_refuses_to_guess_when_multiple_instances_are_registered(self):
         path = self._registry_path()
         old_path = os.environ.get("MAYA_MCP_REGISTRY_PATH")
@@ -92,8 +168,6 @@ class MayaMcpRuntimeTest(unittest.TestCase):
         self.assertEqual(clean, {"selection": ["|SM_A"]})
 
     def test_allocate_port_skips_busy_preferred_port(self):
-        import socket
-
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(("127.0.0.1", 0))
         busy_port = sock.getsockname()[1]

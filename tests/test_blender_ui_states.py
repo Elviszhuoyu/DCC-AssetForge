@@ -35,6 +35,30 @@ class BlenderUiStateTest(unittest.TestCase):
         self.assertNotEqual(ui._status_icon("warning"), "ERROR")
         self.assertEqual(ui._line_state("状态：可导出 | 分数：56 | 通过/警告/阻断：8/4/0"), "warning")
 
+    def test_texture_detail_separates_node_folder_and_placeholder_sources(self):
+        ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
+        scan = {
+            "materials": [
+                {
+                    "name": "B_a1",
+                    "base_color": [0.5, 0.5, 0.5, 1.0],
+                    "textures": [
+                        {"usage": "base_color", "source_type": "blender_image_node"},
+                        {"usage": "normal", "source_type": "texture_folder"},
+                        {"usage": "packed_arm", "source_type": "blender_placeholder"},
+                    ],
+                }
+            ]
+        }
+
+        text = ui._format_texture_detail(scan)
+
+        self.assertIn("贴图来源：Blender节点 1 / 占位 1 / 贴图目录 1", text)
+        self.assertIn("base_color[节点]", text)
+        self.assertIn("normal[目录]", text)
+        self.assertIn("packed_arm[占位]", text)
+        self.assertNotIn("已发现节点贴图", text)
+
 
 if __name__ == "__main__":
     unittest.main()

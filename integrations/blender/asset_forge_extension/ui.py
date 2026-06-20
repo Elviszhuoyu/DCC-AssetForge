@@ -511,13 +511,45 @@ def _format_texture_detail(scan):
         lines.append("未发现 Image Texture 节点；导出时会生成 BaseColor/Normal/ARM 占位贴图，UE Gate 可追踪。")
     else:
         usages = sorted(set(item.get("usage", "") for item in textures if item.get("usage")))
-        lines.append("已发现节点贴图：{0}".format(", ".join(usages)))
+        lines.append("贴图来源：{0}".format(_texture_source_summary(textures)))
+        lines.append("贴图用途：{0}".format(", ".join(usages)))
     for material in materials[:8]:
         material_textures = list(material.get("textures", []) or [])
-        texture_usages = sorted(set(item.get("usage", "") for item in material_textures if item.get("usage")))
-        usage_text = ", ".join(texture_usages) if texture_usages else "占位待导出"
+        usage_text = _material_texture_usage_summary(material_textures)
         lines.append("- {0} | {1} | BaseColor {2}".format(material.get("name", ""), usage_text, _compact_color(material.get("base_color", []))))
     return "\n".join(lines)
+
+
+def _texture_source_summary(textures):
+    labels = {
+        "blender_image_node": "Blender节点",
+        "texture_folder": "贴图目录",
+        "blender_placeholder": "占位",
+    }
+    counts = {}
+    for texture in textures or []:
+        source = texture.get("source_type", "") or "unknown"
+        counts[source] = counts.get(source, 0) + 1
+    return " / ".join(
+        "{0} {1}".format(labels.get(source, source or "未知"), count)
+        for source, count in sorted(counts.items())
+    )
+
+
+def _material_texture_usage_summary(textures):
+    if not textures:
+        return "占位待导出"
+    source_labels = {
+        "blender_image_node": "节点",
+        "texture_folder": "目录",
+        "blender_placeholder": "占位",
+    }
+    parts = []
+    for texture in sorted(textures or [], key=lambda item: item.get("usage", "")):
+        usage = texture.get("usage", "") or "unknown"
+        source = source_labels.get(texture.get("source_type", ""), "来源")
+        parts.append("{0}[{1}]".format(usage, source))
+    return ", ".join(parts)
 
 
 def _texture_count_from_scan(scan):

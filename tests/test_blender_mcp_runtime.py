@@ -14,9 +14,11 @@ from integrations.blender_mcp_bridge.bridge import BlenderBridge
 from integrations.blender_mcp_runtime.ports import allocate_port
 from integrations.blender_mcp_runtime.registry import (
     AmbiguousBlenderInstanceError,
+    BlenderInstanceNotFoundError,
     load_instances,
     register_instance,
     resolve_instance,
+    save_instances,
     strip_target_arguments,
     unregister_instance,
 )
@@ -65,6 +67,79 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
             resolve_instance({}, path=path)
 
         self.assertEqual(len(caught.exception.instances), 2)
+
+    def test_registry_resolves_stale_but_live_selected_instance(self):
+        path = self._registry_path()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
+        live_port = sock.getsockname()[1]
+        try:
+            save_instances(
+                [
+                    {
+                        "instance_id": "blender-stale-live",
+                        "pid": 201,
+                        "host": "127.0.0.1",
+                        "port": live_port,
+                        "updated_at_epoch": 1,
+                    }
+                ],
+                path=path,
+            )
+
+            resolved = resolve_instance({"blender_port": live_port}, path=path)
+        finally:
+            sock.close()
+
+        self.assertEqual(resolved["instance_id"], "blender-stale-live")
+
+    def test_registry_rejects_stale_dead_selected_instance(self):
+        path = self._registry_path()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        dead_port = sock.getsockname()[1]
+        sock.close()
+        save_instances(
+            [
+                {
+                    "instance_id": "blender-stale-live",
+                    "pid": 201,
+                    "host": "127.0.0.1",
+                    "port": dead_port,
+                    "updated_at_epoch": 1,
+                }
+            ],
+            path=path,
+        )
+
+        with self.assertRaises(BlenderInstanceNotFoundError):
+            resolve_instance({"blender_port": dead_port}, path=path)
+
+    def test_registry_does_not_guess_stale_live_instance_without_selector(self):
+        path = self._registry_path()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(1)
+        live_port = sock.getsockname()[1]
+        try:
+            save_instances(
+                [
+                    {
+                        "instance_id": "blender-stale-live",
+                        "pid": 201,
+                        "host": "127.0.0.1",
+                        "port": live_port,
+                        "updated_at_epoch": 1,
+                    }
+                ],
+                path=path,
+            )
+
+            with self.assertRaises(BlenderInstanceNotFoundError):
+                resolve_instance({}, path=path)
+        finally:
+            sock.close()
 
     def test_client_refuses_to_guess_when_multiple_instances_are_registered(self):
         path = self._registry_path()

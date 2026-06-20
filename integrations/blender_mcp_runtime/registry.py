@@ -5,6 +5,7 @@ from __future__ import absolute_import
 
 import json
 import os
+import socket
 import tempfile
 import time
 import uuid
@@ -116,6 +117,9 @@ def resolve_instance(selector=None, path=None):
     selector = selector or {}
     instances = load_instances(path=path)
     matches = _filter_instances(instances, selector)
+    if not matches and _has_selector(selector):
+        stale_matches = _filter_instances(load_instances(path=path, include_stale=True), selector)
+        matches = [item for item in stale_matches if _is_endpoint_alive(item)]
     if not matches:
         raise BlenderInstanceNotFoundError("No matching Blender MCP instance is registered.")
     if len(matches) > 1:
@@ -168,6 +172,10 @@ def _filter_instances(instances, selector):
     return matches
 
 
+def _has_selector(selector):
+    return any(selector.get(key) not in (None, "") for key in TARGET_KEYS)
+
+
 def _normalize_instance(instance):
     item = dict(instance or {})
     if "host" not in item:
@@ -202,6 +210,18 @@ def _is_stale(instance, now=None):
     if not updated:
         return False
     return (time.time() if now is None else float(now)) - updated > STALE_AFTER_SECONDS
+
+
+def _is_endpoint_alive(instance, timeout=0.25):
+    host = instance.get("host") or "127.0.0.1"
+    port = instance.get("port")
+    if port in (None, ""):
+        return False
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            return True
+    except (OSError, ValueError):
+        return False
 
 
 def _same_endpoint(left, right):
