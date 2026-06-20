@@ -259,6 +259,10 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
 
         status_schema = [item for item in tool_definitions() if item["name"] == "blender_status"][0]
         self.assertIn("blender_pid", status_schema["inputSchema"]["properties"])
+        export_schema = [item for item in tool_definitions() if item["name"] == "blender_export_static_prop_package"][0]
+        export_properties = export_schema["inputSchema"]["properties"]
+        self.assertIn("texture_dir", export_properties)
+        self.assertIn("texture_set_token", export_properties)
 
     def test_blender_stdio_server_lists_tools(self):
         response = handle_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})

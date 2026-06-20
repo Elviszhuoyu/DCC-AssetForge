@@ -112,6 +112,11 @@ def _static_prop_tool(name, description, extra=None, required=None):
         "selection": {"type": "array", "items": {"type": "string"}},
         "target_platform": {"type": "string"},
         "material_profile": {"type": "string", "default": "Props_Opaque_PainterUE_ARM"},
+        "texture_dir": {"type": "string"},
+        "texture_folder": {"type": "string"},
+        "texture_root": {"type": "string"},
+        "texture_set_token": {"type": "string"},
+        "texture_recursive": {"type": "boolean", "default": False},
     }
     properties.update(extra or {})
     return _tool(name, description, properties, required=required)
