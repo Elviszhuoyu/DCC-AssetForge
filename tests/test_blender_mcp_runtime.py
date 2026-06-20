@@ -27,46 +27,71 @@ from integrations.blender_mcp_runtime.registry import (
 class BlenderMcpRuntimeTest(unittest.TestCase):
     def test_registry_registers_and_resolves_instances(self):
         path = self._registry_path()
-        first = register_instance(
-            {
-                "instance_id": "blender-a",
-                "pid": 201,
-                "host": "127.0.0.1",
-                "port": 8875,
-                "scene_path": "E:/A.blend",
-            },
-            path=path,
-        )
-        register_instance(
-            {
-                "instance_id": "blender-b",
-                "pid": 202,
-                "host": "127.0.0.1",
-                "port": 8876,
-                "blend_file": "E:/B.blend",
-            },
-            path=path,
-        )
+        with self._listening_socket() as port_a, self._listening_socket() as port_b:
+            first = register_instance(
+                {
+                    "instance_id": "blender-a",
+                    "pid": 201,
+                    "host": "127.0.0.1",
+                    "port": port_a,
+                    "scene_path": "E:/A.blend",
+                },
+                path=path,
+            )
+            register_instance(
+                {
+                    "instance_id": "blender-b",
+                    "pid": 202,
+                    "host": "127.0.0.1",
+                    "port": port_b,
+                    "blend_file": "E:/B.blend",
+                },
+                path=path,
+            )
 
-        self.assertEqual(first["instance_id"], "blender-a")
-        self.assertEqual(len(load_instances(path=path)), 2)
-        self.assertEqual(resolve_instance({"blender_pid": 202}, path=path)["instance_id"], "blender-b")
-        self.assertEqual(resolve_instance({"blender_scene_contains": "A.blend"}, path=path)["port"], 8875)
-        instances = load_instances(path=path)
-        first = instances[0]
-        self.assertEqual(first["scene_name"], "A.blend")
-        self.assertIn("A.blend", first["display_name"])
-        self.assertIn({"argument": "blender_scene_contains", "value": "A.blend"}, first["selection_hints"])
+            self.assertEqual(first["instance_id"], "blender-a")
+            self.assertEqual(len(load_instances(path=path)), 2)
+            self.assertEqual(resolve_instance({"blender_pid": 202}, path=path)["instance_id"], "blender-b")
+            self.assertEqual(resolve_instance({"blender_scene_contains": "A.blend"}, path=path)["port"], port_a)
+            instances = load_instances(path=path)
+            first = instances[0]
+            self.assertEqual(first["scene_name"], "A.blend")
+            self.assertIn("A.blend", first["display_name"])
+            self.assertIn({"argument": "blender_scene_contains", "value": "A.blend"}, first["selection_hints"])
 
     def test_registry_reports_ambiguous_instance_without_selector(self):
         path = self._registry_path()
-        register_instance({"instance_id": "blender-a", "pid": 201, "port": 8875}, path=path)
-        register_instance({"instance_id": "blender-b", "pid": 202, "port": 8876}, path=path)
+        with self._listening_socket() as port_a, self._listening_socket() as port_b:
+            register_instance({"instance_id": "blender-a", "pid": 201, "port": port_a}, path=path)
+            register_instance({"instance_id": "blender-b", "pid": 202, "port": port_b}, path=path)
 
-        with self.assertRaises(AmbiguousBlenderInstanceError) as caught:
+            with self.assertRaises(AmbiguousBlenderInstanceError) as caught:
+                resolve_instance({}, path=path)
+
+            self.assertEqual(len(caught.exception.instances), 2)
+
+    def test_registry_filters_fresh_but_dead_endpoint(self):
+        path = self._registry_path()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", 0))
+        dead_port = sock.getsockname()[1]
+        sock.close()
+        save_instances(
+            [
+                {
+                    "instance_id": "blender-dead-fresh",
+                    "pid": 201,
+                    "host": "127.0.0.1",
+                    "port": dead_port,
+                    "updated_at_epoch": __import__("time").time(),
+                }
+            ],
+            path=path,
+        )
+
+        self.assertEqual(load_instances(path=path), [])
+        with self.assertRaises(BlenderInstanceNotFoundError):
             resolve_instance({}, path=path)
-
-        self.assertEqual(len(caught.exception.instances), 2)
 
     def test_registry_resolves_stale_but_live_selected_instance(self):
         path = self._registry_path()
@@ -146,11 +171,12 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
         old_path = os.environ.get("BLENDER_MCP_REGISTRY_PATH")
         os.environ["BLENDER_MCP_REGISTRY_PATH"] = path
         try:
-            register_instance({"instance_id": "blender-a", "pid": 201, "port": 8875}, path=path)
-            register_instance({"instance_id": "blender-b", "pid": 202, "port": 8876}, path=path)
+            with self._listening_socket() as port_a, self._listening_socket() as port_b:
+                register_instance({"instance_id": "blender-a", "pid": 201, "port": port_a}, path=path)
+                register_instance({"instance_id": "blender-b", "pid": 202, "port": port_b}, path=path)
 
-            with self.assertRaises(AmbiguousBlenderInstanceError):
-                BlenderBridgeClient.from_arguments({})
+                with self.assertRaises(AmbiguousBlenderInstanceError):
+                    BlenderBridgeClient.from_arguments({})
         finally:
             if old_path is None:
                 os.environ.pop("BLENDER_MCP_REGISTRY_PATH", None)
@@ -162,42 +188,44 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
         old_path = os.environ.get("BLENDER_MCP_REGISTRY_PATH")
         os.environ["BLENDER_MCP_REGISTRY_PATH"] = path
         try:
-            register_instance({"instance_id": "blender-a", "pid": 201, "port": 8875}, path=path)
-            register_instance({"instance_id": "blender-b", "pid": 202, "port": 8876}, path=path)
+            with self._listening_socket() as port_a, self._listening_socket() as port_b:
+                register_instance({"instance_id": "blender-a", "pid": 201, "port": port_a}, path=path)
+                register_instance({"instance_id": "blender-b", "pid": 202, "port": port_b}, path=path)
 
-            client = BlenderBridgeClient.from_arguments({"blender_port": 8876})
+                client = BlenderBridgeClient.from_arguments({"blender_port": port_b})
 
-            self.assertEqual(client.port, 8876)
-            self.assertEqual(client.instance["instance_id"], "blender-b")
+                self.assertEqual(client.port, port_b)
+                self.assertEqual(client.instance["instance_id"], "blender-b")
         finally:
             if old_path is None:
                 os.environ.pop("BLENDER_MCP_REGISTRY_PATH", None)
             else:
                 os.environ["BLENDER_MCP_REGISTRY_PATH"] = old_path
 
-    def test_client_uses_explicit_stale_registered_instance(self):
+    def test_client_uses_explicit_stale_live_registered_instance(self):
         path = self._registry_path()
         old_path = os.environ.get("BLENDER_MCP_REGISTRY_PATH")
         os.environ["BLENDER_MCP_REGISTRY_PATH"] = path
         try:
-            save_instances(
-                [
-                    {
-                        "instance_id": "blender-stale",
-                        "pid": 201,
-                        "host": "127.0.0.1",
-                        "port": 8875,
-                        "scene_path": "E:/A.blend",
-                        "updated_at_epoch": 1,
-                    }
-                ],
-                path=path,
-            )
+            with self._listening_socket() as live_port:
+                save_instances(
+                    [
+                        {
+                            "instance_id": "blender-stale",
+                            "pid": 201,
+                            "host": "127.0.0.1",
+                            "port": live_port,
+                            "scene_path": "E:/A.blend",
+                            "updated_at_epoch": 1,
+                        }
+                    ],
+                    path=path,
+                )
 
-            client = BlenderBridgeClient.from_arguments({"blender_instance": "blender-stale"})
+                client = BlenderBridgeClient.from_arguments({"blender_instance": "blender-stale"})
 
-            self.assertEqual(client.port, 8875)
-            self.assertEqual(client.instance["instance_id"], "blender-stale")
+                self.assertEqual(client.port, live_port)
+                self.assertEqual(client.instance["instance_id"], "blender-stale")
         finally:
             if old_path is None:
                 os.environ.pop("BLENDER_MCP_REGISTRY_PATH", None)
@@ -206,13 +234,14 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
 
     def test_registry_unregisters_by_instance_or_port(self):
         path = self._registry_path()
-        register_instance({"instance_id": "blender-a", "pid": 201, "port": 8875}, path=path)
-        register_instance({"instance_id": "blender-b", "pid": 202, "port": 8876}, path=path)
+        with self._listening_socket() as port_a, self._listening_socket() as port_b:
+            register_instance({"instance_id": "blender-a", "pid": 201, "port": port_a}, path=path)
+            register_instance({"instance_id": "blender-b", "pid": 202, "port": port_b}, path=path)
 
-        removed = unregister_instance(instance_id="blender-a", path=path)
+            removed = unregister_instance(instance_id="blender-a", path=path)
 
-        self.assertEqual(removed[0]["instance_id"], "blender-a")
-        self.assertEqual(load_instances(path=path)[0]["instance_id"], "blender-b")
+            self.assertEqual(removed[0]["instance_id"], "blender-a")
+            self.assertEqual(load_instances(path=path)[0]["instance_id"], "blender-b")
 
     def test_strip_target_arguments_keeps_action_payload_clean(self):
         clean = strip_target_arguments({"blender_pid": 201, "selection": ["Cube"]})
@@ -359,14 +388,15 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
         old_path = os.environ.get("BLENDER_MCP_REGISTRY_PATH")
         os.environ["BLENDER_MCP_REGISTRY_PATH"] = path
         try:
-            register_instance({"instance_id": "blender-a", "pid": 201, "port": 8875, "scene_path": "E:/A.blend"}, path=path)
+            with self._listening_socket() as port:
+                register_instance({"instance_id": "blender-a", "pid": 201, "port": port, "scene_path": "E:/A.blend"}, path=path)
 
-            result = call_tool("blender_instances", {})
-            payload = json.loads(result["content"][0]["text"])
+                result = call_tool("blender_instances", {})
+                payload = json.loads(result["content"][0]["text"])
 
-            self.assertFalse(result["isError"])
-            self.assertEqual(payload["instance_count"], 1)
-            self.assertEqual(payload["selection_summary"][0]["blender_instance"], "blender-a")
+                self.assertFalse(result["isError"])
+                self.assertEqual(payload["instance_count"], 1)
+                self.assertEqual(payload["selection_summary"][0]["blender_instance"], "blender-a")
         finally:
             if old_path is None:
                 os.environ.pop("BLENDER_MCP_REGISTRY_PATH", None)
@@ -378,6 +408,19 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
             self._temp_dir = tempfile.mkdtemp()
             self.addCleanup(lambda: os.path.isdir(self._temp_dir) and __import__("shutil").rmtree(self._temp_dir))
         return os.path.join(self._temp_dir, "instances.json")
+
+    def _listening_socket(self):
+        class Listener(object):
+            def __enter__(self_inner):
+                self_inner.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self_inner.sock.bind(("127.0.0.1", 0))
+                self_inner.sock.listen(5)
+                return self_inner.sock.getsockname()[1]
+
+            def __exit__(self_inner, exc_type, exc, tb):
+                self_inner.sock.close()
+
+        return Listener()
 
 
 if __name__ == "__main__":

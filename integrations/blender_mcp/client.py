@@ -17,7 +17,6 @@ from integrations.blender_mcp.protocol import (
 )
 from integrations.blender_mcp_runtime.registry import (
     AmbiguousBlenderInstanceError,
-    BlenderInstanceNotFoundError,
     load_instances,
     resolve_instance,
     selector_from_arguments,
@@ -42,12 +41,7 @@ class BlenderBridgeClient(object):
             if len(instances) > 1:
                 raise AmbiguousBlenderInstanceError(instances)
             return cls()
-        try:
-            instance = resolve_instance(selector)
-        except BlenderInstanceNotFoundError:
-            instance = _resolve_explicit_stale_instance(selector)
-            if instance is None:
-                raise
+        instance = resolve_instance(selector)
         return cls.from_instance(instance)
 
     @classmethod
@@ -106,31 +100,3 @@ def _read_line(sock):
     if not chunks:
         raise RuntimeError("Blender bridge returned no response.")
     return b"".join(chunks).split(b"\n", 1)[0]
-
-
-def _resolve_explicit_stale_instance(selector):
-    matches = [item for item in load_instances(include_stale=True) if _matches_selector(item, selector)]
-    if len(matches) > 1:
-        raise AmbiguousBlenderInstanceError(matches)
-    if matches:
-        return matches[0]
-    return None
-
-
-def _matches_selector(instance, selector):
-    instance_id = selector.get("blender_instance") or selector.get("blender_instance_id")
-    if instance_id and instance.get("instance_id") != instance_id:
-        return False
-    pid = selector.get("blender_pid")
-    if pid not in (None, "") and int(instance.get("pid") or -1) != int(pid):
-        return False
-    port = selector.get("blender_port")
-    if port not in (None, "") and int(instance.get("port") or -1) != int(port):
-        return False
-    scene_contains = selector.get("blender_scene_contains")
-    if scene_contains:
-        needle = str(scene_contains).lower()
-        scene_path = instance.get("scene_path") or instance.get("blend_file") or ""
-        if needle not in str(scene_path).lower():
-            return False
-    return True

@@ -230,7 +230,12 @@ class _BridgeServer(socketserver.ThreadingTCPServer):
 
 class _BridgeRequestHandler(socketserver.BaseRequestHandler):
     def handle(self):
-        raw = _read_line(self.request)
+        try:
+            raw = _read_line(self.request)
+        except RuntimeError as exc:
+            if "empty request" in str(exc):
+                return
+            raise
         request = decode_message(raw)
         response = self.server.bridge.handle_request(request)
         self.request.sendall(encode_message(response))

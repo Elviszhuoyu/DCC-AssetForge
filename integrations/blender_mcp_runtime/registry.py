@@ -61,7 +61,11 @@ def load_instances(path=None, include_stale=False, now=None):
     normalized = [_normalize_instance(item) for item in instances if isinstance(item, dict)]
     if include_stale:
         return [describe_instance(item) for item in normalized]
-    return [describe_instance(item) for item in normalized if not _is_stale(item, now=now)]
+    return [
+        describe_instance(item)
+        for item in normalized
+        if not _is_stale(item, now=now) and _is_endpoint_alive(item)
+    ]
 
 
 def save_instances(instances, path=None):
