@@ -34,6 +34,13 @@ AssetForgeReports/
 offline_static_prop_sample/
 测试/
 
+# Local planning/history/design material. Keep these on the workstation, not in
+# the public source package.
+Dev_doc/
+设计文档/
+Asset_Forge_v0.1项目开发需求文档.md
+开发进度和交接文档.md
+
 # One-off editor rescue/probe scripts are useful locally, but must not drift
 # into the reusable plugin runtime or test suite without being parameterized.
 tools/ue55_*.py
