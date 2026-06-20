@@ -65,6 +65,22 @@ class BlenderUiStateTest(unittest.TestCase):
         self.assertIn(ui.ASSETFORGE_OT_restart_bridge, ui.CLASSES)
         self.assertEqual(ui.ASSETFORGE_OT_restart_bridge.bl_idname, "asset_forge.restart_bridge")
 
+    def test_bridge_state_warns_when_bridge_version_is_missing_or_old(self):
+        ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
+
+        self.assertEqual(ui._version_tuple("0.2.0"), (0, 2, 0))
+        self.assertLess(ui._version_tuple("0.1.9"), ui._version_tuple(ui.MIN_BRIDGE_VERSION))
+
+        class OldModule(object):
+            BRIDGE_VERSION = "0.1.0"
+
+        class NewModule(object):
+            BRIDGE_VERSION = "0.2.0"
+
+        self.assertEqual(ui._bridge_version(object()), "")
+        self.assertLess(ui._version_tuple(ui._bridge_version(OldModule)), ui._version_tuple(ui.MIN_BRIDGE_VERSION))
+        self.assertEqual(ui._version_tuple(ui._bridge_version(NewModule)), ui._version_tuple(ui.MIN_BRIDGE_VERSION))
+
 
 if __name__ == "__main__":
     unittest.main()

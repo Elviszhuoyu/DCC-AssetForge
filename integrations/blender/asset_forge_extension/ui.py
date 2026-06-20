@@ -18,6 +18,7 @@ from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE, TARGET
 
 DEFAULT_TARGET_PATH = "/Game/Props/Blender"
 DEFAULT_MATERIAL_PROFILE = "Props_Opaque_PainterUE_ARM"
+MIN_BRIDGE_VERSION = "0.2.0"
 _PREVIEWS = None
 
 
@@ -653,8 +654,10 @@ def _bridge_line():
     module, source = _bridge_module()
     if not active:
         return "MCP：未运行 | 来源 {0}".format(source)
-    version = getattr(module, "BRIDGE_VERSION", "")
-    version_text = " | v{0}".format(version) if version else ""
+    version = _bridge_version(module)
+    version_text = " | v{0}".format(version) if version else " | 旧缓存需重启"
+    if version and _version_tuple(version) < _version_tuple(MIN_BRIDGE_VERSION):
+        version_text += " 需重启"
     return "MCP：{0} 运行中 127.0.0.1:{1}{2}".format(source, active.port, version_text)
 
 
@@ -675,7 +678,29 @@ def _draw_mcp_header_controls(layout):
 
 
 def _bridge_state():
-    return "ok" if _current_bridge() else "warning"
+    if not _current_bridge():
+        return "warning"
+    module, _source = _bridge_module()
+    version = _bridge_version(module)
+    if not version or _version_tuple(version) < _version_tuple(MIN_BRIDGE_VERSION):
+        return "warning"
+    return "ok"
+
+
+def _bridge_version(module):
+    return str(getattr(module, "BRIDGE_VERSION", "") or "")
+
+
+def _version_tuple(value):
+    parts = []
+    for item in str(value or "").split("."):
+        try:
+            parts.append(int(item))
+        except ValueError:
+            parts.append(0)
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts[:3])
 
 
 def _root_line(context):
