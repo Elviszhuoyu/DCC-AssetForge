@@ -16,6 +16,7 @@ from asset_forge.unreal.commandlet_runner import (
     run_accept_flow_commandlet,
     run_accept_flow_with_material_evidence_commandlet,
 )
+from asset_forge.unreal.acceptance_runner import UnrealPackageAcceptanceFlow
 from scripts.unreal_launch_editor_safe import parse_args as parse_editor_launch_args
 from scripts.unreal_run_accept_flow_commandlet import parse_args
 
@@ -295,6 +296,66 @@ class UnrealCommandletRunnerTest(unittest.TestCase):
         self.assertTrue(os.path.exists(log_path))
         self.assertTrue(os.path.exists(material_log_path))
         self.assertEqual(len(commands), 2)
+
+    def test_acceptance_flow_target_override_writes_manifest_used_for_import(self):
+        package_dir = os.path.join(self.temp_dir, "SM_Test")
+        os.makedirs(package_dir)
+        manifest_path = os.path.join(package_dir, "SM_Test_manifest.json")
+        report_path = os.path.join(self.temp_dir, "flow.json")
+        with open(manifest_path, "w", encoding="utf-8") as stream:
+            json.dump({"asset_name": "SM_Test", "target_path": "/Game/Original"}, stream)
+
+        class FakeAcceptanceValidator(object):
+            def validate(self, _package_dir):
+                return {
+                    "status": "success",
+                    "asset_name": "SM_Test",
+                    "manifest_path": manifest_path,
+                    "summary": {"can_accept": True},
+                    "warnings": [],
+                    "errors": [],
+                    "issues": [],
+                }
+
+        class TrackingPipeline(object):
+            def __init__(self):
+                self.dry_run_target = ""
+                self.import_target = ""
+
+            def dry_run_manifest(self, active_manifest_path):
+                with open(active_manifest_path, "r", encoding="utf-8") as stream:
+                    self.dry_run_target = json.load(stream)["target_path"]
+                return {"status": "success", "warnings": [], "errors": []}
+
+            def import_from_manifest(self, active_manifest_path):
+                with open(active_manifest_path, "r", encoding="utf-8") as stream:
+                    self.import_target = json.load(stream)["target_path"]
+                return {
+                    "status": "success",
+                    "warnings": [],
+                    "errors": [],
+                    "imported_assets": [self.import_target + "/SM_Test"],
+                    "summary": {"status": "success", "imported_texture_count": 0, "created_material_instance_count": 0, "material_assignment_count": 0},
+                    "post_import_validation": {"status": "pass"},
+                }
+
+        pipeline = TrackingPipeline()
+        report = UnrealPackageAcceptanceFlow(
+            acceptance_validator=FakeAcceptanceValidator(),
+            import_pipeline=pipeline,
+        ).run(
+            package_dir,
+            report_path=report_path,
+            run_import=True,
+            require_import=True,
+            target_path_override="/Game/Override",
+        )
+
+        self.assertEqual(pipeline.dry_run_target, "/Game/Override")
+        self.assertEqual(pipeline.import_target, "/Game/Override")
+        self.assertTrue(report["manifest_path"].endswith("flow_manifest_override.json"))
+        self.assertEqual(report["source_manifest_path"], manifest_path.replace("\\", "/"))
+        self.assertEqual(report["target_path_override"], "/Game/Override")
 
     def test_parse_args_keeps_legacy_positionals_and_material_flags(self):
         args = parse_args(

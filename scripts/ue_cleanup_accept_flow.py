@@ -76,7 +76,8 @@ def main(argv=None):
     package_dir = argv[0]
     report_path = argv[1]
     manifest, manifest_path = _read_manifest(package_dir)
-    target_path = argv[2] if len(argv) > 2 else manifest.get("target_path", "")
+    target_path_override = argv[2] if len(argv) > 2 else ""
+    target_path = target_path_override or manifest.get("target_path", "")
     if not target_path:
         raise RuntimeError("manifest 缺少 target_path: {0}".format(manifest_path))
 
@@ -94,6 +95,7 @@ def main(argv=None):
         require_import=True,
         import_options=None,
         command_args=["ue_cleanup_accept_flow", package_dir, report_path],
+        target_path_override=target_path_override,
     )
     report["cleanup_before_import"] = cleanup
     report["repo_root"] = repo_root.replace("\\", "/")

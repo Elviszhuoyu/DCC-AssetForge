@@ -2,6 +2,7 @@
 
 from __future__ import absolute_import
 
+import json
 import os
 
 from asset_forge.shared.acceptance_gate import apply_acceptance_gate, create_gate_policy
@@ -31,18 +32,20 @@ class UnrealPackageAcceptanceFlow(object):
         require_import=False,
         import_options=None,
         command_args=None,
+        target_path_override=None,
     ):
         before_acceptance = self.acceptance_validator.validate(package_dir)
         material_bootstrap = self._run_auto_material_bootstrap(auto_bootstrap_material_assets)
         acceptance = self.acceptance_validator.validate(package_dir) if auto_bootstrap_material_assets else before_acceptance
         manifest_path = acceptance.get("manifest_path", "")
+        active_manifest_path = self._manifest_path_with_target_override(manifest_path, target_path_override, report_path)
         pipeline = self.import_pipeline or UnrealStaticMeshImportPipeline(
             auto_bootstrap_material_assets=auto_bootstrap_material_assets,
             import_options=import_options,
         )
 
-        dry_run_report = self._run_dry_run(pipeline, manifest_path)
-        import_report = self._run_import(pipeline, manifest_path, acceptance, run_import)
+        dry_run_report = self._run_dry_run(pipeline, active_manifest_path)
+        import_report = self._run_import(pipeline, active_manifest_path, acceptance, run_import)
         report = self._flow_report(
             package_dir,
             before_acceptance,
@@ -53,6 +56,8 @@ class UnrealPackageAcceptanceFlow(object):
             run_import,
             auto_bootstrap_material_assets,
             import_options,
+            active_manifest_path,
+            target_path_override,
         )
         apply_acceptance_gate(report, create_gate_policy(strict, block_warnings, require_import))
         active_report_path = normalize_path(report_path or self._default_report_path(package_dir))
@@ -95,6 +100,22 @@ class UnrealPackageAcceptanceFlow(object):
         except Exception as exc:
             return self._failed_step("import", "真实导入执行异常：{0}".format(exc))
 
+    def _manifest_path_with_target_override(self, manifest_path, target_path_override=None, report_path=None):
+        if not manifest_path or not target_path_override:
+            return manifest_path
+        with open(manifest_path, "r", encoding="utf-8") as stream:
+            manifest = json.load(stream)
+        manifest["target_path"] = str(target_path_override).strip()
+        base_dir = os.path.dirname(os.path.abspath(report_path or manifest_path))
+        if not os.path.isdir(base_dir):
+            os.makedirs(base_dir)
+        base_name = os.path.splitext(os.path.basename(report_path or manifest_path))[0]
+        override_path = os.path.join(base_dir, base_name + "_manifest_override.json")
+        with open(override_path, "w", encoding="utf-8") as stream:
+            json.dump(manifest, stream, ensure_ascii=False, indent=2, sort_keys=True)
+            stream.write("\n")
+        return override_path
+
     def _flow_report(
         self,
         package_dir,
@@ -106,6 +127,8 @@ class UnrealPackageAcceptanceFlow(object):
         run_import,
         auto_bootstrap_material_assets,
         import_options,
+        active_manifest_path=None,
+        target_path_override=None,
     ):
         warnings = []
         errors = []
@@ -147,7 +170,9 @@ class UnrealPackageAcceptanceFlow(object):
             "auto_bootstrap_material_assets": bool(auto_bootstrap_material_assets),
             "gate_import_options_override": dict(import_options or {}),
             "asset_name": acceptance.get("asset_name", ""),
-            "manifest_path": acceptance.get("manifest_path", ""),
+            "manifest_path": normalize_path(active_manifest_path or acceptance.get("manifest_path", "")),
+            "source_manifest_path": normalize_path(acceptance.get("manifest_path", "")),
+            "target_path_override": str(target_path_override or ""),
             "status": summary.get("status", ""),
             "summary": summary,
             "auto_materials": self._auto_materials_report(before_acceptance, acceptance, material_bootstrap, auto_bootstrap_material_assets),
@@ -297,6 +322,7 @@ def run_asset_forge_package_acceptance(
     require_import=False,
     import_options=None,
     command_args=None,
+    target_path_override=None,
 ):
     return UnrealPackageAcceptanceFlow().run(
         package_dir,
@@ -308,6 +334,7 @@ def run_asset_forge_package_acceptance(
         require_import,
         import_options,
         command_args,
+        target_path_override,
     )
 
 
