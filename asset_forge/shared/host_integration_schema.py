@@ -2,7 +2,7 @@
 
 from __future__ import absolute_import
 
-from asset_forge.shared.constants import SOURCE_DCC_BLENDER, SOURCE_DCC_MAYA, TARGET_ENGINE_UNREAL
+from asset_forge.shared.constants import SOURCE_DCC_3DS_MAX, SOURCE_DCC_BLENDER, SOURCE_DCC_MAYA, TARGET_ENGINE_UNREAL
 
 
 HOST_INTEGRATION_VERSION = "0.1"
@@ -40,13 +40,24 @@ def get_host_integration_contracts():
                 "status": "planned",
             },
             {
+                "host": SOURCE_DCC_3DS_MAX,
+                "package_type": "3ds_max_script_package",
+                "official_descriptor": "package manifest",
+                "descriptor_path": "",
+                "runtime_api": ["pymxs"],
+                "expected_package_roots": ["integrations/3ds_max"],
+                "adapter_scope": ["selection", "scan_asset", "export_fbx"],
+                "adapter_is_package": False,
+                "status": "roadmap",
+            },
+            {
                 "host": TARGET_ENGINE_UNREAL,
                 "package_type": "unreal_plugin",
                 "official_descriptor": "Plugins/AssetForge/AssetForge.uplugin",
                 "runtime_api": ["unreal"],
                 "expected_package_roots": ["Content", "Content/Python"],
                 "content_mount": "/AssetForge",
-                "adapter_scope": ["read_manifest", "import_assets", "validate_plugin_content"],
+                "adapter_scope": ["install_project_plugin", "read_manifest", "import_assets", "validate_plugin_content"],
                 "adapter_is_package": False,
                 "status": "mvp",
             },

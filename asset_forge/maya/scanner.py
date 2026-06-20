@@ -23,27 +23,73 @@ class MayaAssetScanner(object):
     def get_current_selection(self):
         if not self.is_available():
             return []
-        return _safe_list(self.cmds.ls(selection=True, long=True))
+        selection = _safe_list(self.cmds.ls(selection=True, long=True) or self.cmds.ls(selection=True))
+        if selection:
+            return selection
+        return self._infer_single_mesh_assembly()
 
     def scan(self, asset_root):
         if not self.is_available():
             raise RuntimeError("maya.cmds is not available")
 
-        meshes = self._find_meshes(asset_root)
+        identity = self._asset_identity_for_roots([asset_root])
+        return self._scan_roots([asset_root], identity)
+
+    def scan_many(self, asset_roots):
+        if not self.is_available():
+            raise RuntimeError("maya.cmds is not available")
+        roots = list(asset_roots or [])
+        if not roots:
+            raise RuntimeError("没有选中资产")
+        identity = self._asset_identity_for_roots(roots)
+        return self._scan_roots(roots, identity)
+
+    def rename_with_prefix(self, asset_roots, prefix="SM_"):
+        renamed = []
+        for root in list(asset_roots or []):
+            if self.cmds.nodeType(root) != "transform":
+                continue
+            short_name = root.split("|")[-1]
+            if short_name.startswith(prefix):
+                renamed.append(root)
+                continue
+            new_path = self.cmds.rename(root, prefix + short_name)
+            renamed.append(new_path)
+        return renamed
+
+    def rename_mesh_transforms_with_prefix(self, asset_roots, prefix="SM_"):
+        renamed = []
+        scan = self.scan_many(asset_roots)
+        for transform in scan.get("transforms", []):
+            if self.cmds.nodeType(transform) != "transform":
+                continue
+            short_name = transform.split("|")[-1]
+            if short_name.startswith(prefix):
+                continue
+            new_path = self.cmds.rename(transform, prefix + short_name)
+            renamed.append(new_path)
+        return renamed
+
+    def _scan_roots(self, asset_roots, identity):
+        asset_name = identity.get("asset_name", asset_roots[0].split("|")[-1])
+        meshes = self._unique_nodes([mesh for root in asset_roots for mesh in self._find_meshes(root)])
         transforms = self._mesh_transforms(meshes)
-        descendants = self._descendants(asset_root)
+        descendants = self._unique_nodes([node for root in asset_roots for node in self._descendants(root)])
         uv_sets = self._collect_uv_sets(meshes)
         material_data = self.material_scanner.scan_meshes(meshes) if self.material_scanner else {"materials": [], "textures": []}
-        collision_data = self._collision_nodes([asset_root] + descendants)
+        collision_data = self._collision_nodes(asset_roots + descendants)
 
         return {
-            "asset_root": asset_root,
-            "asset_name": asset_root.split("|")[-1],
+            "asset_root": asset_roots[0],
+            "asset_roots": asset_roots,
+            "asset_name": asset_name,
+            "asset_name_source": identity.get("asset_name_source", "selected_root"),
+            "asset_name_source_path": identity.get("asset_name_source_path", asset_roots[0]),
             "mesh_count": len(meshes),
             "meshes": meshes,
             "transform_count": len(transforms),
             "transforms": transforms,
-            "transform_data": self._collect_transform_data([asset_root] + transforms),
+            "transform_data": self._collect_transform_data(asset_roots + transforms),
             "triangles": self._count_triangles(meshes),
             "vertices": self._count_vertices(meshes),
             "faces": self._count_faces(meshes),
@@ -53,13 +99,13 @@ class MayaAssetScanner(object):
             "uv_sets": uv_sets,
             "has_uv0": self._has_uv0(uv_sets),
             "has_lightmap_uv": self._has_lightmap_uv(uv_sets),
-            "frozen_transform": self._all_transforms_frozen([asset_root] + transforms),
+            "frozen_transform": self._all_transforms_frozen(asset_roots + transforms),
             "empty_meshes": self._empty_meshes(meshes),
             "collision_nodes": collision_data["valid"],
             "invalid_collision_nodes": collision_data["invalid"],
-            "hidden_objects": self._hidden_objects(asset_root, meshes, transforms),
-            "history_nodes": self._history_nodes(asset_root),
-            "illegal_scale": self._has_illegal_scale([asset_root] + transforms),
+            "hidden_objects": self._hidden_objects(asset_roots, meshes, transforms),
+            "history_nodes": self._history_nodes_many(asset_roots),
+            "illegal_scale": self._has_illegal_scale(asset_roots + transforms),
         }
 
     def _find_meshes(self, asset_root):
@@ -67,6 +113,58 @@ class MayaAssetScanner(object):
             return [asset_root]
         descendants = self._descendants(asset_root)
         return [node for node in descendants if self.cmds.nodeType(node) == "mesh"]
+
+    def _infer_single_mesh_assembly(self):
+        try:
+            assemblies = _safe_list(self.cmds.ls(assemblies=True, long=True))
+        except (RuntimeError, TypeError):
+            return []
+        candidates = []
+        for root in assemblies:
+            candidate = self._preferred_asset_root(root)
+            if candidate:
+                candidates.append(candidate)
+        return candidates if len(candidates) == 1 else []
+
+    def _preferred_asset_root(self, root):
+        if not self._contains_mesh(root):
+            return ""
+        short_name = root.split("|")[-1]
+        if short_name.startswith("SM_"):
+            return root
+        mesh_children = []
+        for child in self._child_transforms(root):
+            if self._contains_mesh(child):
+                mesh_children.append(child)
+        return mesh_children[0] if len(mesh_children) == 1 else root
+
+    def _child_transforms(self, root):
+        try:
+            children = _safe_list(self.cmds.listRelatives(root, children=True, fullPath=True))
+        except (RuntimeError, TypeError):
+            return []
+        result = []
+        for child in children:
+            try:
+                if self.cmds.nodeType(child) == "transform":
+                    result.append(child)
+            except RuntimeError:
+                continue
+        return result
+
+    def _contains_mesh(self, root):
+        try:
+            if self.cmds.nodeType(root) == "mesh":
+                return True
+        except RuntimeError:
+            return False
+        for node in self._descendants(root):
+            try:
+                if self.cmds.nodeType(node) == "mesh":
+                    return True
+            except RuntimeError:
+                continue
+        return False
 
     def _descendants(self, asset_root):
         try:
@@ -204,9 +302,9 @@ class MayaAssetScanner(object):
                 empty.append(mesh)
         return empty
 
-    def _hidden_objects(self, asset_root, meshes, transforms):
+    def _hidden_objects(self, asset_roots, meshes, transforms):
         hidden = []
-        nodes = [asset_root] + meshes + transforms
+        nodes = list(asset_roots or []) + meshes + transforms
         for node in nodes:
             if node in hidden:
                 continue
@@ -242,6 +340,44 @@ class MayaAssetScanner(object):
             if node not in result:
                 result.append(node)
         return result
+
+    def _history_nodes_many(self, asset_roots):
+        result = []
+        for root in asset_roots:
+            for node in self._history_nodes(root):
+                if node not in result:
+                    result.append(node)
+        return result
+
+    def _unique_nodes(self, nodes):
+        result = []
+        for node in nodes:
+            if node not in result:
+                result.append(node)
+        return result
+
+    def _asset_name_for_roots(self, asset_roots):
+        return self._asset_identity_for_roots(asset_roots).get("asset_name", "")
+
+    def _asset_identity_for_roots(self, asset_roots):
+        if len(asset_roots) == 1:
+            return {
+                "asset_name": asset_roots[0].split("|")[-1],
+                "asset_name_source": "selected_root",
+                "asset_name_source_path": asset_roots[0],
+            }
+        parents = [root.rsplit("|", 1)[0] for root in asset_roots if "|" in root]
+        if parents and parents[0] and all(parent == parents[0] for parent in parents):
+            return {
+                "asset_name": parents[0].split("|")[-1],
+                "asset_name_source": "common_parent",
+                "asset_name_source_path": parents[0],
+            }
+        return {
+            "asset_name": asset_roots[0].split("|")[-1],
+            "asset_name_source": "first_selection",
+            "asset_name_source_path": asset_roots[0],
+        }
 
     def _has_illegal_scale(self, transforms):
         for transform in transforms:

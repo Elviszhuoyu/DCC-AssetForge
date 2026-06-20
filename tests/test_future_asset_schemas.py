@@ -10,10 +10,12 @@ from asset_forge.shared.constants import (
     ASSET_TYPE_SKELETAL_MESH,
     ASSET_TYPE_STATIC_PROP,
     IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE,
+    SOURCE_DCC_3DS_MAX,
     SOURCE_DCC_MAYA,
     TARGET_ENGINE_UNREAL,
     TARGET_PLATFORM_HIGH_END_MOBILE,
 )
+from asset_forge.shared.dcc_adapter import get_dcc_support_contract
 from asset_forge.shared.manifest_schema import create_manifest, create_skeletal_mesh_manifest, validate_manifest
 from asset_forge.shared.skeletal_mesh_rule_baseline import get_skeletal_mesh_rule_baseline
 from asset_forge.unreal.import_presets import UnrealImportPresetManager
@@ -85,10 +87,31 @@ class FutureAssetSchemaTest(unittest.TestCase):
 
     def test_blender_adapter_is_explicitly_planned(self):
         adapter = BlenderAdapter()
+        contract = adapter.support_contract()
 
         self.assertFalse(adapter.is_available())
+        self.assertEqual(contract["support"], "roadmap")
+        self.assertEqual(contract["adapter_status"], "contract_only")
+        self.assertFalse(contract["real_exporter"])
+        self.assertEqual(contract["mcp_status"], "external_required")
+        self.assertIn("blender_mcp", contract["automation_transport"])
+        self.assertEqual(contract["workbench_strategy"], "port_maya_export_workbench_flow_to_blender_extension")
+        self.assertEqual(contract["start_phase"], "next_after_static_prop_stabilization")
+        self.assertIn("UE accept-flow", contract["next_slice"])
         with self.assertRaises(NotImplementedError):
             adapter.get_current_selection()
+
+    def test_3ds_max_is_contract_only_roadmap(self):
+        contract = get_dcc_support_contract(SOURCE_DCC_3DS_MAX)
+
+        self.assertEqual(contract["display_name"], "3ds Max")
+        self.assertEqual(contract["support"], "roadmap")
+        self.assertEqual(contract["adapter_status"], "contract_only")
+        self.assertFalse(contract["real_exporter"])
+        self.assertFalse(contract["portfolio_mvp"])
+        self.assertEqual(contract["mcp_status"], "not_integrated")
+        self.assertEqual(contract["workbench_strategy"], "reuse_package_protocol_then_build_host_native_ui")
+        self.assertEqual(contract["start_phase"], "after_blender_vertical_slice")
 
 
 if __name__ == "__main__":

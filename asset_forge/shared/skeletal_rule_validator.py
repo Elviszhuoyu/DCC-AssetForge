@@ -66,12 +66,12 @@ class SkeletalMeshRuleValidator(object):
         asset_name = scan_result.get("asset_name", "")
         return self._result(
             "sk_prefix",
-            "Skeletal Mesh ??",
+            "Skeletal Mesh 命名",
             asset_name.startswith(prefix),
             SEVERITY_ERROR,
             asset_name,
             prefix,
-            "Skeletal Mesh ????? {0} ??".format(prefix),
+            "Skeletal Mesh 资产名应以 {0} 开头".format(prefix),
         )
 
     def _check_root_joint(self, scan_result):
@@ -84,7 +84,7 @@ class SkeletalMeshRuleValidator(object):
             SEVERITY_ERROR,
             root_joint,
             "required",
-            "?? root joint",
+            "缺少 root joint",
         )
 
     def _check_skin_cluster(self, scan_result):
@@ -97,7 +97,7 @@ class SkeletalMeshRuleValidator(object):
             SEVERITY_ERROR,
             count,
             ">= 1",
-            "?? skinCluster",
+            "缺少 skinCluster",
         )
 
     def _check_max_influences(self, scan_result):
@@ -110,7 +110,7 @@ class SkeletalMeshRuleValidator(object):
             SEVERITY_WARNING,
             value,
             limit,
-            "????????????",
+            "单顶点骨骼影响数超过预算",
         )
 
     def _check_lod_order(self, scan_result):
@@ -123,7 +123,7 @@ class SkeletalMeshRuleValidator(object):
             SEVERITY_WARNING,
             lod_names,
             indexed_names,
-            "LOD ????????",
+            "LOD 命名或顺序不连续",
         )
 
     def _check_material_slots(self, scan_result):
@@ -135,7 +135,7 @@ class SkeletalMeshRuleValidator(object):
             SEVERITY_WARNING,
             slots,
             ">= 1",
-            "??????",
+            "缺少材质插槽",
         )
 
     def _result(self, check_id, label, passed, severity, value, limit, fail_message):
@@ -146,7 +146,7 @@ class SkeletalMeshRuleValidator(object):
             "severity": severity,
             "value": value,
             "limit": limit,
-            "message": "??" if passed else fail_message,
+            "message": "通过" if passed else fail_message,
         }
 
     def _summary(self, checks):

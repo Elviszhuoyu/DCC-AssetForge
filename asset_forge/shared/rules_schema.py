@@ -2,6 +2,9 @@
 
 from __future__ import absolute_import
 
+import json
+import os
+
 from asset_forge.shared.constants import (
     ASSET_TYPE_STATIC_PROP,
     SEVERITY_ERROR,
@@ -39,43 +42,43 @@ DEFAULT_RULES = {
         "checks": [
             {
                 "id": "name_prefix",
-                "label": "????",
+                "label": "命名规范",
                 "severity": SEVERITY_ERROR,
                 "enabled": True,
             },
             {
                 "id": "mesh_exists",
-                "label": "Mesh ??",
+                "label": "Mesh 存在",
                 "severity": SEVERITY_ERROR,
                 "enabled": True,
             },
             {
                 "id": "empty_mesh",
-                "label": "? Mesh",
+                "label": "空 Mesh",
                 "severity": SEVERITY_ERROR,
                 "enabled": True,
             },
             {
                 "id": "frozen_transform",
-                "label": "????",
+                "label": "冻结变换",
                 "severity": SEVERITY_ERROR,
                 "enabled": True,
             },
             {
                 "id": "illegal_scale",
-                "label": "????",
+                "label": "非法缩放",
                 "severity": SEVERITY_ERROR,
                 "enabled": True,
             },
             {
                 "id": "triangle_budget",
-                "label": "?????",
+                "label": "三角面预算",
                 "severity": SEVERITY_WARNING,
                 "enabled": True,
             },
             {
                 "id": "material_slots",
-                "label": "????",
+                "label": "材质插槽",
                 "severity": SEVERITY_WARNING,
                 "enabled": True,
             },
@@ -93,13 +96,13 @@ DEFAULT_RULES = {
             },
             {
                 "id": "hidden_objects",
-                "label": "????",
+                "label": "隐藏对象",
                 "severity": SEVERITY_WARNING,
                 "enabled": True,
             },
             {
                 "id": "history_nodes",
-                "label": "????",
+                "label": "历史节点",
                 "severity": SEVERITY_WARNING,
                 "enabled": True,
             },
@@ -128,3 +131,27 @@ def get_default_rules():
                 copied[key] = value
         rules[asset_type] = copied
     return rules
+
+
+def get_project_rules(config_path=None):
+    """Return project rules from config/project_rules.json when available."""
+    path = config_path or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "config", "project_rules.json"))
+    if not os.path.exists(path):
+        return get_default_rules()
+    with open(path, "r", encoding="utf-8") as stream:
+        data = json.load(stream)
+    return _merge_rules(get_default_rules(), data)
+
+
+def _merge_rules(default_rules, override_rules):
+    result = get_default_rules()
+    for asset_type, override in (override_rules or {}).items():
+        base = result.setdefault(asset_type, {})
+        for key, value in override.items():
+            if isinstance(value, dict) and isinstance(base.get(key), dict):
+                merged = dict(base[key])
+                merged.update(value)
+                base[key] = merged
+            else:
+                base[key] = value
+    return result

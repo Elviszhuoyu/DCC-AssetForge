@@ -18,5 +18,11 @@
       "Enabled": true
     }
   ],
-  "Modules": []
+  "Modules": [
+    {
+      "Name": "AssetForgeEditor",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    }
+  ]
 }

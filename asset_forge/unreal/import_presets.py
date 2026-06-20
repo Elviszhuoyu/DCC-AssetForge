@@ -14,8 +14,10 @@ STATIC_PROP_IMPORT_PRESETS = {
     IMPORT_PRESET_STATIC_PROP_PC: {
         "asset_type": "static_mesh",
         "import_mesh": True,
-        "import_materials": False,
-        "import_textures": False,
+        "import_materials": True,
+        "import_textures": True,
+        "fbx_import_materials": False,
+        "fbx_import_textures": False,
         "generate_missing_collision": False,
         "combine_meshes": False,
         "normal_import_method": "import_normals_and_tangents",
@@ -25,8 +27,10 @@ STATIC_PROP_IMPORT_PRESETS = {
     IMPORT_PRESET_STATIC_PROP_HIGH_END_MOBILE: {
         "asset_type": "static_mesh",
         "import_mesh": True,
-        "import_materials": False,
-        "import_textures": False,
+        "import_materials": True,
+        "import_textures": True,
+        "fbx_import_materials": False,
+        "fbx_import_textures": False,
         "generate_missing_collision": False,
         "combine_meshes": False,
         "normal_import_method": "import_normals_and_tangents",
@@ -36,8 +40,10 @@ STATIC_PROP_IMPORT_PRESETS = {
     IMPORT_PRESET_STATIC_PROP_MOBILE: {
         "asset_type": "static_mesh",
         "import_mesh": True,
-        "import_materials": False,
-        "import_textures": False,
+        "import_materials": True,
+        "import_textures": True,
+        "fbx_import_materials": False,
+        "fbx_import_textures": False,
         "generate_missing_collision": False,
         "combine_meshes": False,
         "normal_import_method": "import_normals",
@@ -63,7 +69,7 @@ class UnrealImportPresetManager(object):
 
     def get_preset(self, preset_name):
         if preset_name not in self.presets:
-            raise KeyError("Unknown Unreal import preset: {0}".format(preset_name))
+            raise KeyError("未知 Unreal 导入预设：{0}".format(preset_name))
         preset = dict(self.presets[preset_name])
         preset["name"] = preset_name
         return preset

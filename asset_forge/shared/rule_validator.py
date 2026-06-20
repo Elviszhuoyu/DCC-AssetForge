@@ -70,36 +70,36 @@ class StaticPropRuleValidator(object):
         passed = asset_name.startswith(prefix)
         return self._result(
             "name_prefix",
-            "????",
+            "命名规范",
             passed,
             SEVERITY_ERROR,
             asset_name,
             prefix,
-            "????? {0} ??".format(prefix),
+            "资产名应以 {0} 开头".format(prefix),
         )
 
     def _check_mesh_exists(self, scan_result):
         mesh_count = scan_result.get("mesh_count", 0)
         return self._result(
             "mesh_exists",
-            "Mesh ??",
+            "Mesh 存在",
             mesh_count > 0,
             SEVERITY_ERROR,
             mesh_count,
             ">= 1",
-            "??????????? Mesh",
+            "选择对象下没有可导出的 Mesh",
         )
 
     def _check_empty_mesh(self, scan_result):
         empty_meshes = scan_result.get("empty_meshes", [])
         return self._result(
             "empty_mesh",
-            "? Mesh",
+            "空 Mesh",
             not empty_meshes,
             SEVERITY_ERROR,
             len(empty_meshes),
             0,
-            "??? Mesh: {0}".format(", ".join(empty_meshes)),
+            "存在空 Mesh: {0}".format(", ".join(empty_meshes)),
         )
 
     def _check_frozen_transform(self, scan_result, rules):
@@ -107,23 +107,23 @@ class StaticPropRuleValidator(object):
         passed = (not required) or scan_result.get("frozen_transform", False)
         return self._result(
             "frozen_transform",
-            "????",
+            "冻结变换",
             passed,
             SEVERITY_ERROR,
             scan_result.get("frozen_transform", False),
             True,
-            "Transform ????Translate/Rotate ????Scale ?? 1",
+            "Transform 未冻结：Translate/Rotate 应归零，Scale 应为 1",
         )
 
     def _check_illegal_scale(self, scan_result):
         return self._result(
             "illegal_scale",
-            "????",
+            "非法缩放",
             not scan_result.get("illegal_scale", False),
             SEVERITY_ERROR,
             scan_result.get("illegal_scale", False),
             False,
-            "??????? 0 ????",
+            "存在小于或等于 0 的缩放值",
         )
 
     def _check_triangle_budget(self, scan_result, rules, target_platform):
@@ -133,12 +133,12 @@ class StaticPropRuleValidator(object):
         passed = True if limit is None else triangles <= limit
         return self._result(
             "triangle_budget",
-            "?????",
+            "三角面预算",
             passed,
             SEVERITY_WARNING,
             triangles,
             limit,
-            "?????? {0} ????".format(target_platform),
+            "三角面数超过 {0} 平台预算".format(target_platform),
         )
 
     def _check_material_slots(self, scan_result, rules, target_platform):
@@ -148,12 +148,12 @@ class StaticPropRuleValidator(object):
         passed = True if limit is None else material_slots <= limit
         return self._result(
             "material_slots",
-            "????",
+            "材质插槽",
             passed,
             SEVERITY_WARNING,
             material_slots,
             limit,
-            "???????? {0} ????".format(target_platform),
+            "材质插槽数量超过 {0} 平台预算".format(target_platform),
         )
 
     def _check_uv0(self, scan_result, rules):
@@ -166,7 +166,7 @@ class StaticPropRuleValidator(object):
             SEVERITY_ERROR,
             scan_result.get("has_uv0", False),
             True,
-            "???? UV0",
+            "缺少基础 UV0",
         )
 
     def _check_lightmap_uv(self, scan_result, rules):
@@ -179,31 +179,31 @@ class StaticPropRuleValidator(object):
             SEVERITY_WARNING,
             scan_result.get("has_lightmap_uv", False),
             True,
-            "?? Lightmap UV",
+            "缺少 Lightmap UV",
         )
 
     def _check_hidden_objects(self, scan_result):
         hidden_objects = scan_result.get("hidden_objects", [])
         return self._result(
             "hidden_objects",
-            "????",
+            "隐藏对象",
             not hidden_objects,
             SEVERITY_WARNING,
             len(hidden_objects),
             0,
-            "??????: {0}".format(", ".join(hidden_objects)),
+            "存在隐藏对象: {0}".format(", ".join(hidden_objects)),
         )
 
     def _check_history_nodes(self, scan_result):
         history_nodes = scan_result.get("history_nodes", [])
         return self._result(
             "history_nodes",
-            "????",
+            "历史节点",
             not history_nodes,
             SEVERITY_WARNING,
             len(history_nodes),
             0,
-            "????????: {0}".format(", ".join(history_nodes[:8])),
+            "存在历史节点残留: {0}".format(", ".join(history_nodes[:8])),
         )
 
     def _check_collision_naming(self, scan_result):
@@ -220,7 +220,7 @@ class StaticPropRuleValidator(object):
 
     def _result(self, check_id, label, passed, severity, value, limit, fail_message):
         status = CHECK_STATUS_PASS if passed else severity
-        message = "??" if passed else fail_message
+        message = "通过" if passed else fail_message
         return {
             "id": check_id,
             "label": label,

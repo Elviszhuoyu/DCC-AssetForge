@@ -4,6 +4,7 @@ from __future__ import absolute_import
 
 import importlib.util
 import os
+import sys
 
 
 try:
@@ -27,14 +28,17 @@ def get_blender_extension_package_plan():
         "entry": BLENDER_ENTRY,
         "required_entry_functions": ["register", "unregister"],
         "blender_version_min": "4.2.0",
-        "status": "packaging_gate",
+        "status": "active_workbench",
+        "support": "field_smoke",
+        "real_exporter": True,
+        "roadmap": "Blender workbench includes MCP bridge, selection scan, preflight, and FBX package export; UE acceptance is validated by UE Gate.",
     }
 
 
 def read_blender_manifest(path=BLENDER_MANIFEST):
     """Read blender_manifest.toml."""
     if tomllib is None:
-        raise RuntimeError("tomllib is required to read blender_manifest.toml")
+        return _read_simple_toml(path)
     with open(path, "rb") as stream:
         return tomllib.load(stream)
 
@@ -69,7 +73,27 @@ def validate_blender_extension_package(plan=None):
 
 
 def _load_entry_module(path):
-    spec = importlib.util.spec_from_file_location("asset_forge_blender_extension", path)
+    package_dir = os.path.dirname(os.path.abspath(path))
+    module_name = "asset_forge_blender_extension"
+    spec = importlib.util.spec_from_file_location(module_name, path, submodule_search_locations=[package_dir])
     module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _read_simple_toml(path):
+    """Small fallback for Python 3.9 test hosts; supports this flat manifest only."""
+    data = {}
+    with open(path, "r", encoding="utf-8") as stream:
+        for raw_line in stream:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = [item.strip() for item in line.split("=", 1)]
+            if value.startswith("[") and value.endswith("]"):
+                items = [item.strip().strip('"') for item in value[1:-1].split(",") if item.strip()]
+                data[key] = items
+            else:
+                data[key] = value.strip('"')
+    return data
