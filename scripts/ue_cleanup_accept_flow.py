@@ -14,9 +14,16 @@ def _repo_root():
 
 def _ensure_repo_on_path():
     root = _repo_root()
-    if root not in sys.path:
-        sys.path.insert(0, root)
+    normalized = os.path.normcase(os.path.abspath(root))
+    sys.path[:] = [item for item in sys.path if os.path.normcase(os.path.abspath(item)) != normalized]
+    sys.path.insert(0, root)
     return root
+
+
+def _purge_asset_forge_modules():
+    for name in sorted(list(sys.modules.keys()), reverse=True):
+        if name == "asset_forge" or name.startswith("asset_forge."):
+            del sys.modules[name]
 
 
 def _read_manifest(package_dir):
@@ -65,6 +72,7 @@ def main(argv=None):
     if len(argv) < 2:
         raise RuntimeError("Usage: ue_cleanup_accept_flow.py <package_dir> <report_path> [target_path]")
     repo_root = _ensure_repo_on_path()
+    _purge_asset_forge_modules()
     package_dir = argv[0]
     report_path = argv[1]
     manifest, manifest_path = _read_manifest(package_dir)

@@ -79,10 +79,12 @@ def start_bridge(host=None, port=None, token=None, repo_root=None):
     """Start the bridge in the current Maya Python process."""
     global _SERVER, _THREAD
     if _SERVER is not None:
-        status = bridge_status()
-        _safe_show_status_window(status)
-        _notify_status_listeners(status)
-        return status
+        if _bridge_thread_alive():
+            status = bridge_status()
+            _safe_show_status_window(status)
+            _notify_status_listeners(status)
+            return status
+        _discard_dead_server("start_bridge")
     _require_maya_process()
     active_host = host or os.environ.get("ASSET_FORGE_MAYA_MCP_HOST") or DEFAULT_HOST
     active_root = os.path.abspath(repo_root or os.environ.get("ASSET_FORGE_REPO_ROOT") or _repo_root())
@@ -130,6 +132,16 @@ def stop_bridge():
 def bridge_status():
     if _SERVER is None:
         return _stopped_status()
+    if not _bridge_thread_alive():
+        status = _stopped_status(_SERVER.repo_root)
+        status.update(
+            {
+                "health": "error",
+                "last_error": "Maya MCP bridge thread is not listening.",
+                "next_action": "点击启动重新创建 Maya MCP bridge；旧端口不会继续注册为可用实例。",
+            }
+        )
+        return status
     _register_bridge_instance(_SERVER)
     host, port = _SERVER.server_address
     metrics = _metrics_snapshot()
@@ -289,6 +301,34 @@ def _unregister_bridge_instance(instance_id=None, port=None):
     except Exception as exc:
         print("[AssetForgeMayaBridge] registry unregister failed: {0}".format(exc))
         return []
+
+
+def _bridge_thread_alive():
+    return _SERVER is not None and _THREAD is not None and _THREAD.is_alive()
+
+
+def _discard_dead_server(action=""):
+    global _SERVER, _THREAD
+    if _SERVER is None:
+        return
+    repo_root = getattr(_SERVER, "repo_root", "") or _repo_root()
+    instance_id = getattr(_SERVER, "instance_id", "")
+    try:
+        _unregister_bridge_instance(instance_id=instance_id, port=_SERVER.server_address[1])
+    finally:
+        try:
+            _SERVER.server_close()
+        except Exception:
+            pass
+        _SERVER = None
+        _THREAD = None
+        _set_metrics_status("error", action or "mcp_bridge_restart", "Maya MCP bridge thread is not listening.")
+        _log_bridge_event(
+            "mcp_bridge_discard_dead_server",
+            "warning",
+            repo_root,
+            errors=[{"message": "Maya MCP bridge thread is not listening."}],
+        )
 
 
 def _current_scene_path():

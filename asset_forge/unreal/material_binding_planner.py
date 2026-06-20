@@ -216,14 +216,41 @@ class UnrealMaterialBindingPlanner(object):
     def _textures_for_material(self, material, manifest_textures):
         textures = list(material.get("textures", []) or [])
         texture_set = self._material_texture_set(material.get("name", ""))
+        if textures:
+            return self._merge_missing_set_textures(textures, manifest_textures, texture_set)
         if texture_set:
-            filtered = [item for item in textures if self._texture_matches_set(item, texture_set)]
-            if filtered:
-                return filtered
             fallback = [item for item in manifest_textures if self._texture_matches_set(item, texture_set)]
             if fallback:
                 return fallback
         return textures
+
+    def _merge_missing_set_textures(self, textures, manifest_textures, texture_set):
+        result = list(textures or [])
+        if not texture_set:
+            return result
+        existing_usages = set(item.get("usage", "") for item in result if item.get("usage", ""))
+        existing_keys = set(self._texture_identity(item) for item in result)
+        for texture in manifest_textures or []:
+            usage = texture.get("usage", "")
+            if not usage or usage in existing_usages:
+                continue
+            if not self._texture_matches_set(texture, texture_set):
+                continue
+            key = self._texture_identity(texture)
+            if key and key in existing_keys:
+                continue
+            result.append(texture)
+            existing_usages.add(usage)
+            if key:
+                existing_keys.add(key)
+        return result
+
+    def _texture_identity(self, texture):
+        for key in ("package_path", "source_path", "path", "node"):
+            value = normalize_path(texture.get(key, ""))
+            if value:
+                return value
+        return ""
 
     def _material_texture_set(self, material_name):
         name = (material_name or "").lower()

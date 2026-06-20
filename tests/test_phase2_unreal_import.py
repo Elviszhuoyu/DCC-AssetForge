@@ -833,6 +833,55 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertIn("T_HK416_D_B_d1_BaseColor", by_name["B_d1"]["texture_parameters"]["BaseColor"])
         self.assertFalse(by_name["B_a1"]["binding_warnings"])
 
+    def test_binding_plan_preserves_explicit_maya_texture_connections(self):
+        texture_dir = os.path.join(self.temp_dir, "Textures")
+        if not os.path.exists(texture_dir):
+            os.makedirs(texture_dir)
+        manifest = dict(self.manifest)
+        base_path = os.path.join(texture_dir, "T_HK416_D_B_b1_BaseColor.png")
+        shared_normal_path = os.path.join(texture_dir, "T_HK416_D_B_d1_Normal.png")
+        for path in [base_path, shared_normal_path]:
+            with open(path, "wb") as stream:
+                stream.write(b"fake texture")
+        explicit_textures = [
+            {"path": base_path, "package_path": base_path, "copied": True, "usage": "base_color"},
+            {"path": shared_normal_path, "package_path": shared_normal_path, "copied": True, "usage": "normal"},
+        ]
+        manifest["textures"] = list(explicit_textures)
+        manifest["materials"] = [{"name": "B_b1", "textures": list(explicit_textures)}]
+        manifest_path = os.path.join(self.temp_dir, "explicit_maya_connections_manifest.json")
+        write_manifest(manifest_path, manifest)
+
+        report = UnrealStaticMeshImportPipeline(importer=FakeImporter()).dry_run_manifest(manifest_path)
+        material = report["material_binding_plan"]["materials"][0]
+
+        self.assertIn("T_HK416_D_B_b1_BaseColor", material["texture_parameters"]["BaseColor"])
+        self.assertIn("T_HK416_D_B_d1_Normal", material["texture_parameters"]["Normal"])
+
+    def test_binding_plan_completes_partial_material_from_matching_texture_set(self):
+        texture_dir = os.path.join(self.temp_dir, "Textures")
+        if not os.path.exists(texture_dir):
+            os.makedirs(texture_dir)
+        manifest = dict(self.manifest)
+        base_path = os.path.join(texture_dir, "T_HK416_D_B_d1_BaseColor.png")
+        normal_path = os.path.join(texture_dir, "T_HK416_D_B_d1_Normal.png")
+        for path in [base_path, normal_path]:
+            with open(path, "wb") as stream:
+                stream.write(b"fake texture")
+        manifest["textures"] = [
+            {"path": base_path, "package_path": base_path, "copied": True, "usage": "base_color"},
+            {"path": normal_path, "package_path": normal_path, "copied": True, "usage": "normal"},
+        ]
+        manifest["materials"] = [{"name": "B_d1", "textures": [manifest["textures"][0]]}]
+        manifest_path = os.path.join(self.temp_dir, "partial_maya_material_manifest.json")
+        write_manifest(manifest_path, manifest)
+
+        report = UnrealStaticMeshImportPipeline(importer=FakeImporter()).dry_run_manifest(manifest_path)
+        material = report["material_binding_plan"]["materials"][0]
+
+        self.assertIn("T_HK416_D_B_d1_BaseColor", material["texture_parameters"]["BaseColor"])
+        self.assertIn("T_HK416_D_B_d1_Normal", material["texture_parameters"]["Normal"])
+
     def test_binding_plan_reuses_material_instance_for_identical_texture_signature(self):
         texture_path = self._write_packaged_texture()
         manifest = dict(self.manifest)

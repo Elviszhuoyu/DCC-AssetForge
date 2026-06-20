@@ -90,6 +90,7 @@ class MayaStaticPropPipeline(object):
         active_rules = rules or self.rules
         scan_result = self.scan_assets(asset_roots)
         scan_result = self._apply_texture_folder(scan_result, texture_folder, material_profile, texture_set_token)
+        scan_result = self._apply_texture_profile_defaults(scan_result, material_profile)
         scan_result = self._apply_material_profile_validation(scan_result, material_profile)
         scan_result = self._apply_asset_name_override(scan_result, asset_name_override)
         scan_result = self._attach_material_texture_bindings(scan_result, target_path)
@@ -156,6 +157,7 @@ class MayaStaticPropPipeline(object):
         active_rules = rules or self.rules
         scan_result = self.scan_assets(asset_roots)
         scan_result = self._apply_texture_folder(scan_result, texture_folder, material_profile, texture_set_token)
+        scan_result = self._apply_texture_profile_defaults(scan_result, material_profile)
         scan_result = self._apply_material_profile_validation(scan_result, material_profile)
         scan_result = self._apply_asset_name_override(scan_result, asset_name_override)
         scan_result = self._attach_material_texture_bindings(scan_result, target_path)
@@ -308,6 +310,23 @@ class MayaStaticPropPipeline(object):
             result.get("textures", []),
         )
         return result
+
+    def _apply_texture_profile_defaults(self, scan_result, material_profile):
+        profile = resolve_material_profile(material_profile)
+        rules_by_usage = dict((rule.get("usage", ""), rule) for rule in profile.get("texture_rules", []))
+        for texture in _iter_scan_textures(scan_result):
+            rule = rules_by_usage.get(texture.get("usage", ""), {})
+            if not rule:
+                continue
+            if rule.get("parameter") and not texture.get("parameter"):
+                texture["parameter"] = rule.get("parameter", "")
+            if "srgb" not in texture:
+                texture["srgb"] = bool(rule.get("srgb", False))
+            if rule.get("compression") and not texture.get("compression"):
+                texture["compression"] = rule.get("compression", "")
+            if rule.get("channels") and not texture.get("channels"):
+                texture["channels"] = dict(rule.get("channels", {}))
+        return scan_result
 
     def _apply_asset_name_override(self, scan_result, asset_name_override=""):
         if not asset_name_override:
@@ -509,3 +528,16 @@ def _short_texture_set_name(value):
 
 def _tokenize_for_binding(value):
     return tokenize_for_binding(value)
+
+
+def _iter_scan_textures(scan_result):
+    seen = set()
+    for texture in (scan_result or {}).get("textures", []) or []:
+        if isinstance(texture, dict) and id(texture) not in seen:
+            seen.add(id(texture))
+            yield texture
+    for material in (scan_result or {}).get("materials", []) or []:
+        for texture in material.get("textures", []) or []:
+            if isinstance(texture, dict) and id(texture) not in seen:
+                seen.add(id(texture))
+                yield texture

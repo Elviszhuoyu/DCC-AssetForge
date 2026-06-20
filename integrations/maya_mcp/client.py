@@ -17,6 +17,7 @@ from integrations.maya_mcp.protocol import (
 )
 from integrations.maya_mcp_runtime.registry import (
     AmbiguousMayaInstanceError,
+    MayaInstanceNotFoundError,
     load_instances,
     resolve_instance,
     selector_from_arguments,
@@ -41,7 +42,12 @@ class MayaBridgeClient(object):
             if len(instances) > 1:
                 raise AmbiguousMayaInstanceError(instances)
             return cls()
-        instance = resolve_instance(selector)
+        try:
+            instance = resolve_instance(selector)
+        except MayaInstanceNotFoundError:
+            instance = _resolve_explicit_stale_instance(selector)
+            if instance is None:
+                raise
         return cls.from_instance(instance)
 
     @classmethod
@@ -100,3 +106,31 @@ def _read_line(sock):
     if not chunks:
         raise RuntimeError("Maya bridge 未返回响应。")
     return b"".join(chunks).split(b"\n", 1)[0]
+
+
+def _resolve_explicit_stale_instance(selector):
+    matches = [item for item in load_instances(include_stale=True) if _matches_selector(item, selector)]
+    if len(matches) > 1:
+        raise AmbiguousMayaInstanceError(matches)
+    if matches:
+        return matches[0]
+    return None
+
+
+def _matches_selector(instance, selector):
+    instance_id = selector.get("maya_instance") or selector.get("maya_instance_id")
+    if instance_id and instance.get("instance_id") != instance_id:
+        return False
+    pid = selector.get("maya_pid")
+    if pid not in (None, "") and int(instance.get("pid") or -1) != int(pid):
+        return False
+    port = selector.get("maya_port")
+    if port not in (None, "") and int(instance.get("port") or -1) != int(port):
+        return False
+    scene_contains = selector.get("maya_scene_contains")
+    if scene_contains:
+        needle = str(scene_contains).lower()
+        scene_path = instance.get("scene_path") or ""
+        if needle not in str(scene_path).lower():
+            return False
+    return True

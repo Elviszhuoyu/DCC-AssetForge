@@ -5,6 +5,7 @@ import socket
 import tempfile
 import unittest
 
+from integrations.maya.scripts import asset_forge_maya_bridge
 from integrations.maya_mcp_runtime.ports import allocate_port
 from integrations.maya_mcp.client import MayaBridgeClient
 from integrations.maya_mcp_runtime.registry import (
@@ -152,6 +153,35 @@ class MayaMcpRuntimeTest(unittest.TestCase):
             else:
                 os.environ["MAYA_MCP_REGISTRY_PATH"] = old_path
 
+    def test_client_uses_explicit_stale_registered_instance(self):
+        path = self._registry_path()
+        old_path = os.environ.get("MAYA_MCP_REGISTRY_PATH")
+        os.environ["MAYA_MCP_REGISTRY_PATH"] = path
+        try:
+            save_instances(
+                [
+                    {
+                        "instance_id": "maya-stale",
+                        "pid": 101,
+                        "host": "127.0.0.1",
+                        "port": 8765,
+                        "scene_path": "E:/A.ma",
+                        "updated_at_epoch": 1,
+                    }
+                ],
+                path=path,
+            )
+
+            client = MayaBridgeClient.from_arguments({"maya_instance": "maya-stale"})
+
+            self.assertEqual(client.port, 8765)
+            self.assertEqual(client.instance["instance_id"], "maya-stale")
+        finally:
+            if old_path is None:
+                os.environ.pop("MAYA_MCP_REGISTRY_PATH", None)
+            else:
+                os.environ["MAYA_MCP_REGISTRY_PATH"] = old_path
+
     def test_registry_unregisters_by_instance_or_port(self):
         path = self._registry_path()
         register_instance({"instance_id": "maya-a", "pid": 101, "port": 8765}, path=path)
@@ -177,6 +207,45 @@ class MayaMcpRuntimeTest(unittest.TestCase):
             sock.close()
 
         self.assertEqual(port, busy_port + 1)
+
+    def test_bridge_status_does_not_register_dead_server_thread(self):
+        class DeadServer(object):
+            repo_root = "E:/Repo"
+            instance_id = "maya-dead"
+            server_address = ("127.0.0.1", 8765)
+            token = ""
+            registry_path = ""
+
+            def __init__(self):
+                self.closed = False
+
+            def server_close(self):
+                self.closed = True
+
+        dead_server = DeadServer()
+        old_server = asset_forge_maya_bridge._SERVER
+        old_thread = asset_forge_maya_bridge._THREAD
+        old_unregister = asset_forge_maya_bridge._unregister_bridge_instance
+        old_log = asset_forge_maya_bridge._log_bridge_event
+        removed = []
+        try:
+            asset_forge_maya_bridge._SERVER = dead_server
+            asset_forge_maya_bridge._THREAD = None
+            asset_forge_maya_bridge._unregister_bridge_instance = lambda **kwargs: removed.append(kwargs) or []
+            asset_forge_maya_bridge._log_bridge_event = lambda *args, **kwargs: {}
+
+            status = asset_forge_maya_bridge.bridge_status()
+            asset_forge_maya_bridge._discard_dead_server("test")
+        finally:
+            asset_forge_maya_bridge._SERVER = old_server
+            asset_forge_maya_bridge._THREAD = old_thread
+            asset_forge_maya_bridge._unregister_bridge_instance = old_unregister
+            asset_forge_maya_bridge._log_bridge_event = old_log
+
+        self.assertEqual(status["status"], "stopped")
+        self.assertEqual(status["health"], "error")
+        self.assertTrue(dead_server.closed)
+        self.assertEqual(removed[0]["instance_id"], "maya-dead")
 
     def _registry_path(self):
         if not hasattr(self, "_temp_dir"):

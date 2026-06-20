@@ -175,6 +175,35 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
             else:
                 os.environ["BLENDER_MCP_REGISTRY_PATH"] = old_path
 
+    def test_client_uses_explicit_stale_registered_instance(self):
+        path = self._registry_path()
+        old_path = os.environ.get("BLENDER_MCP_REGISTRY_PATH")
+        os.environ["BLENDER_MCP_REGISTRY_PATH"] = path
+        try:
+            save_instances(
+                [
+                    {
+                        "instance_id": "blender-stale",
+                        "pid": 201,
+                        "host": "127.0.0.1",
+                        "port": 8875,
+                        "scene_path": "E:/A.blend",
+                        "updated_at_epoch": 1,
+                    }
+                ],
+                path=path,
+            )
+
+            client = BlenderBridgeClient.from_arguments({"blender_instance": "blender-stale"})
+
+            self.assertEqual(client.port, 8875)
+            self.assertEqual(client.instance["instance_id"], "blender-stale")
+        finally:
+            if old_path is None:
+                os.environ.pop("BLENDER_MCP_REGISTRY_PATH", None)
+            else:
+                os.environ["BLENDER_MCP_REGISTRY_PATH"] = old_path
+
     def test_registry_unregisters_by_instance_or_port(self):
         path = self._registry_path()
         register_instance({"instance_id": "blender-a", "pid": 201, "port": 8875}, path=path)

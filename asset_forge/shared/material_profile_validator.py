@@ -153,7 +153,7 @@ def _channel_check(rule, status, message):
 
 def _texture_count_checks(profile, textures):
     checks = []
-    grouped_textures = _texture_count_groups(textures)
+    grouped_textures = _texture_count_groups(textures, profile)
 
     for group_name, group_textures in grouped_textures:
         usage_counts = {}
@@ -173,11 +173,11 @@ def _texture_count_checks(profile, textures):
     return checks
 
 
-def _texture_count_groups(textures):
+def _texture_count_groups(textures, profile=None):
     groups = {}
     unnamed = []
     for texture in textures or []:
-        group = texture.get("selected_texture_set", "") or texture.get("texture_set", "")
+        group = texture.get("selected_texture_set", "") or texture.get("texture_set", "") or _infer_texture_set_from_path(texture, profile)
         if group:
             groups.setdefault(group, []).append(texture)
         else:
@@ -187,6 +187,21 @@ def _texture_count_groups(textures):
             groups.setdefault("__unbound__", []).append(texture)
         return sorted(groups.items(), key=lambda item: item[0])
     return [("", list(textures or []))]
+
+
+def _infer_texture_set_from_path(texture, profile=None):
+    path = _texture_path(texture)
+    stem = os.path.splitext(os.path.basename(path))[0]
+    if not stem:
+        return ""
+    suffixes = []
+    for rule in (profile or {}).get("texture_rules", []) or []:
+        suffixes.extend(rule.get("suffixes", []) or [])
+    for suffix in sorted(set(suffixes), key=len, reverse=True):
+        suffix = str(suffix or "")
+        if suffix and stem.lower().endswith(suffix.lower()):
+            return stem[: -len(suffix)].rstrip("_-.")
+    return ""
 
 
 def _texture_file_checks(texture, rule):

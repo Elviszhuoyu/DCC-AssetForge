@@ -99,6 +99,25 @@ class MaterialProfileValidatorTest(unittest.TestCase):
         ]
         self.assertEqual(duplicate_warnings, [])
 
+    def test_texture_quality_infers_texture_sets_from_profile_suffixes(self):
+        profile = get_default_material_profile("Props_Opaque_PainterUE_ARM")
+
+        report = validate_material_texture_quality(
+            profile,
+            [
+                {"usage": "base_color", "package_path": "D:/Pkg/T_HK416_D_B_a1_BaseColor.png", "width": 1024, "height": 1024, "srgb": True, "compression": "default"},
+                {"usage": "normal", "package_path": "D:/Pkg/T_HK416_D_B_a1_Normal.png", "width": 1024, "height": 1024, "srgb": False, "compression": "normalmap"},
+                {"usage": "base_color", "package_path": "D:/Pkg/T_HK416_D_B_b1_BaseColor.png", "width": 1024, "height": 1024, "srgb": True, "compression": "default"},
+                {"usage": "normal", "package_path": "D:/Pkg/T_HK416_D_B_b1_Normal.png", "width": 1024, "height": 1024, "srgb": False, "compression": "normalmap"},
+            ],
+        )
+
+        duplicate_warnings = [
+            item for item in report["checks"]
+            if item["status"] == "warning" and item["id"] == "texture_count" and "同一 usage" in item["message"]
+        ]
+        self.assertEqual(duplicate_warnings, [])
+
 
 if __name__ == "__main__":
     unittest.main()
