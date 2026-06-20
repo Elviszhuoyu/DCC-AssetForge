@@ -83,6 +83,7 @@ def export_selected(
             rules=_active_rules(pipeline.rules, settings),
             texture_import_policy=_texture_import_policy(settings),
             static_mesh_import_policy=_static_mesh_import_policy(settings),
+            source_name_suffix="Maya",
         )
     except Exception as exc:
         logger.log("shelf_export_failed", "error", inputs={"selection": selection, "settings": settings}, errors=[str(exc)])

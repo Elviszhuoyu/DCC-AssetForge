@@ -884,7 +884,7 @@ class FakeFullUiCmds(object):
         return values.get(control, "")
 
     def textFieldGrp(self, control, query=False, text=False, edit=False, **kwargs):
-        values = {"name_prefix": "SM_", "texture_prefix": "T_", "target_path": "/Game/Props", "texture_set_token": "a1,d1"}
+        values = {"name_prefix": "SM_", "asset_name_override": "", "texture_prefix": "T_", "target_path": "/Game/Props", "texture_set_token": "a1,d1"}
         return values.get(control, "")
 
     def intFieldGrp(self, control, query=False, value1=False, edit=False, **kwargs):
@@ -914,6 +914,7 @@ class FakeEditableUiCmds(FakeFullUiCmds):
         self.button_values = {"output_dir": "D:/Exports", "texture_folder": "D:/Textures"}
         self.text_values = {
             "name_prefix": "SM_",
+            "asset_name_override": "",
             "texture_prefix": "T_",
             "target_path": "/Game/Props/HK416D",
             "texture_set_token": "a1,d1",
@@ -991,6 +992,13 @@ class FakeUnicodePathCmds(FakeFullUiCmds):
     def __init__(self, save_path):
         super(FakeUnicodePathCmds, self).__init__(save_path)
         self.button_values = {"output_dir": "D:/Exports", "texture_folder": "D:/Textures"}
+        self.text_values = {
+            "name_prefix": "SM_",
+            "asset_name_override": "",
+            "texture_prefix": "T_",
+            "target_path": "/Game/Props",
+            "texture_set_token": "a1,d1",
+        }
 
     def textFieldButtonGrp(self, control, query=False, text=False, edit=False, **kwargs):
         if edit:
@@ -998,6 +1006,12 @@ class FakeUnicodePathCmds(FakeFullUiCmds):
             self.button_values[control] = value.replace("导出", "??").replace("测试", "??")
             return control
         return self.button_values.get(control, "")
+
+    def textFieldGrp(self, control, query=False, text=False, edit=False, **kwargs):
+        if edit:
+            self.text_values[control] = kwargs.get("text", text if isinstance(text, str) else "")
+            return control
+        return self.text_values.get(control, "")
 
 
 class FakeBuildCmds(FakeFullUiCmds):
@@ -1134,7 +1148,7 @@ class FakeExportSuccessPipeline(object):
     def get_current_selection(self):
         return list(self.selection)
 
-    def preflight_assets(self, selection, target_platform=None, material_profile=None, texture_folder=None, texture_set_token=None, target_path=None, asset_name_override="", rules=None, texture_import_policy=None, static_mesh_import_policy=None):
+    def preflight_assets(self, selection, target_platform=None, material_profile=None, texture_folder=None, texture_set_token=None, target_path=None, asset_name_override="", rules=None, texture_import_policy=None, static_mesh_import_policy=None, source_name_suffix=""):
         self.preflight_calls += 1
         return {"scan": _successful_scan(), "validation": _successful_validation(), "texture_folder_scan": _successful_scan()["texture_folder_scan"]}
 
@@ -1294,6 +1308,7 @@ def _fake_full_controls():
         "output_dir": "output_dir",
         "texture_folder": "texture_folder",
         "name_prefix": "name_prefix",
+        "asset_name_override": "asset_name_override",
         "texture_prefix": "texture_prefix",
         "target_path": "target_path",
         "triangle_budget": "triangle_budget",

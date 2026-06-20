@@ -73,7 +73,7 @@ class UnrealPackageAcceptanceFlow(object):
         if not bootstrapper or not hasattr(bootstrapper, "bootstrap"):
             return self._skipped_step("material_bootstrap", "当前验收器不支持默认材质 Bootstrap")
         try:
-            report = bootstrapper.bootstrap(dry_run=False)
+            report = bootstrapper.bootstrap(dry_run=False, repair_existing_assets=False)
         except Exception as exc:
             return self._failed_step("material_bootstrap", "材质母版 Bootstrap 执行异常：{0}".format(exc))
         if report.get("status") == "failed" and not report.get("next_action"):

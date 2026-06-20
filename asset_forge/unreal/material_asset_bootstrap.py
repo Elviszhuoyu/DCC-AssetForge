@@ -218,7 +218,7 @@ class UnrealMaterialAssetBootstrap(object):
             "next_action": "" if not missing else "先确认 AssetForge 插件内容已挂载，并执行默认材质 Bootstrap 后重新检查母材质。",
         }
 
-    def bootstrap(self, dry_run=False, build_showcase=False, cleanup_obsolete_assets=False):
+    def bootstrap(self, dry_run=False, build_showcase=False, cleanup_obsolete_assets=False, repair_existing_assets=True):
         bootstrap_plan = self.plan()
         self._scan_asset_registry_paths([self.package_plan.get("content_mount", "/AssetForge"), "/Engine/BasicShapes"])
         asset_validation = self.inspect_assets()
@@ -236,6 +236,7 @@ class UnrealMaterialAssetBootstrap(object):
             "existing_assets": [],
             "obsolete_assets_planned_for_cleanup": [],
             "obsolete_asset_cleanup_enabled": bool(cleanup_obsolete_assets),
+            "repair_existing_assets": bool(repair_existing_assets),
             "deleted_obsolete_assets": [],
             "obsolete_asset_cleanup_issues": [],
             "configured_textures": [],
@@ -258,7 +259,7 @@ class UnrealMaterialAssetBootstrap(object):
             self._cleanup_obsolete_assets(report)
         self._ensure_directories(bootstrap_plan.get("directories", []))
         for asset_plan in bootstrap_plan.get("assets", []):
-            self._ensure_asset(asset_plan, report)
+            self._ensure_asset(asset_plan, report, repair_existing_assets=repair_existing_assets)
         if build_showcase:
             report["showcase_report"] = self._ensure_material_showcase(bootstrap_plan)
             if report["showcase_report"].get("status") == "error":
@@ -486,17 +487,19 @@ class UnrealMaterialAssetBootstrap(object):
                 report["obsolete_asset_cleanup_issues"].append(issue)
                 report["issues"].append(issue)
 
-    def _ensure_asset(self, asset_plan, report):
+    def _ensure_asset(self, asset_plan, report, repair_existing_assets=True):
         asset_path = asset_plan.get("path", "")
         asset = None
         if asset_plan.get("kind") == ASSET_KIND_TEXTURE:
-            asset = self._ensure_placeholder_texture(asset_plan, report)
+            asset = self._ensure_placeholder_texture(asset_plan, report, repair_existing_assets=repair_existing_assets)
             if asset:
                 if asset_path not in report["created_assets"] and asset_path not in report["existing_assets"]:
                     if self._asset_exists(asset_path):
                         report["existing_assets"].append(asset_path)
                     else:
                         report["updated_assets"].append(asset_path)
+                if not repair_existing_assets and asset_path in report["existing_assets"]:
+                    return
                 self._configure_texture_asset(asset, asset_plan)
                 report["configured_textures"].append(
                     {
@@ -511,10 +514,14 @@ class UnrealMaterialAssetBootstrap(object):
         if self._asset_exists(asset_path):
             report["existing_assets"].append(asset_path)
             asset = self._load_asset(asset_path)
+            if asset and not repair_existing_assets:
+                return
         else:
             asset = self._load_asset(asset_path)
             if asset:
                 report["existing_assets"].append(asset_path)
+                if not repair_existing_assets:
+                    return
             else:
                 asset = self._create_asset(asset_plan, report)
                 if asset:
@@ -536,10 +543,13 @@ class UnrealMaterialAssetBootstrap(object):
             self._configure_material_function(asset, asset_plan, report)
         self._save_asset(asset_path)
 
-    def _ensure_placeholder_texture(self, asset_plan, report):
+    def _ensure_placeholder_texture(self, asset_plan, report, repair_existing_assets=True):
         asset_path = asset_plan.get("path", "")
         if self._asset_exists(asset_path):
-            asset = self._import_placeholder_texture(asset_plan, report) or self._load_asset(asset_path)
+            if not repair_existing_assets:
+                asset = self._load_asset(asset_path)
+            else:
+                asset = self._import_placeholder_texture(asset_plan, report) or self._load_asset(asset_path)
             if asset:
                 self._asset_cache[asset_path] = asset
             return asset
@@ -2138,9 +2148,10 @@ def inspect_default_material_assets():
     return UnrealMaterialAssetBootstrap().inspect_assets()
 
 
-def bootstrap_default_material_assets(dry_run=False, build_showcase=False, cleanup_obsolete_assets=False):
+def bootstrap_default_material_assets(dry_run=False, build_showcase=False, cleanup_obsolete_assets=False, repair_existing_assets=True):
     return UnrealMaterialAssetBootstrap().bootstrap(
         dry_run=dry_run,
         build_showcase=build_showcase,
         cleanup_obsolete_assets=cleanup_obsolete_assets,
+        repair_existing_assets=repair_existing_assets,
     )

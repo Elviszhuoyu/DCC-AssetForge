@@ -13,10 +13,12 @@ import traceback
 import bpy  # type: ignore
 
 from asset_forge.blender.provider_asset_forge import BlenderAssetForgeProvider
+from asset_forge.maya.project_settings import format_project_settings_summary
+from asset_forge.maya.project_settings import load_project_settings, normalize_project_settings, save_project_settings
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE, TARGET_PLATFORM_MOBILE, TARGET_PLATFORM_PC
 
 
-DEFAULT_TARGET_PATH = "/Game/Props/Blender"
+DEFAULT_TARGET_PATH = "/Game/Props"
 DEFAULT_MATERIAL_PROFILE = "Props_Opaque_PainterUE_ARM"
 MIN_BRIDGE_VERSION = "0.2.0"
 _PREVIEWS = None
@@ -27,6 +29,10 @@ class ASSETFORGE_PG_settings(bpy.types.PropertyGroup):
     export_root: bpy.props.StringProperty(name="导出根目录", subtype="DIR_PATH", default="")  # type: ignore
     target_path: bpy.props.StringProperty(name="UE 目标路径", default=DEFAULT_TARGET_PATH)  # type: ignore
     material_profile: bpy.props.StringProperty(name="材质匹配规则", default=DEFAULT_MATERIAL_PROFILE)  # type: ignore
+    asset_name_override: bpy.props.StringProperty(name="包体/文件夹名", default="")  # type: ignore
+    package_version_mode: bpy.props.EnumProperty(name="包体迭代模式", items=[("overwrite", "覆盖当前版本", "重复导出写入同名 Package"), ("auto_increment", "自动递增版本", "导出为 SM_Name_Blender_v001 这类版本包")], default="overwrite")  # type: ignore
+    project_preset_path: bpy.props.StringProperty(name="项目预设文件", subtype="FILE_PATH", default="")  # type: ignore
+    project_preset_status: bpy.props.StringProperty(name="项目预设", default=format_project_settings_summary(normalize_project_settings({}), max_rows=8))  # type: ignore
     mesh_prefix: bpy.props.StringProperty(name="模型前缀", default="SM_")  # type: ignore
     triangle_budget: bpy.props.IntProperty(name="三角面预算", default=50000, min=0)  # type: ignore
     texture_root: bpy.props.StringProperty(name="贴图目录", subtype="DIR_PATH", default="")  # type: ignore
@@ -147,6 +153,49 @@ class ASSETFORGE_OT_export_package(bpy.types.Operator):
         return _run_provider_action(context, "export")
 
 
+class ASSETFORGE_OT_load_project_preset(bpy.types.Operator):
+    bl_idname = "asset_forge.load_project_preset"
+    bl_label = "加载预设"
+    bl_description = "加载团队通用 Asset Forge 项目预设 JSON"
+
+    filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore
+    filter_glob: bpy.props.StringProperty(default="*.json", options={"HIDDEN"})  # type: ignore
+
+    def execute(self, context):
+        settings = load_project_settings(self.filepath)
+        _apply_project_settings_to_blender(context.scene.asset_forge_settings, settings)
+        context.scene.asset_forge_settings.project_preset_path = self.filepath
+        context.scene.asset_forge_settings.project_preset_status = format_project_settings_summary(settings, max_rows=10)
+        return {"FINISHED"}
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+
+class ASSETFORGE_OT_save_project_preset(bpy.types.Operator):
+    bl_idname = "asset_forge.save_project_preset"
+    bl_label = "保存预设"
+    bl_description = "保存当前 Blender 工作台参数为团队通用项目预设 JSON"
+
+    filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore
+    filter_glob: bpy.props.StringProperty(default="*.json", options={"HIDDEN"})  # type: ignore
+
+    def execute(self, context):
+        settings = _project_settings_from_blender(context.scene.asset_forge_settings)
+        path = save_project_settings(self.filepath, settings)
+        saved = load_project_settings(path)
+        context.scene.asset_forge_settings.project_preset_path = path
+        context.scene.asset_forge_settings.project_preset_status = format_project_settings_summary(saved, max_rows=10)
+        return {"FINISHED"}
+
+    def invoke(self, context, event):
+        current = context.scene.asset_forge_settings.project_preset_path
+        self.filepath = current or os.path.join(_default_export_root(), "asset_forge_project_preset.json")
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+
 class ASSETFORGE_OT_open_last_report(bpy.types.Operator):
     bl_idname = "asset_forge.open_last_report"
     bl_label = "打开报告"
@@ -182,12 +231,30 @@ class ASSETFORGE_PT_main_panel(bpy.types.Panel):
             title.label(text="Asset Forge Blender 发布工作台", icon_value=icon_value)
         else:
             title.label(text="Asset Forge Blender 发布工作台", icon="PLUGIN")
-        mcp = row.row(align=True)
-        _draw_mcp_header_controls(mcp)
+        active = _current_bridge()
+        row.label(text="MCP: {0} 运行中".format(active.port) if active else "MCP: 未运行", icon="CHECKMARK" if active else "TIME")
         row.operator("asset_forge.refresh_status", text="", icon="FILE_REFRESH")
         _status_line(box, _bridge_line(), _bridge_state())
         _status_line(box, _root_line(context), "info")
         _status_line(box, settings.next_action, "info")
+
+
+class ASSETFORGE_PT_project_preset_panel(bpy.types.Panel):
+    bl_idname = "ASSETFORGE_PT_project_preset_panel"
+    bl_label = "项目预设"
+    bl_parent_id = "ASSETFORGE_PT_main_panel"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+
+    def draw(self, context):
+        s = context.scene.asset_forge_settings
+        layout = self.layout
+        row = layout.row(align=True)
+        row.operator("asset_forge.load_project_preset", text="加载预设", icon="FILE_FOLDER")
+        row.operator("asset_forge.save_project_preset", text="保存预设", icon="FILE_TICK")
+        if s.project_preset_path:
+            layout.label(text=os.path.basename(s.project_preset_path), icon="TEXT")
+        _draw_text_block(layout, s.project_preset_status)
 
 
 class ASSETFORGE_PT_status_panel(bpy.types.Panel):
@@ -251,6 +318,8 @@ class ASSETFORGE_PT_asset_panel(bpy.types.Panel):
         s = context.scene.asset_forge_settings
         layout = self.layout
         layout.prop(s, "mesh_prefix")
+        layout.prop(s, "asset_name_override")
+        layout.prop(s, "package_version_mode")
         layout.prop(s, "triangle_budget")
         _draw_text_block(layout, s.asset_detail)
 
@@ -333,8 +402,11 @@ CLASSES = (
     ASSETFORGE_OT_scan_selection,
     ASSETFORGE_OT_preflight_selection,
     ASSETFORGE_OT_export_package,
+    ASSETFORGE_OT_load_project_preset,
+    ASSETFORGE_OT_save_project_preset,
     ASSETFORGE_OT_open_last_report,
     ASSETFORGE_PT_main_panel,
+    ASSETFORGE_PT_project_preset_panel,
     ASSETFORGE_PT_status_panel,
     ASSETFORGE_PT_actions_panel,
     ASSETFORGE_PT_target_panel,
@@ -399,6 +471,8 @@ def _refresh_asset_forge_blender_modules():
     """Refresh cached provider modules after a safe add-on reload."""
     global BlenderAssetForgeProvider
     module_names = (
+        "asset_forge.shared.package_naming",
+        "asset_forge.maya.export_package",
         "asset_forge.shared.texture_folder_scanner",
         "asset_forge.shared.material_texture_set_mapping",
         "asset_forge.shared.material_texture_bindings",
@@ -422,6 +496,10 @@ def _params(context):
         "target_platform": s.target_platform,
         "target_path": s.target_path or DEFAULT_TARGET_PATH,
         "material_profile": s.material_profile or DEFAULT_MATERIAL_PROFILE,
+        "package_name_override": s.asset_name_override,
+        "asset_name_override": s.asset_name_override,
+        "source_name_suffix": "Blender",
+        "package_version_mode": getattr(s, "package_version_mode", "overwrite"),
         "mesh_prefix": s.mesh_prefix or "SM_",
         "triangle_budget": int(s.triangle_budget or 0),
         "texture_folder": bpy.path.abspath(s.texture_root) if s.texture_root else "",
@@ -429,7 +507,55 @@ def _params(context):
         "export_root": bpy.path.abspath(s.export_root) if s.export_root else "",
         "texture_import_policy": _texture_import_policy(s),
         "static_mesh_import_policy": _static_mesh_import_policy(s),
+        "project_preset": _project_settings_from_blender(s),
     }
+
+
+def _project_settings_from_blender(s):
+    return normalize_project_settings(
+        {
+            "export_root": bpy.path.abspath(getattr(s, "export_root", "")) if getattr(s, "export_root", "") else "",
+            "texture_root": bpy.path.abspath(getattr(s, "texture_root", "")) if getattr(s, "texture_root", "") else "",
+            "triangle_budget": int(getattr(s, "triangle_budget", 0) or 0),
+            "mesh_prefix": getattr(s, "mesh_prefix", "SM_") or "SM_",
+            "package_name_override": getattr(s, "asset_name_override", ""),
+            "asset_name_override": getattr(s, "asset_name_override", ""),
+            "package_version_mode": getattr(s, "package_version_mode", "overwrite"),
+            "texture_prefix": getattr(s, "texture_prefix", "T_") or "T_",
+            "texture_set_token": getattr(s, "texture_set_token", ""),
+            "ue_target_path": getattr(s, "target_path", DEFAULT_TARGET_PATH) or DEFAULT_TARGET_PATH,
+            "target_platform": getattr(s, "target_platform", TARGET_PLATFORM_HIGH_END_MOBILE),
+            "material_profile": getattr(s, "material_profile", DEFAULT_MATERIAL_PROFILE) or DEFAULT_MATERIAL_PROFILE,
+            "virtual_texture_policy": getattr(s, "virtual_texture_policy", "project_default") or "project_default",
+            "texture_streaming_policy": getattr(s, "texture_streaming_policy", "project_default") or "project_default",
+            "texture_group": getattr(s, "texture_group", "project_default") or "project_default",
+            "nanite_policy": getattr(s, "nanite_policy", "project_default") or "project_default",
+            "static_mesh_lod_group": getattr(s, "static_mesh_lod_group", "project_default") or "project_default",
+            "static_mesh_lod_import_policy": getattr(s, "static_mesh_lod_import_policy", "import_existing") or "import_existing",
+        }
+    )
+
+
+def _apply_project_settings_to_blender(s, settings):
+    active = normalize_project_settings(settings)
+    s.export_root = active["export_root"]
+    s.texture_root = active["texture_root"]
+    s.triangle_budget = active["triangle_budget"]
+    s.mesh_prefix = active["mesh_prefix"]
+    s.asset_name_override = active["package_name_override"]
+    if hasattr(s, "package_version_mode"):
+        s.package_version_mode = active["package_version_mode"]
+    s.texture_prefix = active["texture_prefix"]
+    s.texture_set_token = active["texture_set_token"]
+    s.target_path = active["ue_target_path"]
+    s.target_platform = active["target_platform"]
+    s.material_profile = active["material_profile"]
+    s.virtual_texture_policy = active["virtual_texture_policy"]
+    s.texture_streaming_policy = active["texture_streaming_policy"]
+    s.texture_group = active["texture_group"]
+    s.nanite_policy = active["nanite_policy"]
+    s.static_mesh_lod_group = active["static_mesh_lod_group"]
+    s.static_mesh_lod_import_policy = active["static_mesh_lod_import_policy"]
 
 
 def _texture_import_policy(s):
@@ -526,6 +652,7 @@ def _format_asset_detail(scan):
     lines = [
         "当前资产根节点：{0}".format(", ".join(scan.get("asset_roots", []) or [])),
         "当前导出资产名：{0}".format(scan.get("asset_name", "")),
+        "包体/文件夹名：{0}".format((scan.get("package_naming", {}) or {}).get("package_name") or scan.get("package_name") or "导出时解析"),
         "源名称：{0} -> 自动规范：{1}".format(scan.get("source_asset_name", ""), scan.get("asset_name", "")),
         "Mesh：{0} | 顶点：{1} | 三角面：{2} | 面：{3}".format(scan.get("mesh_count", 0), scan.get("vertices", 0), scan.get("triangles", 0), scan.get("faces", 0)),
         "材质槽：{0} | UV0：{1} | Lightmap UV：{2} | 冻结变换：{3}".format(scan.get("material_slots", 0), _yes(scan.get("has_uv0")), _yes(scan.get("has_lightmap_uv")), _yes(scan.get("frozen_transform"))),
@@ -609,7 +736,16 @@ def _format_preflight_detail(validation):
 
 
 def _format_export_result(result, report_path):
-    return "导出状态：{0}\nFBX：{1}\nPackage：{2}\n报告：{3}\n下一步：{4}".format(result.get("status", ""), result.get("fbx_export_status", ""), result.get("package_dir", ""), report_path, result.get("next_action", ""))
+    naming = ((result.get("manifest", {}) or {}).get("package_naming", {}) or result.get("package_naming", {}) or {})
+    return "导出状态：{0}\nFBX：{1}\nPackage：{2}\n包体名：{3} | 模式：{4}\n报告：{5}\n下一步：{6}".format(
+        result.get("status", ""),
+        result.get("fbx_export_status", ""),
+        result.get("package_dir", ""),
+        naming.get("package_name", "") or "未记录",
+        naming.get("version_mode", "") or "overwrite",
+        report_path,
+        result.get("next_action", ""),
+    )
 
 
 def _next_action_from_checks(checks):
@@ -878,7 +1014,7 @@ def _repo_root():
 
 
 def _default_export_root():
-    return os.path.join(_repo_root(), "AssetForgeReports", "blender_ui_exports")
+    return os.path.join(_repo_root(), "AssetForgeReports", "dcc_packages", "blender")
 
 
 def _default_log_path():

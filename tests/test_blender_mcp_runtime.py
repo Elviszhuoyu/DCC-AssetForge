@@ -328,6 +328,8 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
         export_properties = export_schema["inputSchema"]["properties"]
         self.assertIn("texture_dir", export_properties)
         self.assertIn("texture_set_token", export_properties)
+        self.assertIn("asset_name_override", export_properties)
+        self.assertIn("source_name_suffix", export_properties)
 
     def test_blender_stdio_server_lists_tools(self):
         response = handle_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
@@ -406,6 +408,7 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
 
         self.assertTrue(response["ok"])
         self.assertIn("asset_forge.blender.provider_asset_forge", response["result"]["refreshed_modules"])
+        self.assertIn("asset_forge.maya.export_package", response["result"]["refreshed_modules"])
         self.assertIsNone(bridge_instance._provider)
 
     def test_bridge_can_refresh_asset_forge_modules_without_addon_reload(self):
@@ -416,6 +419,7 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
 
         self.assertTrue(response["ok"])
         self.assertIn("asset_forge.blender.provider_asset_forge", response["result"]["refreshed_modules"])
+        self.assertIn("asset_forge.maya.export_package", response["result"]["refreshed_modules"])
         self.assertIsNone(bridge_instance._provider)
         self.assertIn("bridge_version", response["result"])
 

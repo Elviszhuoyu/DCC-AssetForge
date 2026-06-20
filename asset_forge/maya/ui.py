@@ -14,6 +14,7 @@ from asset_forge.maya.cmds_bridge import get_cmds
 from asset_forge.maya.operation_logger import MayaOperationLogger, latest_log_path, read_latest_log_tail
 from asset_forge.maya.package_opener import open_directory
 from asset_forge.maya.pipeline import ExportValidationError, MayaStaticPropPipeline
+from asset_forge.maya.project_settings import format_project_settings_summary
 from asset_forge.maya.project_settings import load_project_settings, normalize_project_settings, save_project_settings
 from asset_forge.shared.constants import ASSET_TYPE_STATIC_PROP
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE, TARGET_PLATFORM_MOBILE, TARGET_PLATFORM_PC
@@ -100,6 +101,7 @@ class AssetForgeMayaWindow(object):
             self.controls["main_scroll"] = self.cmds.scrollLayout(childResizable=True, verticalScrollBarThickness=16)
         self.cmds.columnLayout(adjustableColumn=True, rowSpacing=7)
         self._build_header()
+        self._build_project_preset_panel()
         self._build_primary_actions()
         self._build_publish_setup()
         self._build_asset_panel()
@@ -135,6 +137,24 @@ class AssetForgeMayaWindow(object):
         self.controls["overview_panel"] = self._status_text(format_overview_panel({}, {}, {}), "panel", height=30)
         self._build_status_card_row()
         self._build_issue_locator()
+        self._end_section()
+
+    def _build_project_preset_panel(self):
+        self._section("项目预设", collapse=False, key="project_preset_section")
+        self.controls["settings_path"] = self.cmds.text(label="当前预设：未加载 / 未保存", align="left")
+        self.controls["settings_summary"] = self.cmds.scrollField(
+            editable=False,
+            wordWrap=True,
+            height=112,
+            text=format_project_settings_summary(normalize_project_settings({}), max_rows=8),
+        )
+        self._button_row(
+            [
+                ("加载预设", self._load_project_settings),
+                ("保存预设", self._save_project_settings),
+                ("应用当前预设", self._apply_current_settings),
+            ]
+        )
         self._end_section()
 
     def _build_status_card_row(self):
@@ -359,6 +379,8 @@ class AssetForgeMayaWindow(object):
         self._section("2 资产概览", collapse=False, key="asset_section")
         self.controls["asset_hint"] = self.cmds.text(label="资产概览：未扫描", align="left")
         self.controls["name_prefix"] = self.cmds.textFieldGrp(label="模型前缀", text="SM_", adjustableColumn=2)
+        self.controls["asset_name_override"] = self.cmds.textFieldGrp(label="包体/文件夹名", text="", adjustableColumn=2)
+        self.controls["package_version_mode"] = self._option_menu("包体迭代模式", ["overwrite", "auto_increment"], "overwrite")
         self.controls["triangle_budget"] = self.cmds.intFieldGrp(label="三角面预算", value1=50000, adjustableColumn=2)
         self._button_row([("修复资产名前缀", self._rename_prefix, 180)])
         self._section("资产详情", collapse=True, key="asset_detail_section")
@@ -393,7 +415,7 @@ class AssetForgeMayaWindow(object):
         self._end_section()
 
     def _build_advanced_settings(self):
-        self.cmds.text(label="导入策略（写入 Package，UE Gate 可复核）", align="left")
+        self.cmds.text(label="高级设置 / 导入策略（写入 Package，UE Gate 可复核）", align="left")
         self._section("基础导入", collapse=True)
         self.cmds.text(label="Maya 只生成 Package 和导入建议；UE Gate 按“生成入审报告 -> 预演导入计划 -> 正式导入”执行。", align="left")
         self._end_section()
@@ -410,17 +432,6 @@ class AssetForgeMayaWindow(object):
         self.controls["virtual_texture_policy"] = self._option_menu("Virtual Texture 策略建议", ["project_default", "auto", "force_on", "force_off"], "project_default")
         self.controls["texture_streaming_policy"] = self._option_menu("Texture Streaming 策略建议", ["project_default", "streaming", "never_stream"], "project_default")
         self.controls["texture_group"] = self.cmds.textFieldGrp(label="Texture Group 建议", text="project_default", adjustableColumn=2)
-        self._end_section()
-
-        self._section("高级设置", collapse=True)
-        self.controls["settings_path"] = self.cmds.text(label="当前配置文件：未加载 / 未保存", align="left")
-        self._button_row(
-            [
-                ("加载项目设置", self._load_project_settings),
-                ("保存项目设置", self._save_project_settings),
-                ("应用项目设置", self._apply_current_settings),
-            ]
-        )
         self._end_section()
 
     def _build_log_panel(self):
@@ -489,6 +500,12 @@ class AssetForgeMayaWindow(object):
 
     def _name_prefix(self):
         return self.cmds.textFieldGrp(self.controls["name_prefix"], query=True, text=True).strip() or "SM_"
+
+    def _asset_name_override(self):
+        return self.cmds.textFieldGrp(self.controls["asset_name_override"], query=True, text=True).strip()
+
+    def _package_version_mode(self):
+        return self.cmds.optionMenu(self.controls["package_version_mode"], query=True, value=True) if "package_version_mode" in self.controls else "overwrite"
 
     def _texture_prefix(self):
         return self.cmds.textFieldGrp(self.controls["texture_prefix"], query=True, text=True).strip() or "T_"
@@ -579,10 +596,11 @@ class AssetForgeMayaWindow(object):
             texture_folder=self._texture_folder(),
             texture_set_token=self._texture_set_token(),
             target_path=self._target_path(),
-            asset_name_override=(getattr(self, "applied_project_settings", {}) or {}).get("asset_name_override", ""),
+            asset_name_override=self._asset_name_override(),
             rules=self._active_rules(),
             texture_import_policy=self._texture_import_policy(),
             static_mesh_import_policy=self._static_mesh_import_policy(),
+            source_name_suffix="Maya",
         )
         self.last_scan = preflight["scan"]
         self.last_validation = preflight["validation"]
@@ -706,10 +724,14 @@ class AssetForgeMayaWindow(object):
                 material_profile=self._material_profile(),
                 texture_folder=self._texture_folder(),
                 texture_set_token=self._texture_set_token(),
-                asset_name_override=(getattr(self, "applied_project_settings", {}) or {}).get("asset_name_override", ""),
+                asset_name_override=self._asset_name_override(),
                 rules=self._active_rules(),
                 texture_import_policy=self._texture_import_policy(),
                 static_mesh_import_policy=self._static_mesh_import_policy(),
+                source_name_suffix="Maya",
+                package_name_override=self._asset_name_override(),
+                package_version_mode=self._package_version_mode(),
+                project_preset=self._settings_from_ui(),
             )
             self.last_scan = result["scan"]
             self.last_validation = result["validation"]
@@ -884,6 +906,9 @@ class AssetForgeMayaWindow(object):
                 "texture_root": self._texture_folder(),
                 "triangle_budget": self._triangle_budget(),
                 "mesh_prefix": self._name_prefix(),
+                "package_name_override": self._asset_name_override(),
+                "asset_name_override": self._asset_name_override(),
+                "package_version_mode": self._package_version_mode(),
                 "texture_prefix": self._texture_prefix(),
                 "texture_set_token": self._texture_set_token(),
                 "ue_target_path": self._target_path(),
@@ -924,6 +949,9 @@ class AssetForgeMayaWindow(object):
         self.cmds.textFieldButtonGrp(self.controls["output_dir"], edit=True, text=active["export_root"])
         self.cmds.textFieldButtonGrp(self.controls["texture_folder"], edit=True, text=active["texture_root"])
         self.cmds.textFieldGrp(self.controls["name_prefix"], edit=True, text=active["mesh_prefix"])
+        self.cmds.textFieldGrp(self.controls["asset_name_override"], edit=True, text=active["package_name_override"])
+        if "package_version_mode" in self.controls:
+            self.cmds.optionMenu(self.controls["package_version_mode"], edit=True, value=active["package_version_mode"])
         self.cmds.textFieldGrp(self.controls["texture_prefix"], edit=True, text=active["texture_prefix"])
         self.cmds.textFieldGrp(self.controls["texture_set_token"], edit=True, text=active["texture_set_token"])
         self.cmds.textFieldGrp(self.controls["target_path"], edit=True, text=active["ue_target_path"])
@@ -942,6 +970,7 @@ class AssetForgeMayaWindow(object):
             self.cmds.textFieldGrp(self.controls["static_mesh_lod_group"], edit=True, text=active["static_mesh_lod_group"])
         if "static_mesh_lod_import_policy" in self.controls:
             self.cmds.optionMenu(self.controls["static_mesh_lod_import_policy"], edit=True, value=active["static_mesh_lod_import_policy"])
+        self._set_preset_summary(active)
         return active
 
     def _unicode_safe_field_value(self, settings_key, ui_value):
@@ -962,8 +991,9 @@ class AssetForgeMayaWindow(object):
             self._apply_project_settings(settings)
             self.project_settings_path = paths[0]
             self._set_settings_path(paths[0], "已加载")
-            self._set_summary("状态：已加载项目设置")
-            self._set_results("{0}\n\n配置文件：{1}".format(_format_project_settings(settings), paths[0]))
+            self._set_summary("状态：已加载项目预设")
+            self._set_preset_summary(settings)
+            self._set_results("{0}\n\n预设文件：{1}".format(_format_project_settings(settings), paths[0]))
             self._log_operation("load_project_settings", "success", inputs={"path": paths[0]}, outputs=settings)
         except Exception as exc:
             self._show_error(exc, "load_project_settings")
@@ -976,9 +1006,11 @@ class AssetForgeMayaWindow(object):
             settings = self._settings_from_ui()
             path = save_project_settings(paths[0], settings)
             self.project_settings_path = path
+            saved_settings = load_project_settings(path)
             self._set_settings_path(path, "已保存")
-            self._set_summary("状态：已保存项目设置")
-            self._set_results("{0}\n\n保存路径: {1}".format(_format_project_settings(settings), path))
+            self._set_summary("状态：已保存项目预设")
+            self._set_preset_summary(saved_settings)
+            self._set_results("{0}\n\n保存路径: {1}".format(_format_project_settings(saved_settings), path))
             self._log_operation("save_project_settings", "success", inputs={"path": paths[0]}, outputs={"path": path})
         except Exception as exc:
             self._show_error(exc, "save_project_settings")
@@ -986,10 +1018,11 @@ class AssetForgeMayaWindow(object):
     def _apply_current_settings(self, *args):
         try:
             settings = self._apply_project_settings(self._settings_from_ui())
-            self._set_summary("状态：项目设置已应用到当前 UI")
+            self._set_summary("状态：项目预设已应用到当前 UI")
             if self.project_settings_path:
                 self._set_settings_path(self.project_settings_path, "已应用")
-            self._set_results("{0}\n\n当前配置文件：{1}".format(_format_project_settings(settings), self.project_settings_path or "未加载 / 未保存"))
+            self._set_preset_summary(settings)
+            self._set_results("{0}\n\n当前预设文件：{1}".format(_format_project_settings(settings), self.project_settings_path or "未加载 / 未保存"))
             self._log_operation("apply_project_settings", "success", outputs=settings)
         except Exception as exc:
             self._show_error(exc, "apply_project_settings")
@@ -1120,7 +1153,15 @@ class AssetForgeMayaWindow(object):
 
     def _set_settings_path(self, path, status):
         if "settings_path" in self.controls:
-            self.cmds.text(self.controls["settings_path"], edit=True, label="当前配置文件：{0}（{1}）".format(path, status))
+            self.cmds.text(self.controls["settings_path"], edit=True, label="当前预设：{0}（{1}）".format(path, status))
+
+    def _set_preset_summary(self, settings):
+        if "settings_summary" in self.controls:
+            self.cmds.scrollField(
+                self.controls["settings_summary"],
+                edit=True,
+                text=format_project_settings_summary(settings, max_rows=10),
+            )
 
     def _set_panel(self, name, text):
         if name in self.controls:
@@ -1156,7 +1197,9 @@ class AssetForgeMayaWindow(object):
             "mesh_prefix": self._name_prefix,
             "texture_prefix": self._texture_prefix,
             "texture_set_token": self._texture_set_token,
-            "asset_name_override": lambda: (getattr(self, "applied_project_settings", {}) or {}).get("asset_name_override", ""),
+            "asset_name_override": self._asset_name_override,
+            "package_name_override": self._asset_name_override,
+            "package_version_mode": self._package_version_mode,
             "ue_target_path": self._target_path,
             "target_platform": self._target_platform,
             "material_profile": self._material_profile,
@@ -1933,26 +1976,7 @@ def _expected_prefixed_name(asset_name, item):
 
 
 def _format_project_settings(settings):
-    lines = ["Project Settings:"]
-    for key in [
-        "export_root",
-        "texture_root",
-        "triangle_budget",
-        "mesh_prefix",
-        "texture_prefix",
-        "texture_set_token",
-        "ue_target_path",
-        "target_platform",
-        "material_profile",
-        "virtual_texture_policy",
-        "texture_streaming_policy",
-        "texture_group",
-        "nanite_policy",
-        "static_mesh_lod_group",
-        "static_mesh_lod_import_policy",
-    ]:
-        lines.append("- {0}: {1}".format(key, settings.get(key, "")))
-    return "\n".join(lines)
+    return format_project_settings_summary(settings, max_rows=16)
 
 
 def _format_texture_prefix_preview(result):
@@ -2071,6 +2095,7 @@ def format_export_result_summary(result):
     lines = [
         "导出完成 | Package 已生成，等待 UE Gate",
         "发布包：{0}".format(outputs.get("package_dir") or "未写出"),
+        "包体名：{0} | 模式：{1}".format(outputs.get("package_name") or "未记录", outputs.get("package_version_mode") or "overwrite"),
         "清单：{0}".format(outputs.get("manifest_path") or "未写出"),
         "报告：{0}".format(outputs.get("report_path") or "未写出"),
         "状态：可导出={0} | UE Gate={1} | 警告/阻断={2}/{3}".format(
@@ -2131,6 +2156,9 @@ def _export_log_outputs(result):
         "error_count": errors,
         "manifest_path": result.get("manifest_path", ""),
         "package_dir": result.get("package_dir", ""),
+        "package_name": ((result.get("manifest", {}) or {}).get("package_naming", {}) or {}).get("package_name", ""),
+        "package_version_mode": ((result.get("manifest", {}) or {}).get("package_naming", {}) or {}).get("version_mode", ""),
+        "package_naming": (result.get("manifest", {}) or {}).get("package_naming", {}),
         "report_path": result.get("export_report_path", ""),
         "operator_action": "UE Gate: 选择该 Package -> 生成入审报告 -> 预演导入计划 -> 正式导入",
         "next_step": "在 UE Gate 里选择该 Package，按清单生成入审报告、预演导入计划、正式导入",

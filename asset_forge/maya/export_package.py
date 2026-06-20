@@ -7,14 +7,17 @@ import os
 from asset_forge.shared.path_utils import ensure_dir, normalize_path
 
 
-def build_export_package(output_root, asset_name, use_asset_folder=True):
+def build_export_package(output_root, asset_name, use_asset_folder=True, package_name=None):
     """Return stable paths for an exported asset package."""
     active_output_root = os.path.abspath(output_root)
-    use_nested_asset_folder = bool(use_asset_folder) and os.path.basename(active_output_root) != asset_name
-    package_dir = os.path.join(output_root, asset_name) if use_nested_asset_folder else output_root
+    active_package_name = package_name or asset_name
+    use_nested_asset_folder = bool(use_asset_folder) and os.path.basename(active_output_root) != active_package_name
+    package_dir = os.path.join(output_root, active_package_name) if use_nested_asset_folder else output_root
     ensure_dir(package_dir)
     return {
         "package_dir": normalize_path(package_dir),
+        "package_name": active_package_name,
+        "asset_name": asset_name,
         "fbx_path": normalize_path(os.path.join(package_dir, asset_name + ".fbx")),
         "manifest_path": normalize_path(os.path.join(package_dir, asset_name + "_manifest.json")),
         "export_report_path": normalize_path(os.path.join(package_dir, asset_name + "_export_report.json")),

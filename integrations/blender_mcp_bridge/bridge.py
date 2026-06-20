@@ -424,6 +424,8 @@ def _refresh_asset_forge_blender_modules():
     """Refresh cached Blender provider modules after a safe add-on reload."""
     global BlenderAssetForgeProvider
     modules = [
+        "asset_forge.shared.package_naming",
+        "asset_forge.maya.export_package",
         "asset_forge.shared.texture_folder_scanner",
         "asset_forge.shared.material_texture_set_mapping",
         "asset_forge.shared.material_texture_bindings",

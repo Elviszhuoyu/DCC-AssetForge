@@ -24,6 +24,7 @@ from asset_forge.shared.material_texture_set_mapping import (
 )
 from asset_forge.shared.material_texture_bindings import create_material_texture_bindings
 from asset_forge.shared.manifest_schema import ASSET_FORGE_SCHEMA_VERSION
+from asset_forge.shared.package_naming import resolve_package_naming
 from asset_forge.shared.report_schema import REPORT_VERSION, create_acceptance_summary, create_export_report, summarize_validation, write_report
 from asset_forge.shared.rule_validator import StaticPropRuleValidator
 from asset_forge.shared.rules_schema import get_project_rules
@@ -83,6 +84,12 @@ class MayaStaticPropPipeline(object):
         rules=None,
         texture_import_policy=None,
         static_mesh_import_policy=None,
+        source_name_suffix="",
+        package_name_override="",
+        package_version_mode="overwrite",
+        package_version_padding=3,
+        package_version_start=1,
+        project_preset=None,
     ):
         asset_roots = list(asset_roots or [])
         if not asset_roots:
@@ -92,7 +99,15 @@ class MayaStaticPropPipeline(object):
         scan_result = self._apply_texture_folder(scan_result, texture_folder, material_profile, texture_set_token)
         scan_result = self._apply_texture_profile_defaults(scan_result, material_profile)
         scan_result = self._apply_material_profile_validation(scan_result, material_profile)
-        scan_result = self._apply_asset_name_override(scan_result, asset_name_override)
+        scan_result = self._apply_asset_name_override(scan_result, "", source_name_suffix)
+        scan_result = self._attach_package_naming_policy(
+            scan_result,
+            package_name_override or asset_name_override,
+            package_version_mode,
+            package_version_padding,
+            package_version_start,
+            project_preset,
+        )
         scan_result = self._attach_material_texture_bindings(scan_result, target_path)
         validation_result = self.validate_scan(scan_result, target_platform, active_rules)
         validation_result = self._attach_texture_set_selection_gate(scan_result, validation_result)
@@ -120,6 +135,12 @@ class MayaStaticPropPipeline(object):
         rules=None,
         texture_import_policy=None,
         static_mesh_import_policy=None,
+        source_name_suffix="",
+        package_name_override="",
+        package_version_mode="overwrite",
+        package_version_padding=3,
+        package_version_start=1,
+        project_preset=None,
     ):
         return self.export_assets(
             [asset_root],
@@ -134,6 +155,12 @@ class MayaStaticPropPipeline(object):
             rules,
             texture_import_policy,
             static_mesh_import_policy,
+            source_name_suffix,
+            package_name_override,
+            package_version_mode,
+            package_version_padding,
+            package_version_start,
+            project_preset,
         )
 
     def export_assets(
@@ -150,6 +177,12 @@ class MayaStaticPropPipeline(object):
         rules=None,
         texture_import_policy=None,
         static_mesh_import_policy=None,
+        source_name_suffix="",
+        package_name_override="",
+        package_version_mode="overwrite",
+        package_version_padding=3,
+        package_version_start=1,
+        project_preset=None,
     ):
         asset_roots = list(asset_roots or [])
         if not asset_roots:
@@ -159,7 +192,7 @@ class MayaStaticPropPipeline(object):
         scan_result = self._apply_texture_folder(scan_result, texture_folder, material_profile, texture_set_token)
         scan_result = self._apply_texture_profile_defaults(scan_result, material_profile)
         scan_result = self._apply_material_profile_validation(scan_result, material_profile)
-        scan_result = self._apply_asset_name_override(scan_result, asset_name_override)
+        scan_result = self._apply_asset_name_override(scan_result, "", source_name_suffix)
         scan_result = self._attach_material_texture_bindings(scan_result, target_path)
         validation_result = self.validate_scan(scan_result, target_platform, active_rules)
         validation_result = self._attach_texture_set_selection_gate(scan_result, validation_result)
@@ -176,15 +209,26 @@ class MayaStaticPropPipeline(object):
                 debug_report_path,
             )
 
+        scan_result = self._attach_package_naming_policy(
+            scan_result,
+            package_name_override or asset_name_override,
+            package_version_mode,
+            package_version_padding,
+            package_version_start,
+            project_preset,
+            output_dir,
+        )
         asset_name = scan_result.get("asset_name", "Asset")
-        export_package = build_export_package(output_dir, asset_name, use_asset_folder)
+        package_naming = scan_result.get("package_naming", {})
+        export_package = build_export_package(output_dir, asset_name, use_asset_folder, package_name=package_naming.get("package_name"))
         fbx_path = export_package["fbx_path"]
         manifest_path = export_package["manifest_path"]
+        rename_map = self._export_name_map(scan_result)
 
         if len(asset_roots) > 1 and hasattr(self.exporter, "export_assets"):
-            self.exporter.export_assets(asset_roots, fbx_path)
+            self.exporter.export_assets(asset_roots, fbx_path, rename_map=rename_map)
         else:
-            self.exporter.export_asset(asset_roots[0], fbx_path)
+            self.exporter.export_asset(asset_roots[0], fbx_path, rename_map=rename_map)
         self.texture_packager.package_scan_textures(scan_result, export_package["package_dir"])
         self._write_material_profiles_snapshot(export_package["material_profiles_snapshot_path"])
         manifest = self.manifest_writer.build(
@@ -221,6 +265,29 @@ class MayaStaticPropPipeline(object):
             "asset_health_report": health_report,
             "portfolio_capture_hint": portfolio_capture_hint,
         }
+
+    def _export_name_map(self, scan_result):
+        asset_name = _safe_publish_name((scan_result or {}).get("asset_name", ""))
+        source_asset_name = _safe_publish_name((scan_result or {}).get("asset_name_original", ""))
+        suffix = _publish_source_suffix(asset_name, source_asset_name)
+        if not suffix:
+            return {}
+        result = {}
+        for transform in (scan_result or {}).get("transforms", []) or []:
+            short_name = str(transform or "").split("|")[-1]
+            target = _append_publish_suffix(short_name, suffix)
+            if target != short_name:
+                result[transform] = target
+                result[short_name] = target
+        if result:
+            return result
+        for root in (scan_result or {}).get("asset_roots", []) or []:
+            short_name = str(root or "").split("|")[-1]
+            target = _append_publish_suffix(short_name, suffix)
+            if target != short_name:
+                result[root] = target
+                result[short_name] = target
+        return result
 
     def rename_selection_with_prefix(self, prefix="SM_"):
         selection = self.adapter.get_current_selection()
@@ -267,6 +334,36 @@ class MayaStaticPropPipeline(object):
         result["material_texture_binding_risks"] = binding_report["risks"]
         return result
 
+    def _attach_package_naming_policy(
+        self,
+        scan_result,
+        package_name_override="",
+        package_version_mode="overwrite",
+        package_version_padding=3,
+        package_version_start=1,
+        project_preset=None,
+        output_dir="",
+    ):
+        result = dict(scan_result or {})
+        result["package_name_override"] = str(package_name_override or "").strip()
+        result["package_version_mode"] = package_version_mode
+        result["package_version_padding"] = package_version_padding
+        result["package_version_start"] = package_version_start
+        if project_preset:
+            result["project_preset"] = project_preset
+        if output_dir:
+            naming = resolve_package_naming(
+                output_dir,
+                result.get("asset_name", "Asset"),
+                package_name_override=package_name_override,
+                version_mode=package_version_mode,
+                version_padding=package_version_padding,
+                version_start=package_version_start,
+            )
+            result["package_name"] = naming.get("package_name", "")
+            result["package_naming"] = naming
+        return result
+
     def _write_material_profiles_snapshot(self, snapshot_path):
         write_material_profiles(snapshot_path, get_project_material_profiles())
         return snapshot_path
@@ -284,6 +381,12 @@ class MayaStaticPropPipeline(object):
                 folder_scan["auto_selected_texture_sets"] = True
                 folder_scan["auto_material_texture_set_token"] = inferred_token
         result = dict(scan_result)
+        result["texture_selection_policy"] = {
+            "primary": "texture_folder",
+            "fallback": "maya_material_assignment",
+            "reason": "explicit_texture_folder",
+            "texture_folder": texture_folder.replace("\\", "/"),
+        }
         if folder_scan.get("requires_texture_set_selection"):
             result["textures"] = []
             result["texture_folder_scan"] = folder_scan
@@ -328,12 +431,18 @@ class MayaStaticPropPipeline(object):
                 texture["channels"] = dict(rule.get("channels", {}))
         return scan_result
 
-    def _apply_asset_name_override(self, scan_result, asset_name_override=""):
-        if not asset_name_override:
+    def _apply_asset_name_override(self, scan_result, asset_name_override="", source_name_suffix=""):
+        active_name = str(asset_name_override or "").strip()
+        source_suffix = _safe_publish_suffix(source_name_suffix)
+        if not active_name and source_suffix:
+            base_name = str(scan_result.get("asset_name", "") or "").strip()
+            suffix = "_" + source_suffix
+            active_name = base_name if base_name.endswith(suffix) else base_name + suffix
+        if not active_name:
             return scan_result
         result = dict(scan_result)
         result["asset_name_original"] = result.get("asset_name", "")
-        result["asset_name"] = str(asset_name_override)
+        result["asset_name"] = active_name
         result["asset_name_source"] = "export_override"
         return result
 
@@ -477,6 +586,32 @@ class ExportValidationError(RuntimeError):
         self.validation = validation or {}
         self.scan = scan or {}
         self.debug_report_path = debug_report_path
+
+
+def _safe_publish_suffix(value):
+    text = str(value or "").strip().replace(" ", "_")
+    return "".join(ch for ch in text if ch.isalnum() or ch == "_").strip("_")
+
+
+def _safe_publish_name(value):
+    return _safe_publish_suffix(value) or "Asset"
+
+
+def _publish_source_suffix(asset_name, source_asset_name):
+    asset_name = _safe_publish_name(asset_name)
+    source_asset_name = _safe_publish_name(source_asset_name)
+    prefix = source_asset_name + "_"
+    if not source_asset_name or not asset_name.startswith(prefix):
+        return ""
+    return asset_name[len(prefix) :]
+
+
+def _append_publish_suffix(name, suffix):
+    clean_name = _safe_publish_name(name)
+    clean_suffix = _safe_publish_suffix(suffix)
+    if not clean_suffix or clean_name.endswith("_" + clean_suffix):
+        return clean_name
+    return clean_name + "_" + clean_suffix
 
 
 def _repair_actions_for_report(scan_result, validation_result, texture_scan):

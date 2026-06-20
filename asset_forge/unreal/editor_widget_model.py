@@ -33,18 +33,23 @@ SOURCE_DCC_LABELS = {
     "unreal": "Unreal",
 }
 
+DCC_PACKAGE_ROOT_NAME = "dcc_packages"
+HISTORY_SKIP_DIR_NAMES = set(["backups", "debug", "field_validation", "logs", "portfolio_captures", "runtime_alias"])
+
 try:
     text_type = unicode
 except NameError:
     text_type = str
 
 
-def discover_package_history(export_root="", latest_maya_log_path=None, latest_unreal_log_path=None, limit=20):
+def discover_package_history(export_root="", latest_maya_log_path=None, latest_unreal_log_path=None, limit=20, latest_blender_log_path=None):
     """Find recent Asset Forge packages from Maya/UE logs and an optional root."""
     records = []
     maya_log_path = _default_latest_maya_log() if latest_maya_log_path is None else latest_maya_log_path
     unreal_log_path = _default_latest_unreal_log() if latest_unreal_log_path is None else latest_unreal_log_path
+    blender_log_path = _default_latest_blender_log() if latest_blender_log_path is None else latest_blender_log_path
     records.extend(_records_from_log(maya_log_path, "maya_export"))
+    records.extend(_records_from_log(blender_log_path, "blender_export"))
     records.extend(_records_from_log(unreal_log_path, "unreal_import"))
     records.extend(_records_from_export_root(export_root))
     import_records = [record for record in records if _is_import_record(record)]
@@ -53,7 +58,7 @@ def discover_package_history(export_root="", latest_maya_log_path=None, latest_u
     seen = set()
     for record in sorted(records, key=_record_sort_key, reverse=True):
         package_dir = record.get("package_dir", "")
-        if not package_dir or package_dir in seen:
+        if not package_dir or package_dir in seen or _skip_history_package_dir(package_dir):
             continue
         seen.add(package_dir)
         summary = build_package_summary(package_dir)
@@ -144,6 +149,8 @@ def build_package_summary(package_dir, acceptance_report=None):
     gate = _gate_summary(acceptance_report)
     profile = _profile_summary(manifest, acceptance_report)
     source_dcc = manifest.get("source_dcc", "")
+    package_naming = manifest.get("package_naming", {}) if isinstance(manifest.get("package_naming", {}), dict) else {}
+    project_preset = manifest.get("project_preset", {}) if isinstance(manifest.get("project_preset", {}), dict) else {}
     schema_version = manifest.get("asset_forge_schema_version", "") or manifest.get("schema_version", "") or manifest.get("version", "")
     export_time = _manifest_export_time(manifest, package_dir)
     mesh_count = _asset_count(manifest)
@@ -156,6 +163,13 @@ def build_package_summary(package_dir, acceptance_report=None):
     return {
         "package_dir": package_dir,
         "package_name": os.path.basename(os.path.normpath(package_dir)) or asset_name,
+        "manifest_package_name": package_naming.get("package_name", ""),
+        "package_version_mode": package_naming.get("version_mode", ""),
+        "package_version_label": package_naming.get("version_label", ""),
+        "package_naming": package_naming,
+        "project_preset_name": project_preset.get("preset_name", ""),
+        "project_preset_version": project_preset.get("preset_version", ""),
+        "project_preset": project_preset,
         "manifest_path": normalize_path(manifest_path) if manifest_path else "",
         "asset_name": asset_name,
         "display_name": asset_name,
@@ -236,6 +250,8 @@ def format_gate_panel_text(state):
                 "资产: {0}".format(selected.get("asset_name", "")),
                 "目标: {0}".format(selected.get("target_path", "")),
                 "来源: {0} / Schema {1}".format(selected.get("source_dcc_label", ""), selected.get("schema_version", "")),
+                "包体: {0} / {1}".format(selected.get("manifest_package_name", "") or selected.get("package_name", ""), selected.get("package_version_mode", "") or "overwrite"),
+                "预设: {0} v{1}".format(selected.get("project_preset_name", "") or "未记录", selected.get("project_preset_version", "") or "-"),
                 "Mesh: {0} ({1})".format(selected.get("mesh_status_label", ""), selected.get("mesh_count", 0)),
                 "贴图: {0} ({1})".format(selected.get("texture_status_label", ""), selected.get("texture_count", 0)),
                 "材质: {0} ({1})".format(selected.get("material_status_label", ""), selected.get("material_count", 0)),
@@ -273,9 +289,11 @@ def _records_from_log(path, source):
 
 def _records_from_export_root(export_root):
     records = []
-    for root in _iter_export_roots(export_root):
+    for root in _effective_export_roots(export_root):
         for manifest_path in find_manifest_files(root):
             package_dir = normalize_path(os.path.dirname(manifest_path))
+            if _skip_history_package_dir(package_dir):
+                continue
             records.append(
                 {
                     "source": "export_root",
@@ -288,6 +306,32 @@ def _records_from_export_root(export_root):
                 }
             )
     return records
+
+
+def _effective_export_roots(export_root):
+    roots = []
+    for root in _iter_export_roots(export_root):
+        if _is_asset_forge_reports_root(root):
+            dcc_root = normalize_path(os.path.join(root, DCC_PACKAGE_ROOT_NAME))
+            if os.path.isdir(dcc_root):
+                roots.append(dcc_root)
+                continue
+        roots.append(root)
+    return roots
+
+
+def _is_asset_forge_reports_root(path):
+    return os.path.basename(os.path.normpath(normalize_path(path))).lower() == "assetforgereports"
+
+
+def _skip_history_package_dir(package_dir):
+    normalized = normalize_path(package_dir)
+    if not normalized:
+        return True
+    parts = [part.lower() for part in normalized.replace("\\", "/").split("/") if part]
+    if DCC_PACKAGE_ROOT_NAME.lower() in parts:
+        return False
+    return any(part in HISTORY_SKIP_DIR_NAMES for part in parts)
 
 
 def _entry_package_dir(entry):
@@ -873,3 +917,7 @@ def _default_latest_maya_log():
 
 def _default_latest_unreal_log():
     return normalize_path(os.path.join(_repo_root(), "AssetForgeReports", "logs", "latest_unreal.log"))
+
+
+def _default_latest_blender_log():
+    return normalize_path(os.path.join(_repo_root(), "AssetForgeReports", "logs", "latest_blender.log"))

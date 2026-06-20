@@ -71,6 +71,7 @@ class BlenderUiStateTest(unittest.TestCase):
             target_platform="high_end_mobile",
             target_path="/Game/Props/Blender",
             material_profile="Props_Opaque_PainterUE_ARM",
+            asset_name_override="SM_B_Blender",
             mesh_prefix="AF_",
             triangle_budget=123,
             texture_root="",
@@ -89,6 +90,7 @@ class BlenderUiStateTest(unittest.TestCase):
         params = ui._params(context)
 
         self.assertEqual(params["selection"], ["B"])
+        self.assertEqual(params["asset_name_override"], "SM_B_Blender")
         self.assertEqual(params["mesh_prefix"], "AF_")
         self.assertEqual(params["triangle_budget"], 123)
 
@@ -151,7 +153,7 @@ class BlenderUiStateTest(unittest.TestCase):
                 return {
                     "ok": True,
                     "result": {
-                        "refreshed_modules": ["asset_forge.blender.provider_asset_forge"],
+                        "refreshed_modules": ["asset_forge.maya.export_package", "asset_forge.blender.provider_asset_forge"],
                     },
                 }
 

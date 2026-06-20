@@ -207,6 +207,55 @@ def import_approved_package_dir(package_dir, report_path=None, unreal_module=Non
     )
 
 
+def cleanup_asset_forge_generated_props(package_dir="", report_path=None, unreal_module=None, import_options=None):
+    """Clean old Asset Forge test-import folders under a UE target path."""
+    options = import_options or {}
+    unreal = unreal_module or get_unreal()
+    target_path = _cleanup_target_path(package_dir, options)
+    plan = _generated_props_cleanup_plan(target_path, unreal)
+    if not plan["candidates"]:
+        _notify_user("Asset Forge Cleanup", "没有发现可清理的历史测试目录：{0}".format(target_path), unreal)
+        _log_operation("unreal_cleanup_generated_props", "skipped", inputs={"target_path": target_path}, outputs=plan)
+        return plan
+    if not options.get("confirmed_cleanup") and not _confirm_cleanup(plan, unreal):
+        plan["status"] = "cancelled"
+        _log_operation("unreal_cleanup_generated_props", "cancelled", inputs={"target_path": target_path}, outputs=plan)
+        return plan
+
+    library = getattr(unreal, "EditorAssetLibrary", None) if unreal is not None else None
+    deleted = []
+    failed = []
+    for candidate in plan["candidates"]:
+        path = candidate["path"]
+        try:
+            if library is not None and hasattr(library, "delete_directory") and library.delete_directory(path):
+                deleted.append(path)
+            else:
+                failed.append(path)
+        except Exception:
+            failed.append(path)
+    plan.update({"status": "success" if not failed else "warning", "deleted": deleted, "failed": failed})
+    _log_operation("unreal_cleanup_generated_props", plan["status"], inputs={"target_path": target_path}, outputs=plan)
+    _notify_user(
+        "Asset Forge Cleanup",
+        "清理完成：删除 {0} 个，失败 {1} 个。\n目标：{2}".format(len(deleted), len(failed), target_path),
+        unreal,
+    )
+    return plan
+
+
+def preview_generated_props_cleanup(package_dir="", unreal_module=None, import_options=None):
+    """Return the safe cleanup candidate list without deleting UE assets."""
+    options = import_options or {}
+    unreal = unreal_module or get_unreal()
+    target_path = _cleanup_target_path(package_dir, options)
+    plan = _generated_props_cleanup_plan(target_path, unreal)
+    plan["status"] = "preview" if plan.get("candidates") else "empty"
+    plan["dry_run"] = True
+    _log_operation("unreal_preview_generated_props_cleanup", plan["status"], inputs={"target_path": target_path}, outputs=plan)
+    return plan
+
+
 def choose_package_directory(default_path="", unreal_module=None):
     unreal = unreal_module or get_unreal()
     if unreal is None:
@@ -366,6 +415,65 @@ def _directory_from_dialog_result(result):
 
 def _normalize_path(path):
     return (path or "").replace("\\", "/")
+
+
+def _cleanup_target_path(package_dir="", import_options=None):
+    options = import_options or {}
+    if options.get("cleanup_target_path"):
+        return str(options.get("cleanup_target_path") or "/Game/Props")
+    summary = build_package_summary(package_dir) if package_dir else {}
+    return str(summary.get("target_path") or "/Game/Props")
+
+
+def _generated_props_cleanup_plan(target_path="/Game/Props", unreal=None):
+    target_path = _normalize_path(target_path or "/Game/Props").rstrip("/")
+    protected = set(["Materials", "Textures"])
+    prefixes = ("Blender", "Maya", "AssetForge")
+    library = getattr(unreal, "EditorAssetLibrary", None) if unreal is not None else None
+    directories = []
+    if library is not None and hasattr(library, "list_assets"):
+        try:
+            assets = list(library.list_assets(target_path, False, True) or [])
+        except TypeError:
+            assets = list(library.list_assets(target_path, False) or [])
+        for asset_path in assets:
+            name = os.path.basename(str(asset_path).rstrip("/"))
+            if name and name not in directories:
+                directories.append(name)
+    candidates = []
+    for name in sorted(directories):
+        if name in protected:
+            continue
+        if name.startswith(prefixes):
+            candidates.append({"name": name, "path": "{0}/{1}".format(target_path, name)})
+    return {
+        "status": "ready" if candidates else "empty",
+        "target_path": target_path,
+        "candidate_count": len(candidates),
+        "candidates": candidates,
+        "protected": sorted(protected),
+        "rule": "只清理名称以 Blender / Maya / AssetForge 开头的历史测试目录；保留 Materials、Textures 和根目录规范资产。",
+    }
+
+
+def _confirm_cleanup(plan, unreal=None):
+    dialog = getattr(unreal, "EditorDialog", None) if unreal is not None else None
+    if dialog is None or not hasattr(dialog, "show_message"):
+        return False
+    names = ", ".join(item["name"] for item in plan.get("candidates", [])[:20])
+    message = (
+        "Asset Forge 历史导入清理\n\n"
+        "目标路径：{0}\n"
+        "候选目录：{1}\n\n"
+        "{2}\n\n"
+        "确认删除这些历史测试目录？"
+    ).format(plan.get("target_path", ""), names, plan.get("rule", ""))
+    msg_type = getattr(getattr(unreal, "AppMsgType", None), "YES_NO", None)
+    try:
+        result = dialog.show_message("Asset Forge Cleanup", message, msg_type)
+    except TypeError:
+        result = dialog.show_message("Asset Forge Cleanup", message)
+    return _dialog_result_is_yes(result, unreal)
 
 
 def _dialog_result_is_yes(result, unreal):

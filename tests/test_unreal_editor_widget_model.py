@@ -8,7 +8,8 @@ import shutil
 import tempfile
 import unittest
 
-from asset_forge.unreal.editor_widget_model import build_gate_panel_state, build_package_summary, discover_package_history, preview_package_gate
+from asset_forge.unreal.editor_widget_model import build_gate_panel_state, build_package_summary, discover_package_history, format_gate_panel_text, preview_package_gate
+from asset_forge.unreal.editor_menu import cleanup_asset_forge_generated_props, preview_generated_props_cleanup, _generated_props_cleanup_plan
 
 
 class UnrealEditorWidgetModelTest(unittest.TestCase):
@@ -95,6 +96,30 @@ class UnrealEditorWidgetModelTest(unittest.TestCase):
         self.assertIn("Check texture group in UE.", summary["warnings"])
         self.assertEqual(summary["overwrite_strategy"]["existing_texture_strategy"], "reuse")
 
+    def test_build_package_summary_exposes_package_naming_and_preset(self):
+        package_dir = self._write_package(
+            "SM_B_Blender_v002",
+            mtime=10,
+            manifest_asset_name="SM_B_Blender",
+            package_naming={
+                "package_name": "SM_B_Blender_v002",
+                "version_mode": "auto_increment",
+                "version_label": "v002",
+            },
+            project_preset={"preset_name": "TeamProps", "preset_version": "0.3"},
+        )
+
+        summary = build_package_summary(package_dir)
+        text = format_gate_panel_text({"export_root": self.temp_dir, "history": {"package_count": 1, "packages": [summary]}, "selected_package": summary})
+
+        self.assertEqual(summary["asset_name"], "SM_B_Blender")
+        self.assertEqual(summary["manifest_package_name"], "SM_B_Blender_v002")
+        self.assertEqual(summary["package_version_mode"], "auto_increment")
+        self.assertEqual(summary["package_version_label"], "v002")
+        self.assertEqual(summary["project_preset_name"], "TeamProps")
+        self.assertIn("包体: SM_B_Blender_v002 / auto_increment", text)
+        self.assertIn("预设: TeamProps v0.3", text)
+
     def test_build_package_summary_prefers_manifest_mesh_check_count(self):
         package_dir = self._write_package("SM_Multi", mtime=10, mesh_count=5)
 
@@ -158,6 +183,19 @@ class UnrealEditorWidgetModelTest(unittest.TestCase):
         self.assertEqual(history["packages"][0]["last_import_status"], "导入失败")
         self.assertEqual(history["packages"][0]["last_import_report_path"], report_path.replace("\\", "/"))
 
+    def test_blender_log_history_discovers_custom_export_root_package(self):
+        package_dir = self._write_package("SM_B_Blender", mtime=10)
+        log_path = os.path.join(self.temp_dir, "latest_blender.log")
+        with open(log_path, "w", encoding="utf-8") as stream:
+            stream.write(json.dumps({"operation": "blender_export_static_prop_package", "outputs": {"package_dir": package_dir}}) + "\n")
+
+        history = discover_package_history("", "__missing_maya__", "__missing_unreal__", limit=10, latest_blender_log_path=log_path)
+
+        self.assertEqual(history["status"], "ready")
+        self.assertEqual(history["package_count"], 1)
+        self.assertEqual(history["latest_package_dir"], package_dir.replace("\\", "/"))
+        self.assertEqual(history["packages"][0]["asset_name"], "SM_B_Blender")
+
     def test_preview_package_gate_uses_acceptance_validator(self):
         package_dir = self._write_package("SM_Crate", mtime=10)
 
@@ -200,7 +238,56 @@ class UnrealEditorWidgetModelTest(unittest.TestCase):
         self.assertEqual(state["selected_package_dir"], package_b.replace("\\", "/"))
         self.assertEqual(state["history"]["package_count"], 2)
 
-    def _write_package(self, asset_name, mtime, root=None, mesh_count=None):
+    def test_generated_props_cleanup_plan_only_targets_history_dirs(self):
+        unreal = FakeUnrealForCleanup(
+            [
+                "/Game/Props/BlenderLive",
+                "/Game/Props/MayaRegression",
+                "/Game/Props/AssetForge",
+                "/Game/Props/Materials",
+                "/Game/Props/Textures",
+                "/Game/Props/SM_B_Maya",
+            ]
+        )
+
+        plan = _generated_props_cleanup_plan("/Game/Props", unreal)
+
+        self.assertEqual(plan["candidate_count"], 3)
+        self.assertEqual([item["name"] for item in plan["candidates"]], ["AssetForge", "BlenderLive", "MayaRegression"])
+
+    def test_cleanup_generated_props_requires_confirmation_unless_explicit(self):
+        unreal = FakeUnrealForCleanup(["/Game/Props/BlenderLive", "/Game/Props/MayaRegression"])
+
+        cancelled = cleanup_asset_forge_generated_props(
+            "",
+            unreal_module=unreal,
+            import_options={"cleanup_target_path": "/Game/Props"},
+        )
+        confirmed = cleanup_asset_forge_generated_props(
+            "",
+            unreal_module=unreal,
+            import_options={"cleanup_target_path": "/Game/Props", "confirmed_cleanup": True},
+        )
+
+        self.assertEqual(cancelled["status"], "cancelled")
+        self.assertEqual(confirmed["status"], "success")
+        self.assertEqual(unreal.EditorAssetLibrary.deleted, ["/Game/Props/BlenderLive", "/Game/Props/MayaRegression"])
+
+    def test_preview_generated_props_cleanup_lists_candidates_without_delete(self):
+        unreal = FakeUnrealForCleanup(["/Game/Props/BlenderLive", "/Game/Props/Materials"])
+
+        plan = preview_generated_props_cleanup(
+            "",
+            unreal_module=unreal,
+            import_options={"cleanup_target_path": "/Game/Props"},
+        )
+
+        self.assertEqual(plan["status"], "preview")
+        self.assertTrue(plan["dry_run"])
+        self.assertEqual(plan["candidate_count"], 1)
+        self.assertEqual(unreal.EditorAssetLibrary.deleted, [])
+
+    def _write_package(self, asset_name, mtime, root=None, mesh_count=None, manifest_asset_name=None, package_naming=None, project_preset=None):
         package_dir = os.path.join(root or self.temp_dir, asset_name)
         os.makedirs(package_dir)
         manifest_path = os.path.join(package_dir, asset_name + "_manifest.json")
@@ -208,7 +295,7 @@ class UnrealEditorWidgetModelTest(unittest.TestCase):
             manifest = {
                     "asset_forge_schema_version": "0.2",
                     "schema_version": "0.2",
-                    "asset_name": asset_name,
+                    "asset_name": manifest_asset_name or asset_name,
                     "source_dcc": "maya",
                     "export_time": "2026-05-30T09:00:00",
                     "fbx_path": os.path.join(package_dir, asset_name + ".fbx"),
@@ -220,6 +307,10 @@ class UnrealEditorWidgetModelTest(unittest.TestCase):
                     ],
                     "materials": [{"name": "M_" + asset_name, "textures": [{"usage": "base_color"}]}],
                 }
+            if package_naming is not None:
+                manifest["package_naming"] = package_naming
+            if project_preset is not None:
+                manifest["project_preset"] = project_preset
             if mesh_count is not None:
                 manifest["checks"] = {"mesh_exists": {"status": "pass", "value": mesh_count}}
             json.dump(manifest, stream)
@@ -262,6 +353,24 @@ class FakePassAcceptanceValidator(object):
             "checks": [{"id": "material_profile_reference", "status": "pass"}],
             "report_path": report_path or "",
         }
+
+
+class FakeEditorAssetLibraryForCleanup(object):
+    def __init__(self, assets):
+        self.assets = list(assets)
+        self.deleted = []
+
+    def list_assets(self, target_path, recursive=False, include_folder=False):
+        return list(self.assets)
+
+    def delete_directory(self, path):
+        self.deleted.append(path)
+        return True
+
+
+class FakeUnrealForCleanup(object):
+    def __init__(self, assets):
+        self.EditorAssetLibrary = FakeEditorAssetLibraryForCleanup(assets)
 
 
 if __name__ == "__main__":

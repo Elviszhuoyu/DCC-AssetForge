@@ -2382,7 +2382,7 @@ class RefreshingPluginContentBootstrap(object):
 
 
 class FakeMaterialAssetBootstrap(object):
-    def bootstrap(self, dry_run=False):
+    def bootstrap(self, dry_run=False, repair_existing_assets=True):
         return {
             "status": "success",
             "message": "默认材质资产 Bootstrap 完成",

@@ -437,7 +437,7 @@ class UnrealStaticMeshImportPipeline(object):
         if not self.auto_bootstrap_material_assets:
             return report
 
-        bootstrap_report = self.material_asset_bootstrap.bootstrap(dry_run=False)
+        bootstrap_report = self.material_asset_bootstrap.bootstrap(dry_run=False, repair_existing_assets=False)
         report["material_asset_bootstrap_report"] = bootstrap_report
         if bootstrap_report.get("status") in ("success", "warning"):
             self._attach_plugin_content_validation(report)

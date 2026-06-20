@@ -49,6 +49,7 @@ static const FName TabIconName(TEXT("AssetForge.TabIcon"));
 static const FName HeaderIconName(TEXT("AssetForge.HeaderIcon"));
 static const TCHAR* GateVersionLabel = TEXT("Asset Forge Gate v0.1.5");
 static const TCHAR* GateBuildLabel = TEXT("Build 2026-06-03-R7");
+static const TCHAR* DccPackageRootName = TEXT("dcc_packages");
 
 struct FAssetForgePackageItem
 {
@@ -56,6 +57,11 @@ struct FAssetForgePackageItem
     FString SourceDcc;
     FString TargetPath;
     FString SchemaVersion;
+    FString ManifestPackageName;
+    FString PackageVersionMode;
+    FString PackageVersionLabel;
+    FString ProjectPresetName;
+    FString ProjectPresetVersion;
     FString PackageDir;
     FString ManifestPath;
     FString ImportReportPath;
@@ -136,15 +142,17 @@ struct FAssetForgePackageItem
     {
         const FString DccLabel = SourceDcc.IsEmpty() ? TEXT("DCC 未记录") : SourceDcc.ToUpper();
         const FString TargetLabel = TargetPath.IsEmpty() ? TEXT("UE 路径未记录") : TargetPath;
-        return FString::Printf(TEXT("%s  |  %s  |  更新 %s"), *DccLabel, *TargetLabel, *ModifiedTimeLabel());
+        return FString::Printf(TEXT("%s  |  %s  |  %s  |  更新 %s"), *DccLabel, *TargetLabel, *PackageIdentityLine(), *ModifiedTimeLabel());
     }
 
     FString ListExpandedDetailsLabel() const
     {
         return FString::Printf(
-            TEXT("来源记录\n来源 DCC：%s\nUE 路径：%s\n包体目录：%s\nManifest：%s\n包体时间：%s\n报告时间：%s\n导入许可：%s\n资源：独立 Mesh %d / FBX %d / 贴图 %d / 材质计划 %d / Schema %s\n导入策略：%s\n报告路径：%s"),
+            TEXT("来源记录\n来源 DCC：%s\nUE 路径：%s\n%s\n%s\n包体目录：%s\nManifest：%s\n包体时间：%s\n报告时间：%s\n导入许可：%s\n资源：独立 Mesh %d / FBX %d / 贴图 %d / 材质计划 %d / Schema %s\n导入策略：%s\n报告路径：%s"),
             SourceDcc.IsEmpty() ? TEXT("未记录") : *SourceDcc,
             TargetPath.IsEmpty() ? TEXT("未记录") : *TargetPath,
+            *PackageIdentityLine(),
+            *ProjectPresetLine(),
             *PackageDir,
             *ManifestPath,
             *ModifiedTimeLabel(),
@@ -158,6 +166,25 @@ struct FAssetForgePackageItem
             *ImportStrategyLine(),
             ImportReportPath.IsEmpty() ? TEXT("暂无报告") : *ImportReportPath
         );
+    }
+
+    FString PackageIdentityLine() const
+    {
+        const FString PackageLabel = ManifestPackageName.IsEmpty() ? FPaths::GetCleanFilename(PackageDir) : ManifestPackageName;
+        const FString ModeLabel = PackageVersionMode.IsEmpty() ? TEXT("overwrite") : PackageVersionMode;
+        const FString VersionSuffix = PackageVersionLabel.IsEmpty() ? FString() : FString::Printf(TEXT("；版本：%s"), *PackageVersionLabel);
+        return FString::Printf(TEXT("包体/文件夹：%s；版本策略：%s%s"), *PackageLabel, *ModeLabel, *VersionSuffix);
+    }
+
+    FString ProjectPresetLine() const
+    {
+        if (ProjectPresetName.IsEmpty() && ProjectPresetVersion.IsEmpty())
+        {
+            return TEXT("项目预设：未记录");
+        }
+        return FString::Printf(TEXT("项目预设：%s v%s"),
+            ProjectPresetName.IsEmpty() ? TEXT("未命名") : *ProjectPresetName,
+            ProjectPresetVersion.IsEmpty() ? TEXT("-") : *ProjectPresetVersion);
     }
 
     FString ModifiedTimeLabel() const
@@ -762,6 +789,85 @@ static void AddRootIfValid(TArray<FString>& Roots, const FString& Root)
     }
 }
 
+static void AddPackageDirCandidate(TArray<FString>& Roots, const FString& Candidate)
+{
+    FString Path = Candidate.TrimStartAndEnd();
+    if (Path.IsEmpty())
+    {
+        return;
+    }
+    Path = FPaths::ConvertRelativePathToFull(Path);
+    FPaths::NormalizeFilename(Path);
+    if (FPaths::FileExists(Path))
+    {
+        AddRootIfValid(Roots, FPaths::GetPath(Path));
+        return;
+    }
+    AddRootIfValid(Roots, Path);
+}
+
+static void AddPackageDirField(TArray<FString>& Roots, const TSharedPtr<FJsonObject>& Object, const FString& FieldName)
+{
+    FString Value;
+    if (Object.IsValid() && Object->TryGetStringField(FieldName, Value))
+    {
+        AddPackageDirCandidate(Roots, Value);
+    }
+}
+
+static void AddPackageDirFields(TArray<FString>& Roots, const TSharedPtr<FJsonObject>& Object)
+{
+    AddPackageDirField(Roots, Object, TEXT("package_dir"));
+    AddPackageDirField(Roots, Object, TEXT("manifest_path"));
+    AddPackageDirField(Roots, Object, TEXT("fbx_path"));
+    AddPackageDirField(Roots, Object, TEXT("report_path"));
+}
+
+static void AddPackageDirsFromLog(TArray<FString>& Roots, const FString& PackageLogPath)
+{
+    if (!FPaths::FileExists(PackageLogPath))
+    {
+        return;
+    }
+
+    FString Text;
+    if (!FFileHelper::LoadFileToString(Text, *PackageLogPath))
+    {
+        return;
+    }
+
+    TArray<FString> Lines;
+    Text.ParseIntoArrayLines(Lines, false);
+    const int32 FirstLine = FMath::Max(0, Lines.Num() - 200);
+    for (int32 Index = FirstLine; Index < Lines.Num(); ++Index)
+    {
+        const FString Line = Lines[Index].TrimStartAndEnd();
+        if (Line.IsEmpty())
+        {
+            continue;
+        }
+
+        TSharedPtr<FJsonObject> Entry;
+        const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Line);
+        if (!FJsonSerializer::Deserialize(Reader, Entry) || !Entry.IsValid())
+        {
+            continue;
+        }
+
+        AddPackageDirFields(Roots, Entry);
+        AddPackageDirFields(Roots, JsonObjectField(Entry, TEXT("outputs")));
+        AddPackageDirFields(Roots, JsonObjectField(Entry, TEXT("inputs")));
+    }
+}
+
+static void AddKnownDccLogPackageDirs(TArray<FString>& Roots, const FString& ReportsRoot)
+{
+    const FString LogsRoot = FPaths::Combine(ReportsRoot, TEXT("logs"));
+    AddPackageDirsFromLog(Roots, FPaths::Combine(LogsRoot, TEXT("latest_maya.log")));
+    AddPackageDirsFromLog(Roots, FPaths::Combine(LogsRoot, TEXT("latest_blender.log")));
+    AddPackageDirsFromLog(Roots, FPaths::Combine(LogsRoot, TEXT("latest_unreal.log")));
+}
+
 static void AddPluginInstallMetadataRoots(TArray<FString>& Roots)
 {
     FString PluginPythonRoot;
@@ -784,13 +890,15 @@ static void AddPluginInstallMetadataRoots(TArray<FString>& Roots)
     FString SourceRepoRoot;
     if (Metadata->TryGetStringField(TEXT("source_repo_root"), SourceRepoRoot))
     {
-        AddRootIfValid(Roots, FPaths::Combine(SourceRepoRoot, TEXT("AssetForgeReports")));
+        const FString SourceReportsRoot = FPaths::Combine(SourceRepoRoot, TEXT("AssetForgeReports"));
+        AddRootIfValid(Roots, FPaths::Combine(SourceReportsRoot, DccPackageRootName));
+        AddKnownDccLogPackageDirs(Roots, SourceReportsRoot);
     }
 
     FString SourceLatestMayaLog;
     if (Metadata->TryGetStringField(TEXT("source_latest_maya_log"), SourceLatestMayaLog))
     {
-        AddRootIfValid(Roots, FPaths::GetPath(FPaths::GetPath(SourceLatestMayaLog)));
+        AddPackageDirsFromLog(Roots, SourceLatestMayaLog);
     }
 }
 
@@ -798,7 +906,7 @@ static TArray<FString> CollectExportRoots()
 {
     TArray<FString> Roots;
     AddRootIfValid(Roots, FPaths::Combine(FPlatformProcess::UserDir(), TEXT("AssetForge"), TEXT("Exports")));
-    AddRootIfValid(Roots, FPaths::Combine(FPaths::ProjectDir(), TEXT("AssetForgeReports")));
+    AddRootIfValid(Roots, FPaths::Combine(FPaths::ProjectDir(), TEXT("AssetForgeReports"), DccPackageRootName));
     AddRootIfValid(Roots, FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("AssetForge"), TEXT("Exports")));
 
     FString EnvRoot = FPlatformMisc::GetEnvironmentVariable(TEXT("ASSET_FORGE_EXPORT_ROOT"));
@@ -810,13 +918,17 @@ static TArray<FString> CollectExportRoots()
     FString RepoRoot = FPlatformMisc::GetEnvironmentVariable(TEXT("ASSET_FORGE_REPO_ROOT"));
     if (!RepoRoot.IsEmpty())
     {
-        AddRootIfValid(Roots, FPaths::Combine(RepoRoot, TEXT("AssetForgeReports")));
+        const FString RepoReportsRoot = FPaths::Combine(RepoRoot, TEXT("AssetForgeReports"));
+        AddRootIfValid(Roots, FPaths::Combine(RepoReportsRoot, DccPackageRootName));
+        AddKnownDccLogPackageDirs(Roots, RepoReportsRoot);
     }
 
     FString SourceRoot = FPlatformMisc::GetEnvironmentVariable(TEXT("ASSET_FORGE_SOURCE_ROOT"));
     if (!SourceRoot.IsEmpty())
     {
-        AddRootIfValid(Roots, FPaths::Combine(SourceRoot, TEXT("AssetForgeReports")));
+        const FString SourceReportsRoot = FPaths::Combine(SourceRoot, TEXT("AssetForgeReports"));
+        AddRootIfValid(Roots, FPaths::Combine(SourceReportsRoot, DccPackageRootName));
+        AddKnownDccLogPackageDirs(Roots, SourceReportsRoot);
     }
 
     AddPluginInstallMetadataRoots(Roots);
@@ -829,7 +941,13 @@ static bool ShouldSkipDirectory(const FString& DirectoryName)
         || DirectoryName.Equals(TEXT("__pycache__"), ESearchCase::IgnoreCase)
         || DirectoryName.Equals(TEXT("test_tmp"), ESearchCase::IgnoreCase)
         || DirectoryName.Equals(TEXT("Intermediate"), ESearchCase::IgnoreCase)
-        || DirectoryName.Equals(TEXT("Saved"), ESearchCase::IgnoreCase);
+        || DirectoryName.Equals(TEXT("Saved"), ESearchCase::IgnoreCase)
+        || DirectoryName.Equals(TEXT("backups"), ESearchCase::IgnoreCase)
+        || DirectoryName.Equals(TEXT("debug"), ESearchCase::IgnoreCase)
+        || DirectoryName.Equals(TEXT("field_validation"), ESearchCase::IgnoreCase)
+        || DirectoryName.Equals(TEXT("logs"), ESearchCase::IgnoreCase)
+        || DirectoryName.Equals(TEXT("portfolio_captures"), ESearchCase::IgnoreCase)
+        || DirectoryName.Equals(TEXT("runtime_alias"), ESearchCase::IgnoreCase);
 }
 
 static TSharedPtr<FAssetForgePackageItem> BuildPackageItemFromManifest(const FString& ManifestPath)
@@ -847,9 +965,30 @@ static TSharedPtr<FAssetForgePackageItem> BuildPackageItemFromManifest(const FSt
     Manifest->TryGetStringField(TEXT("source_dcc"), Item->SourceDcc);
     Manifest->TryGetStringField(TEXT("target_path"), Item->TargetPath);
     Manifest->TryGetStringField(TEXT("schema_version"), Item->SchemaVersion);
+    if (Item->SchemaVersion.IsEmpty())
+    {
+        Manifest->TryGetStringField(TEXT("asset_forge_schema_version"), Item->SchemaVersion);
+    }
+    const TSharedPtr<FJsonObject> PackageNaming = JsonObjectField(Manifest, TEXT("package_naming"));
+    if (PackageNaming.IsValid())
+    {
+        PackageNaming->TryGetStringField(TEXT("package_name"), Item->ManifestPackageName);
+        PackageNaming->TryGetStringField(TEXT("version_mode"), Item->PackageVersionMode);
+        PackageNaming->TryGetStringField(TEXT("version_label"), Item->PackageVersionLabel);
+    }
+    const TSharedPtr<FJsonObject> ProjectPreset = JsonObjectField(Manifest, TEXT("project_preset"));
+    if (ProjectPreset.IsValid())
+    {
+        ProjectPreset->TryGetStringField(TEXT("preset_name"), Item->ProjectPresetName);
+        ProjectPreset->TryGetStringField(TEXT("preset_version"), Item->ProjectPresetVersion);
+    }
     if (Item->AssetName.IsEmpty())
     {
         Item->AssetName = FPaths::GetBaseFilename(ManifestPath).Replace(TEXT("_manifest"), TEXT(""));
+    }
+    if (Item->ManifestPackageName.IsEmpty())
+    {
+        Item->ManifestPackageName = FPaths::GetCleanFilename(Item->PackageDir);
     }
     Item->TextureCount = JsonArrayCount(Manifest, TEXT("textures"));
     Item->MaterialCount = JsonArrayCount(Manifest, TEXT("materials"));
@@ -1097,6 +1236,7 @@ private:
                             SNew(SHorizontalBox)
                             + SHorizontalBox::Slot().FillWidth(1.0f)[CompactButton(LOCTEXT("Refresh", "刷新包体"), "Icons.Refresh", FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandleRefreshClicked))]
                             + SHorizontalBox::Slot().FillWidth(1.0f).Padding(6.0f, 0.0f)[CompactButton(LOCTEXT("ScanDir", "重新扫描"), "Icons.Search", FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandleRefreshClicked))]
+                            + SHorizontalBox::Slot().FillWidth(1.0f).Padding(6.0f, 0.0f)[CompactButton(LOCTEXT("PreviewOldImportsCleanup", "预览清理候选"), "Icons.Search", FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandleCleanupClicked))]
                         ]
                     )
                 ]
@@ -1138,6 +1278,8 @@ private:
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("SelectedPackage", "选中包体"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedAssetName))]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("SelectedPackageState", "当前状态"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedPackageStateText))]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("Dcc", "来源 DCC"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedSourceDcc))]
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("PackageNaming", "包体/版本"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedPackageNamingText))]
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ProjectPreset", "项目预设"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedProjectPresetText))]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("TargetPath", "UE 目标路径"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedTargetPath))]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("PackageDir", "包体目录"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedPackageDir))]
                     )
@@ -1405,6 +1547,18 @@ private:
         return FReply::Handled();
     }
 
+    FReply HandleCleanupClicked()
+    {
+        const FString TargetPackageDir = SelectedPackage.IsValid() ? SelectedPackage->PackageDir : FString();
+        GateMessage = ExecuteGatePythonCommand(TEXT("preview_generated_props_cleanup"), TargetPackageDir, BuildGateImportOptionsJson());
+        RefreshPackages();
+        if (PackageListView.IsValid())
+        {
+            PackageListView->RequestListRefresh();
+        }
+        return FReply::Handled();
+    }
+
     void HandleSearchChanged(const FText& NewText)
     {
         SearchText = NewText.ToString();
@@ -1523,6 +1677,8 @@ private:
             Lines.Add(FString::Printf(TEXT("asset_name: %s"), *SelectedPackage->AssetName));
             Lines.Add(FString::Printf(TEXT("source_dcc: %s"), *SelectedPackage->SourceDcc));
             Lines.Add(FString::Printf(TEXT("target_path: %s"), *SelectedPackage->TargetPath));
+            Lines.Add(FString::Printf(TEXT("package_naming: %s"), *SelectedPackage->PackageIdentityLine()));
+            Lines.Add(FString::Printf(TEXT("project_preset: %s"), *SelectedPackage->ProjectPresetLine()));
             Lines.Add(FString::Printf(TEXT("package_dir: %s"), *SelectedPackage->PackageDir));
             Lines.Add(FString::Printf(TEXT("manifest: %s"), *SelectedPackage->ManifestPath));
             Lines.Add(FString::Printf(TEXT("report: %s"), *SelectedPackage->ImportReportPath));
@@ -2255,6 +2411,8 @@ private:
     FText GetSelectedAssetName() const { return FText::FromString(SelectedPackage.IsValid() ? SelectedPackage->AssetName : TEXT("尚未选择")); }
     FText GetSelectedPackageStateText() const { return FText::FromString(SelectedPackage.IsValid() ? FString::Printf(TEXT("%s 当前选中包体；%s"), *SelectedPackage->StatePrefix(), *SelectedPackage->RiskSummary()) : TEXT("[未选择] 左侧选择包体后才显示状态")); }
     FText GetSelectedSourceDcc() const { return FText::FromString(SelectedPackage.IsValid() && !SelectedPackage->SourceDcc.IsEmpty() ? SelectedPackage->SourceDcc : TEXT("未记录")); }
+    FText GetSelectedPackageNamingText() const { return FText::FromString(SelectedPackage.IsValid() ? SelectedPackage->PackageIdentityLine() : TEXT("选择包体后显示")); }
+    FText GetSelectedProjectPresetText() const { return FText::FromString(SelectedPackage.IsValid() ? SelectedPackage->ProjectPresetLine() : TEXT("选择包体后显示")); }
     FText GetSelectedTargetPath() const { return FText::FromString(SelectedPackage.IsValid() ? SelectedPackage->TargetPath : TEXT("选择包体后显示")); }
     FText GetSelectedPackageDir() const { return FText::FromString(SelectedPackage.IsValid() ? SelectedPackage->PackageDir : TEXT("选择包体后显示")); }
     FText GetManifestPath() const { return FText::FromString(SelectedPackage.IsValid() ? SelectedPackage->ManifestPath : TEXT("选择包体后显示")); }

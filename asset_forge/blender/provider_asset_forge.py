@@ -15,15 +15,16 @@ import zlib
 
 from asset_forge.blender.fbx_exporter import BlenderFbxExporter
 from asset_forge.blender.scanner import BlenderStaticPropScanner, clean_asset_name_prefix
-from asset_forge.maya.export_package import build_export_package
 from asset_forge.maya.manifest_writer import IMPORT_PRESET_BY_PLATFORM
 from asset_forge.shared.constants import SOURCE_DCC_BLENDER, TARGET_PLATFORM_HIGH_END_MOBILE
-from asset_forge.shared.manifest_schema import create_manifest, write_manifest
 from asset_forge.shared.material_profile_schema import resolve_material_profile
 
 
 def _refresh_shared_texture_modules_for_hot_reload():
     for module_name in (
+        "asset_forge.shared.package_naming",
+        "asset_forge.shared.manifest_schema",
+        "asset_forge.maya.export_package",
         "asset_forge.shared.texture_folder_scanner",
         "asset_forge.shared.material_texture_set_mapping",
         "asset_forge.shared.material_texture_bindings",
@@ -35,11 +36,14 @@ def _refresh_shared_texture_modules_for_hot_reload():
 
 _refresh_shared_texture_modules_for_hot_reload()
 
+from asset_forge.maya.export_package import build_export_package
+from asset_forge.shared.manifest_schema import create_manifest, write_manifest
 from asset_forge.shared.material_texture_set_mapping import (
     build_material_texture_set_mapping,
     infer_texture_set_token_from_materials,
 )
 from asset_forge.shared.material_texture_bindings import create_material_texture_bindings
+from asset_forge.shared.package_naming import resolve_package_naming
 from asset_forge.shared.path_utils import normalize_path
 from asset_forge.shared.rule_validator import StaticPropRuleValidator, checks_to_manifest_dict
 from asset_forge.shared.texture_metadata import apply_texture_metadata
@@ -90,7 +94,8 @@ class BlenderAssetForgeProvider(object):
         use_asset_folder = params.get("use_asset_folder", True)
         scan = self._scan_for_validation(dict(params, target_path=target_path))
         validation = self._validation(scan, target_platform, params)
-        package = build_export_package(export_root, scan.get("asset_name", "Asset"), use_asset_folder)
+        scan = self._attach_package_naming(scan, export_root, params)
+        package = build_export_package(export_root, scan.get("asset_name", "Asset"), use_asset_folder, package_name=scan.get("package_name"))
         if validation.get("can_export"):
             scan = self._prepare_package_textures(scan, package, target_path, params)
         manifest = self._build_manifest(scan, validation, package, target_path, target_platform, material_profile, params)
@@ -131,7 +136,8 @@ class BlenderAssetForgeProvider(object):
         use_asset_folder = params.get("use_asset_folder", True)
         scan = self._scan_for_validation(dict(params, target_path=target_path))
         validation = self._validation(scan, target_platform, params)
-        package = build_export_package(export_root, scan.get("asset_name", "Asset"), use_asset_folder)
+        scan = self._attach_package_naming(scan, export_root, params)
+        package = build_export_package(export_root, scan.get("asset_name", "Asset"), use_asset_folder, package_name=scan.get("package_name"))
         if not validation.get("can_export"):
             report = self._build_export_report(scan, validation, {}, package, "blocked", "blocked", False)
             _write_json(package["export_report_path"], report)
@@ -200,7 +206,10 @@ class BlenderAssetForgeProvider(object):
             material_texture_bindings=scan.get("material_texture_bindings", []),
             material_texture_binding_risks=scan.get("material_texture_binding_risks", []),
             textures=scan.get("textures", []),
+            texture_selection_policy=scan.get("texture_selection_policy", {}),
             texture_folder_scan=scan.get("texture_folder_scan", {}),
+            package_naming=scan.get("package_naming", {}),
+            project_preset=params.get("project_preset", {}),
             material_profile=material_profile,
             texture_import_policy=params.get("texture_import_policy", {}) or {},
             static_mesh_import_policy=params.get("static_mesh_import_policy", {}) or {},
@@ -218,6 +227,8 @@ class BlenderAssetForgeProvider(object):
             "validation": validation,
             "manifest": manifest,
             "package": package,
+            "package_naming": manifest.get("package_naming", {}),
+            "project_preset": manifest.get("project_preset", {}),
             "next_action": "运行 UE accept-flow 导入 Blender package。" if can_continue_to_ue else "检查 Blender preflight 或 FBX exporter 输出。",
         }
 
@@ -231,6 +242,7 @@ class BlenderAssetForgeProvider(object):
     def _scan_for_validation(self, params):
         params = params or {}
         scan = self._scan(params)
+        scan = self._apply_publish_asset_name(scan, params.get("asset_identity_override", ""), params.get("mesh_prefix", ""), params.get("source_name_suffix", ""))
         target_path = sanitize_unreal_package_path(params.get("target_path") or "/Game/Props")
         return self._prepare_validation_scan(scan, target_path, params)
 
@@ -243,6 +255,22 @@ class BlenderAssetForgeProvider(object):
         scan["material_texture_bindings"] = binding_report.get("bindings", [])
         scan["material_texture_binding_risks"] = binding_report.get("risks", [])
         return scan
+
+    def _attach_package_naming(self, scan, export_root, params):
+        naming = resolve_package_naming(
+            export_root,
+            (scan or {}).get("asset_name", "Asset"),
+            package_name_override=params.get("package_name_override") or params.get("asset_name_override") or "",
+            version_mode=params.get("package_version_mode") or "overwrite",
+            version_padding=params.get("package_version_padding") or 3,
+            version_start=params.get("package_version_start") or 1,
+        )
+        result = dict(scan or {})
+        result["package_name"] = naming.get("package_name", "")
+        result["package_naming"] = naming
+        if params.get("project_preset"):
+            result["project_preset"] = params.get("project_preset")
+        return result
 
     def _validation(self, scan, target_platform, params=None):
         validator = self._active_validator(target_platform, params or {})
@@ -353,19 +381,23 @@ class BlenderAssetForgeProvider(object):
         if source_asset_name and source_asset_name != asset_name:
             result[source_asset_name] = asset_name
         for mesh_name in scan.get("meshes", []) or []:
-            result[mesh_name] = self._static_mesh_export_name(asset_name, mesh_name, name_prefix)
+            result[mesh_name] = self._static_mesh_export_name(asset_name, mesh_name, name_prefix, source_asset_name)
         return result
 
-    def _static_mesh_export_name(self, asset_name, mesh_name, name_prefix="SM_"):
+    def _static_mesh_export_name(self, asset_name, mesh_name, name_prefix="SM_", source_asset_name=""):
         name_prefix = clean_asset_name_prefix(name_prefix)
         clean_mesh = self._safe_name(mesh_name)
+        source_suffix = self._publish_source_suffix(asset_name, source_asset_name, name_prefix)
+        if source_suffix:
+            base_mesh = clean_mesh if clean_mesh.startswith(name_prefix) else name_prefix + clean_mesh
+            return self._append_publish_suffix(base_mesh, source_suffix)
         if clean_mesh.startswith(name_prefix):
-            return clean_mesh
+            return self._append_publish_suffix(clean_mesh, source_suffix)
         clean_asset = self._safe_name(asset_name)
         asset_stem = clean_asset[len(name_prefix) :] if clean_asset.startswith(name_prefix) else clean_asset
         if clean_mesh.startswith(asset_stem + "_"):
-            return name_prefix + clean_mesh
-        return clean_asset + "_" + clean_mesh
+            return self._append_publish_suffix(name_prefix + clean_mesh, source_suffix)
+        return self._append_publish_suffix(clean_asset + "_" + clean_mesh, source_suffix)
 
     def _prepare_package_textures(self, scan, package, target_path, params=None):
         params = params or {}
@@ -439,6 +471,12 @@ class BlenderAssetForgeProvider(object):
                 folder_scan["auto_selected_texture_sets"] = True
                 folder_scan["auto_material_texture_set_token"] = inferred_token
         result = dict(scan)
+        result["texture_selection_policy"] = {
+            "primary": "texture_folder",
+            "fallback": "blender_image_node",
+            "reason": "explicit_texture_folder",
+            "texture_folder": normalize_path(texture_folder),
+        }
         result["texture_folder_scan"] = folder_scan
         result["asset_name_candidates"] = folder_scan.get("asset_name_candidates", scan.get("asset_name_candidates", []))
         if folder_scan.get("requires_texture_set_selection"):
@@ -470,12 +508,36 @@ class BlenderAssetForgeProvider(object):
     def _merge_textures_by_usage(self, primary, secondary):
         result = []
         seen = set()
-        for texture in list(primary or []) + list(secondary or []):
+        # When an explicit texture folder is provided, it is the publish source of truth.
+        # Blender node textures remain useful only for usages the folder does not provide.
+        for texture in list(secondary or []) + list(primary or []):
             usage = texture.get("usage", "")
             if usage in seen:
                 continue
             result.append(texture)
             seen.add(usage)
+        return result
+
+    def _apply_publish_asset_name(self, scan, asset_name_override="", mesh_prefix="", source_name_suffix=""):
+        override = self._safe_name(asset_name_override) if str(asset_name_override or "").strip() else ""
+        source_suffix = self._safe_name(source_name_suffix) if str(source_name_suffix or "").strip() else ""
+        if not override and source_suffix:
+            base_name = self._safe_name((scan or {}).get("asset_name", ""))
+            suffix = "_" + source_suffix
+            override = base_name if base_name.endswith(suffix) else base_name + suffix
+        if not override:
+            return scan
+        prefix = clean_asset_name_prefix(mesh_prefix)
+        if not override.startswith(prefix):
+            override = prefix + override
+        result = dict(scan or {})
+        result["asset_name_original"] = result.get("asset_name", "")
+        result["asset_name"] = override
+        result["asset_name_source"] = "export_override"
+        candidates = list(result.get("asset_name_candidates", []) or [])
+        if override not in candidates:
+            candidates.insert(0, override)
+        result["asset_name_candidates"] = candidates
         return result
 
     def _copy_existing_texture(self, texture_dir, asset_name, material_name, texture):
@@ -573,6 +635,25 @@ class BlenderAssetForgeProvider(object):
     def _safe_name(self, value):
         clean = re.sub(r"[^0-9A-Za-z_]+", "_", value or "Asset").strip("_")
         return clean or "Asset"
+
+    def _publish_source_suffix(self, asset_name, source_asset_name, name_prefix="SM_"):
+        clean_asset = self._safe_name(asset_name)
+        clean_source = self._safe_name(source_asset_name)
+        candidates = [clean_source]
+        if clean_source and not clean_source.startswith(name_prefix):
+            candidates.append(name_prefix + clean_source)
+        for candidate in candidates:
+            prefix = candidate + "_"
+            if candidate and clean_asset.startswith(prefix):
+                return clean_asset[len(prefix) :]
+        return ""
+
+    def _append_publish_suffix(self, name, suffix):
+        clean_name = self._safe_name(name)
+        clean_suffix = self._safe_name(suffix) if str(suffix or "").strip() else ""
+        if not clean_suffix or clean_name.endswith("_" + clean_suffix):
+            return clean_name
+        return clean_name + "_" + clean_suffix
 
     def _dedupe_textures(self, textures):
         result = []

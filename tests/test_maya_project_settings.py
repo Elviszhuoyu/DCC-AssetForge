@@ -26,6 +26,8 @@ class MayaProjectSettingsTest(unittest.TestCase):
             "mesh_prefix",
             "texture_prefix",
             "texture_set_token",
+            "package_version_mode",
+            "package_version_padding",
             "ue_target_path",
             "target_platform",
             "material_profile",
@@ -48,6 +50,14 @@ class MayaProjectSettingsTest(unittest.TestCase):
         self.assertEqual(settings["triangle_budget"], 30000)
         self.assertEqual(settings["mesh_prefix"], "SM_")
         self.assertEqual(settings["texture_set_token"], "")
+        self.assertEqual(settings["package_version_mode"], "overwrite")
+
+    def test_version_mode_aliases_and_invalid_padding_fall_back(self):
+        settings = normalize_project_settings({"package_version_mode": "versioned", "package_version_padding": "bad"})
+
+        self.assertEqual(settings["version"], "0.3")
+        self.assertEqual(settings["package_version_mode"], "auto_increment")
+        self.assertEqual(settings["package_version_padding"], 3)
 
     def test_load_save_roundtrip_utf8_json_and_import_policies(self):
         path = os.path.join(self.temp_dir, "project_settings.json")
@@ -62,6 +72,8 @@ class MayaProjectSettingsTest(unittest.TestCase):
                 "virtual_texture_policy": "force_off",
                 "texture_streaming_policy": "never_stream",
                 "texture_group": "TEXTUREGROUP_World",
+                "package_version_mode": "auto_increment",
+                "package_version_padding": 4,
                 "nanite_policy": "enable",
                 "static_mesh_lod_group": "SmallProp",
                 "static_mesh_lod_import_policy": "report_only",
@@ -75,12 +87,15 @@ class MayaProjectSettingsTest(unittest.TestCase):
         self.assertEqual(loaded["virtual_texture_policy"], "force_off")
         self.assertEqual(loaded["texture_streaming_policy"], "never_stream")
         self.assertEqual(loaded["texture_group"], "TEXTUREGROUP_World")
+        self.assertEqual(loaded["package_version_mode"], "auto_increment")
+        self.assertEqual(loaded["package_version_padding"], 4)
         self.assertEqual(loaded["nanite_policy"], "enable")
         self.assertEqual(loaded["static_mesh_lod_group"], "SmallProp")
         self.assertEqual(loaded["static_mesh_lod_import_policy"], "report_only")
         with open(saved_path, "r", encoding="utf-8") as stream:
             raw = json.load(stream)
         self.assertEqual(raw["texture_prefix"], "T_")
+        self.assertEqual(raw["version"], "0.3")
 
 
 if __name__ == "__main__":

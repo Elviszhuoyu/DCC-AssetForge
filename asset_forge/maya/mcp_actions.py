@@ -276,13 +276,19 @@ def maya_export_static_prop_package(params=None):
             settings["target_platform"],
             settings["ue_target_path"],
             True,
-        settings["material_profile"],
-        settings["texture_root"],
-        settings["texture_set_token"],
-        settings["asset_name_override"],
-        rules=rules,
-        texture_import_policy=_texture_import_policy(settings),
-        static_mesh_import_policy=_static_mesh_import_policy(settings),
+            settings["material_profile"],
+            settings["texture_root"],
+            settings["texture_set_token"],
+            settings["asset_name_override"],
+            rules=rules,
+            texture_import_policy=_texture_import_policy(settings),
+            static_mesh_import_policy=_static_mesh_import_policy(settings),
+            source_name_suffix="Maya",
+            package_name_override=settings["package_name_override"],
+            package_version_mode=settings["package_version_mode"],
+            package_version_padding=settings["package_version_padding"],
+            package_version_start=settings["package_version_start"],
+            project_preset=settings,
         )
     except ExportValidationError as exc:
         output = _compact_static_prop_result("maya_export_static_prop_package", exc.scan, exc.validation, (exc.scan or {}).get("texture_folder_scan", {}))
@@ -577,6 +583,12 @@ def _run_preflight(params):
         rules=_active_rules(pipeline.rules, settings),
         texture_import_policy=_texture_import_policy(settings),
         static_mesh_import_policy=_static_mesh_import_policy(settings),
+        source_name_suffix="Maya",
+        package_name_override=settings["package_name_override"],
+        package_version_mode=settings["package_version_mode"],
+        package_version_padding=settings["package_version_padding"],
+        package_version_start=settings["package_version_start"],
+        project_preset=settings,
     )
 
 
@@ -584,14 +596,27 @@ def _settings(params):
     base = default_project_settings()
     if params.get("project_settings_path"):
         base.update(load_project_settings(params.get("project_settings_path")))
+    if isinstance(params.get("project_preset"), dict):
+        base.update(params.get("project_preset") or {})
     aliases = {
+        "schema": "schema",
+        "version": "version",
+        "preset_name": "preset_name",
+        "preset_version": "preset_version",
+        "updated_at": "updated_at",
         "export_root": "export_root",
         "texture_dir": "texture_root",
         "texture_folder": "texture_root",
         "texture_root": "texture_root",
         "texture_set_token": "texture_set_token",
         "asset_name_override": "asset_name_override",
+        "package_name_override": "package_name_override",
+        "package_name": "package_name_override",
         "export_asset_name": "asset_name_override",
+        "package_version_mode": "package_version_mode",
+        "version_mode": "package_version_mode",
+        "package_version_padding": "package_version_padding",
+        "package_version_start": "package_version_start",
         "target_path": "ue_target_path",
         "ue_target_path": "ue_target_path",
         "target_platform": "target_platform",
@@ -612,7 +637,7 @@ def _settings(params):
         if source in params and params.get(source) not in (None, ""):
             base[target] = params.get(source)
     if not base.get("export_root"):
-        base["export_root"] = normalize_path(os.path.join(_repo_root(), "AssetForgeReports", "mcp_runs"))
+        base["export_root"] = normalize_path(os.path.join(_repo_root(), "AssetForgeReports", "dcc_packages", "maya"))
     return normalize_project_settings(base)
 
 

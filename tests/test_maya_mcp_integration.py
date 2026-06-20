@@ -65,6 +65,16 @@ class MayaMcpIntegrationTest(unittest.TestCase):
         self.assertEqual(request["action"], "maya_run_static_prop_ui_flow")
         self.assertEqual(request["params"]["selection"], ["|Crate"])
 
+    def test_tool_schema_exposes_preset_and_package_version_fields(self):
+        tools = dict((item["name"], item) for item in tool_definitions())
+        schema = tools["maya_run_static_prop_ui_flow"]["inputSchema"]["properties"]
+
+        self.assertIn("project_preset", schema)
+        self.assertIn("preset_name", schema)
+        self.assertIn("package_name_override", schema)
+        self.assertIn("package_version_mode", schema)
+        self.assertIn("package_version_padding", schema)
+
     def test_protocol_preserves_legacy_string_bridge_errors(self):
         with self.assertRaises(RuntimeError) as caught:
             normalize_bridge_response({"ok": False, "error": "legacy bridge error"})

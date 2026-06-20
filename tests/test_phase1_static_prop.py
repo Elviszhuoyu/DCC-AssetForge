@@ -694,19 +694,68 @@ class Phase1StaticPropTest(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir)
 
-    def test_pipeline_can_export_with_non_destructive_asset_name_override(self):
+    def test_pipeline_package_name_override_does_not_rename_asset(self):
         temp_dir = tempfile.mkdtemp()
         try:
             scan = MayaAssetScanner(FakeCmds()).scan("|SM_Crate_01")
-            scan["asset_name"] = "B"
+            scan["asset_name"] = "SM_B"
             pipeline = MayaStaticPropPipeline(adapter=FakeScanAdapter(scan), exporter=FakeExporter())
 
-            result = pipeline.export_asset("|group1|B", os.path.join(temp_dir, "Exports"), target_platform="pc", asset_name_override="SM_B")
+            result = pipeline.export_asset(
+                "|group1|SM_B",
+                os.path.join(temp_dir, "Exports"),
+                target_platform="pc",
+                source_name_suffix="Maya",
+                package_name_override="Client Preview",
+            )
 
-            self.assertEqual(result["scan"]["asset_name"], "SM_B")
-            self.assertEqual(result["scan"]["asset_name_original"], "B")
-            self.assertEqual(result["manifest"]["asset_name"], "SM_B")
-            self.assertTrue(result["fbx_path"].endswith("/SM_B.fbx"))
+            self.assertEqual(result["scan"]["asset_name"], "SM_B_Maya")
+            self.assertEqual(result["manifest"]["asset_name"], "SM_B_Maya")
+            self.assertEqual(result["manifest"]["package_naming"]["package_name"], "Client_Preview")
+            self.assertTrue(result["package_dir"].endswith("/Client_Preview"))
+            self.assertTrue(result["fbx_path"].endswith("/SM_B_Maya.fbx"))
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_pipeline_auto_increment_package_version_records_manifest(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            export_root = os.path.join(temp_dir, "Exports")
+            os.makedirs(os.path.join(export_root, "SM_Crate_01_Maya_v001"))
+            scan = MayaAssetScanner(FakeCmds()).scan("|SM_Crate_01")
+            pipeline = MayaStaticPropPipeline(adapter=FakeScanAdapter(scan), exporter=FakeExporter())
+
+            result = pipeline.export_asset(
+                "|SM_Crate_01",
+                export_root,
+                target_platform="pc",
+                source_name_suffix="Maya",
+                package_version_mode="auto_increment",
+                project_preset={"preset_name": "Team", "preset_version": "0.3"},
+            )
+
+            naming = result["manifest"]["package_naming"]
+            self.assertEqual(naming["package_name"], "SM_Crate_01_Maya_v002")
+            self.assertEqual(naming["version_mode"], "auto_increment")
+            self.assertEqual(result["manifest"]["project_preset"]["preset_name"], "Team")
+            self.assertTrue(result["package_dir"].endswith("/SM_Crate_01_Maya_v002"))
+            self.assertTrue(result["fbx_path"].endswith("/SM_Crate_01_Maya.fbx"))
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_pipeline_source_name_suffix_drives_maya_default_publish_identity(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            scan = MayaAssetScanner(FakeCmds()).scan("|SM_Crate_01")
+            pipeline = MayaStaticPropPipeline(adapter=FakeScanAdapter(scan), exporter=FakeExporter())
+
+            result = pipeline.export_asset("|SM_Crate_01", os.path.join(temp_dir, "Exports"), target_platform="pc", source_name_suffix="Maya")
+
+            self.assertEqual(result["scan"]["asset_name"], "SM_Crate_01_Maya")
+            self.assertEqual(result["scan"]["asset_name_original"], "SM_Crate_01")
+            self.assertEqual(result["manifest"]["asset_name"], "SM_Crate_01_Maya")
+            self.assertTrue(result["fbx_path"].endswith("/SM_Crate_01_Maya.fbx"))
+            self.assertEqual(pipeline.exporter.rename_map["meshTransform"], "meshTransform_Maya")
         finally:
             shutil.rmtree(temp_dir)
 
@@ -956,9 +1005,11 @@ class Phase1StaticPropTest(unittest.TestCase):
 
 class FakeExporter(MayaFbxExporter):
     def __init__(self):
+        self.rename_map = {}
         pass
 
-    def export_asset(self, asset_root, output_path, preset=None):
+    def export_asset(self, asset_root, output_path, preset=None, rename_map=None):
+        self.rename_map = dict(rename_map or {})
         with open(output_path, "wb") as stream:
             stream.write(b"fake fbx")
         return output_path
@@ -997,10 +1048,12 @@ class RenameRootAdapter(FakeScanAdapter):
 
 class MultiFakeExporter(FakeExporter):
     def __init__(self):
+        FakeExporter.__init__(self)
         self.exported_roots = []
 
-    def export_assets(self, asset_roots, output_path, preset=None):
+    def export_assets(self, asset_roots, output_path, preset=None, rename_map=None):
         self.exported_roots = list(asset_roots)
+        self.rename_map = dict(rename_map or {})
         with open(output_path, "wb") as stream:
             stream.write(b"fake multi fbx")
         return output_path

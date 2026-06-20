@@ -20,6 +20,12 @@ env/
 
 Thumbs.db
 Desktop.ini
+*.blend1
+*.blend2
+*.ma~
+*.mb~
+*.autosave
+*.tmp
 
 # Local generated evidence, scratch spaces, and manual test assets.
 # Keep useful reports/screenshots locally, but do not commit them by default.

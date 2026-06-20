@@ -44,6 +44,31 @@ class UnrealEditorGateCppTest(unittest.TestCase):
         self.assertIn("打开报告", source)
         self.assertIn("LaunchFileInDefaultExternalApplication", source)
 
+    def test_gate_cleanup_entry_is_preview_first(self):
+        source = self.source
+
+        self.assertIn("预览清理候选", source)
+        self.assertIn('TEXT("preview_generated_props_cleanup")', source)
+        self.assertNotIn('TEXT("cleanup_asset_forge_generated_props"), TargetPackageDir', source)
+
+    def test_gate_surfaces_package_version_and_project_preset(self):
+        source = self.source
+
+        for text in [
+            "package_naming",
+            "project_preset",
+            "ManifestPackageName",
+            "PackageVersionMode",
+            "PackageVersionLabel",
+            "ProjectPresetName",
+            "ProjectPresetVersion",
+            "包体/版本",
+            "项目预设",
+            "PackageIdentityLine",
+            "ProjectPresetLine",
+        ]:
+            self.assertIn(text, source)
+
     def test_gate_exposes_timestamped_status_and_source_record(self):
         source = self.source
 

@@ -77,6 +77,18 @@ ACTION_PLAN = (
         "callable": "open_report",
     },
     {
+        "id": "preview_cleanup_generated_props",
+        "label": "预览清理候选",
+        "description": "列出 /Game/Props 下 Asset Forge 生成的历史测试目录，不执行删除。",
+        "callable": "preview_generated_props_cleanup",
+    },
+    {
+        "id": "cleanup_generated_props",
+        "label": "清理历史导入",
+        "description": "清理 /Game/Props 下 Asset Forge 生成的历史测试目录，保留 Materials、Textures 和当前规范资产。",
+        "callable": "cleanup_generated_props",
+    },
+    {
         "id": "import_package",
         "label": "正式导入",
         "description": "导入当前门禁通过的 Asset Forge 包体。",
@@ -109,11 +121,11 @@ class UnrealEditorWidgetActions(object):
     def action_plan(self):
         return [dict(item) for item in ACTION_PLAN]
 
-    def refresh_package_history(self, export_root="", latest_maya_log_path=None, latest_unreal_log_path=None, limit=20):
-        return discover_package_history(export_root, latest_maya_log_path, latest_unreal_log_path, limit)
+    def refresh_package_history(self, export_root="", latest_maya_log_path=None, latest_unreal_log_path=None, limit=20, latest_blender_log_path=None):
+        return discover_package_history(export_root, latest_maya_log_path, latest_unreal_log_path, limit, latest_blender_log_path)
 
     def scan_export_directory(self, export_root, limit=20):
-        return discover_package_history(export_root, "", "", limit)
+        return discover_package_history(export_root, "", "", limit, latest_blender_log_path="")
 
     def ensure_widget_asset(self, unreal_module=None):
         from asset_forge.unreal.editor_widget_asset import ensure_editor_widget_asset
@@ -166,6 +178,16 @@ class UnrealEditorWidgetActions(object):
 
         return import_approved_package_dir(package_dir, report_path=report_path)
 
+    def cleanup_generated_props(self, package_dir="", target_path="/Game/Props"):
+        from asset_forge.unreal.editor_menu import cleanup_asset_forge_generated_props
+
+        return cleanup_asset_forge_generated_props(package_dir, import_options={"cleanup_target_path": target_path})
+
+    def preview_generated_props_cleanup(self, package_dir="", target_path="/Game/Props"):
+        from asset_forge.unreal.editor_menu import preview_generated_props_cleanup
+
+        return preview_generated_props_cleanup(package_dir, import_options={"cleanup_target_path": target_path})
+
     def import_latest_export(self, export_root, log_path=None, dry_run=False):
         if not dry_run:
             return {
@@ -187,8 +209,8 @@ def get_action_plan():
     return UnrealEditorWidgetActions().action_plan()
 
 
-def refresh_package_history(export_root="", latest_maya_log_path=None, latest_unreal_log_path=None, limit=20):
-    return UnrealEditorWidgetActions().refresh_package_history(export_root, latest_maya_log_path, latest_unreal_log_path, limit)
+def refresh_package_history(export_root="", latest_maya_log_path=None, latest_unreal_log_path=None, limit=20, latest_blender_log_path=None):
+    return UnrealEditorWidgetActions().refresh_package_history(export_root, latest_maya_log_path, latest_unreal_log_path, limit, latest_blender_log_path)
 
 
 def scan_export_directory(export_root, limit=20):
@@ -229,6 +251,14 @@ def dry_run_selected_package(package_dir, report_path=None):
 
 def import_selected_package(package_dir, report_path=None):
     return UnrealEditorWidgetActions().import_selected_package(package_dir, report_path)
+
+
+def cleanup_generated_props(package_dir="", target_path="/Game/Props"):
+    return UnrealEditorWidgetActions().cleanup_generated_props(package_dir, target_path)
+
+
+def preview_generated_props_cleanup(package_dir="", target_path="/Game/Props"):
+    return UnrealEditorWidgetActions().preview_generated_props_cleanup(package_dir, target_path)
 
 
 def import_latest_export(export_root, log_path=None, dry_run=False):

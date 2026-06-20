@@ -78,8 +78,16 @@ def main(argv=None):
     parser.add_argument("--blend-file", default="")
     parser.add_argument("--selection", action="append", default=[])
     parser.add_argument("--texture-folder", default="")
+    parser.add_argument("--texture-set-token", default="")
     parser.add_argument("--mesh-prefix", default="")
     parser.add_argument("--triangle-budget", type=int, default=0)
+    parser.add_argument("--package-name", default="")
+    parser.add_argument("--package-version-mode", default="overwrite")
+    parser.add_argument("--package-version-padding", type=int, default=3)
+    parser.add_argument("--package-version-start", type=int, default=1)
+    parser.add_argument("--source-name-suffix", default="Blender")
+    parser.add_argument("--preset-name", default="Blender Real Smoke")
+    parser.add_argument("--preset-version", default="0.3")
     args = parser.parse_args(argv)
 
     repo_root = os.path.abspath(args.repo_root)
@@ -111,10 +119,33 @@ def main(argv=None):
     client = BlenderBridgeClient.from_instance(registered)
     status = client.call("blender_status", {})
     scan_params = {"selection": selection}
+    project_preset = {
+        "schema": "asset_forge_project_preset",
+        "preset_name": args.preset_name,
+        "preset_version": args.preset_version,
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S+08:00"),
+        "target_platform": "high_end_mobile",
+        "material_profile": "Props_Opaque_PainterUE_ARM",
+        "triangle_budget": args.triangle_budget,
+        "mesh_prefix": args.mesh_prefix or "SM_",
+        "texture_root": os.path.abspath(args.texture_folder) if args.texture_folder else "",
+        "texture_set_token": args.texture_set_token,
+        "ue_target_path": args.target_path,
+        "package_name_override": args.package_name,
+        "package_version_mode": args.package_version_mode,
+        "package_version_padding": args.package_version_padding,
+        "package_version_start": args.package_version_start,
+    }
     export_params = {
         "selection": selection,
         "export_root": os.path.join(args.output_root, "packages"),
         "target_path": args.target_path,
+        "package_name_override": args.package_name,
+        "package_version_mode": args.package_version_mode,
+        "package_version_padding": args.package_version_padding,
+        "package_version_start": args.package_version_start,
+        "source_name_suffix": args.source_name_suffix,
+        "project_preset": project_preset,
     }
     if args.mesh_prefix:
         scan_params["mesh_prefix"] = args.mesh_prefix
@@ -124,6 +155,8 @@ def main(argv=None):
         export_params["triangle_budget"] = args.triangle_budget
     if args.texture_folder:
         export_params["texture_folder"] = os.path.abspath(args.texture_folder)
+    if args.texture_set_token:
+        export_params["texture_set_token"] = args.texture_set_token
     scan = client.call("blender_scan_static_prop", scan_params)
     preflight = client.call("blender_preflight_static_prop", export_params)
     export = client.call(
@@ -140,6 +173,7 @@ def main(argv=None):
         "scan_asset_name": scan.get("scan", {}).get("asset_name", ""),
         "scan_asset_name_prefix": scan.get("scan", {}).get("asset_name_prefix", ""),
         "source_asset_name": scan.get("scan", {}).get("source_asset_name", ""),
+        "project_preset": project_preset,
         "preflight": preflight,
         "export": export,
         "fbx_exists": os.path.exists(export.get("fbx_path", "")),

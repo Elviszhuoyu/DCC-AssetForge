@@ -2,9 +2,11 @@ from __future__ import absolute_import
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 
+import asset_forge.blender.provider_asset_forge as provider_module
 from asset_forge.blender.provider_asset_forge import BlenderAssetForgeProvider, _write_png_rgba
 from asset_forge.blender.scanner import BlenderStaticPropScanner
 from asset_forge.shared.manifest_schema import read_manifest
@@ -169,6 +171,26 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.addCleanup(lambda: os.path.isdir(self.temp_dir) and __import__("shutil").rmtree(self.temp_dir))
         self.addCleanup(bridge.stop_bridge)
+
+    def test_provider_hot_reload_refreshes_package_naming_dependencies(self):
+        calls = []
+        original_reload = provider_module.importlib.reload
+
+        def fake_reload(module):
+            calls.append(module.__name__)
+            return module
+
+        provider_module.importlib.reload = fake_reload
+        self.addCleanup(lambda: setattr(provider_module.importlib, "reload", original_reload))
+
+        provider_module._refresh_shared_texture_modules_for_hot_reload()
+
+        if "asset_forge.maya.export_package" in sys.modules:
+            self.assertIn("asset_forge.maya.export_package", calls)
+        if "asset_forge.shared.manifest_schema" in sys.modules:
+            self.assertIn("asset_forge.shared.manifest_schema", calls)
+        if "asset_forge.shared.package_naming" in sys.modules:
+            self.assertIn("asset_forge.shared.package_naming", calls)
 
     def test_scanner_reads_static_prop_fields_from_selection(self):
         scanner = BlenderStaticPropScanner(bpy_module=FakeBpy())
@@ -401,7 +423,7 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         textures_by_usage = dict((item["usage"], item) for item in manifest["materials"][0]["textures"])
 
         self.assertEqual(manifest["texture_folder_scan"]["auto_material_texture_set_token"], "a1")
-        self.assertEqual(textures_by_usage["base_color"]["source_type"], "blender_image_node")
+        self.assertEqual(textures_by_usage["base_color"]["source_type"], "texture_folder")
         self.assertEqual(textures_by_usage["normal"]["source_type"], "texture_folder")
         self.assertEqual(textures_by_usage["packed_arm"]["source_type"], "texture_folder")
         self.assertEqual(manifest["material_texture_sets"][0]["binding_source"], "blender_image_node+texture_folder")
@@ -430,10 +452,65 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertTrue(result["can_export"])
         self.assertEqual(result["texture_folder_scan"]["auto_material_texture_set_token"], "a1")
-        self.assertEqual(textures_by_usage["base_color"]["source_type"], "blender_image_node")
+        self.assertEqual(textures_by_usage["base_color"]["source_type"], "texture_folder")
         self.assertEqual(textures_by_usage["normal"]["source_type"], "texture_folder")
         self.assertEqual(textures_by_usage["packed_arm"]["source_type"], "texture_folder")
         self.assertEqual(result["scan"]["material_texture_bindings"][0]["texture_usages"], ["base_color", "normal", "packed_arm"])
+
+    def test_package_name_override_does_not_rename_blender_asset(self):
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(root_name="B"))
+
+        result = provider.build_static_prop_package_contract(
+            {
+                "export_root": self.temp_dir,
+                "target_path": "/Game/Props/Blender",
+                "source_name_suffix": "Blender",
+                "package_name_override": "Client Preview",
+            }
+        )
+        manifest = read_manifest(result["manifest_path"])
+
+        self.assertEqual(manifest["asset_name"], "SM_B_Blender")
+        self.assertEqual(manifest["target_path"], "/Game/Props/Blender")
+        self.assertEqual(manifest["package_naming"]["package_name"], "Client_Preview")
+        self.assertTrue(result["package_dir"].endswith("/Client_Preview"))
+        self.assertEqual(manifest["fbx_export_status"], "planned")
+
+    def test_auto_increment_package_version_drives_blender_package_folder(self):
+        os.makedirs(os.path.join(self.temp_dir, "SM_B_Blender_v001"))
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(root_name="B"))
+
+        result = provider.build_static_prop_package_contract(
+            {
+                "export_root": self.temp_dir,
+                "source_name_suffix": "Blender",
+                "package_version_mode": "auto_increment",
+                "project_preset": {"preset_name": "Team", "preset_version": "0.3"},
+            }
+        )
+        manifest = read_manifest(result["manifest_path"])
+
+        self.assertEqual(manifest["asset_name"], "SM_B_Blender")
+        self.assertEqual(manifest["package_naming"]["package_name"], "SM_B_Blender_v002")
+        self.assertEqual(manifest["package_naming"]["version_mode"], "auto_increment")
+        self.assertEqual(manifest["project_preset"]["preset_name"], "Team")
+        self.assertTrue(result["package_dir"].endswith("/SM_B_Blender_v002"))
+
+    def test_source_name_suffix_drives_blender_default_publish_identity(self):
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(root_name="B"))
+
+        result = provider.build_static_prop_package_contract(
+            {
+                "export_root": self.temp_dir,
+                "source_name_suffix": "Blender",
+            }
+        )
+        manifest = read_manifest(result["manifest_path"])
+
+        self.assertEqual(manifest["asset_name"], "SM_B_Blender")
+        self.assertTrue(result["package_dir"].endswith("/SM_B_Blender"))
+        self.assertEqual(provider._static_mesh_export_name("SM_B_Blender", "B_a", "SM_", "B"), "SM_B_a_Blender")
+        self.assertEqual(provider._static_mesh_export_name("SM_B_Blender", "SM_B_a", "SM_", "B"), "SM_B_a_Blender")
 
     def test_preflight_texture_family_token_binds_blender_duplicate_material_suffixes(self):
         texture_root = os.path.join(self.temp_dir, "textures")

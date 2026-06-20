@@ -244,6 +244,21 @@ class UnrealMaterialAssetBootstrapTest(unittest.TestCase):
         self.assertNotIn("/AssetForge/Materials/M_AF_Props_Master", fake_unreal.EditorAssetLibrary.deleted)
         self.assertIn("/AssetForge/Materials/M_AF_Props_Master", report["updated_assets"])
 
+    def test_import_bootstrap_can_reuse_existing_plugin_assets_without_saving(self):
+        plan_probe = UnrealMaterialAssetBootstrap(unreal_module=FakeUnreal())
+        existing_assets = [item["path"] for item in plan_probe.plan()["assets"]]
+        fake_unreal = FakeUnreal(existing_assets=existing_assets)
+
+        report = UnrealMaterialAssetBootstrap(unreal_module=fake_unreal).bootstrap(repair_existing_assets=False)
+
+        self.assertEqual(report["status"], "success")
+        self.assertFalse(report["repair_existing_assets"])
+        self.assertEqual(report["created_assets"], [])
+        self.assertEqual(report["updated_assets"], [])
+        self.assertEqual(report["configured_textures"], [])
+        self.assertEqual(report["material_network_reports"], [])
+        self.assertEqual(fake_unreal.EditorAssetLibrary.saved, [])
+
     def test_repeated_bootstrap_does_not_keep_stale_graph_nodes(self):
         fake_unreal = FakeUnreal()
         bootstrapper = UnrealMaterialAssetBootstrap(unreal_module=fake_unreal)
