@@ -49,7 +49,7 @@ ACTION_PLAN = (
     {
         "id": "dry_run_manifest",
         "label": "Manifest 预演计划",
-        "description": "校验一个 manifest 并解析导入计划，不执行正式导入。",
+        "description": "校验一个 manifest 并解析导入计划，不创建 UE 资产。",
         "callable": "dry_run_selected_manifest",
     },
     {
@@ -60,14 +60,14 @@ ACTION_PLAN = (
     },
     {
         "id": "dry_run_package",
-        "label": "预演导入计划",
-        "description": "为一个 Asset Forge 包体生成导入计划，不创建 UE 资产。",
+        "label": "仅检查导入计划",
+        "description": "检查一个 Asset Forge 包体的导入计划，不创建 UE 资产。",
         "callable": "dry_run_selected_package",
     },
     {
         "id": "preview_package_gate",
-        "label": "生成入审报告",
-        "description": "生成入审报告：核对资产、贴图、材质、风险和入审状态。",
+        "label": "仅检查",
+        "description": "核对资产、贴图、材质、风险和导入状态。",
         "callable": "preview_selected_package_gate",
     },
     {
@@ -90,14 +90,14 @@ ACTION_PLAN = (
     },
     {
         "id": "import_package",
-        "label": "正式导入",
-        "description": "导入当前门禁通过的 Asset Forge 包体。",
+        "label": "仅导入已放行",
+        "description": "导入当前已经检查放行的 Asset Forge 包体。",
         "callable": "import_selected_package",
     },
     {
         "id": "dry_run_all",
-        "label": "批量预检",
-        "description": "预检导出目录下的所有 manifest。",
+        "label": "批量检查",
+        "description": "检查导出目录下的所有 manifest。",
         "callable": "dry_run_all_exports",
     },
     {
@@ -150,7 +150,7 @@ class UnrealEditorWidgetActions(object):
                 "status": "missing",
                 "can_open": False,
                 "report_path": report_path,
-                "message": "报告文件不存在，请先生成入审报告或预演导入计划。",
+                "message": "报告文件不存在，请先检查当前包体。",
             }
         opener = self.report_opener or _open_report_path
         opener(report_path)
@@ -193,8 +193,8 @@ class UnrealEditorWidgetActions(object):
             return {
                 "status": "blocked",
                 "can_import": False,
-                "message": "UE Gate 不允许静默导入最新包；请先选择包体、生成入审报告、预演导入计划，再正式导入。",
-                "next_action": "使用 scan_export_directory -> preview_selected_package_gate -> dry_run_selected_package -> import_selected_package。",
+                "message": "UE Gate 不允许静默导入最新包；请先选择包体，再检查并导入。",
+                "next_action": "使用 scan_export_directory -> preview_selected_package_gate -> import_selected_package。",
             }
         return self.pipeline.import_latest_manifest(export_root, log_path, True)
 

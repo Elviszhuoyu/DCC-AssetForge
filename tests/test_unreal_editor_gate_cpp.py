@@ -32,7 +32,7 @@ class UnrealEditorGateCppTest(unittest.TestCase):
 
         for control in ["SSearchBox", "SListView", "SCheckBox", "SExpandableArea"]:
             self.assertIn(control, source)
-        for section in ["包体来源", "导入策略", "入审与导入", "历史与报告"]:
+        for section in ["包体来源", "导入策略", "导入控制", "历史与报告"]:
             self.assertIn(section, source)
 
     def test_gate_report_path_has_open_action(self):
@@ -44,12 +44,54 @@ class UnrealEditorGateCppTest(unittest.TestCase):
         self.assertIn("打开报告", source)
         self.assertIn("LaunchFileInDefaultExternalApplication", source)
 
-    def test_gate_cleanup_entry_is_preview_first(self):
+    def test_gate_history_clear_is_explicit_and_non_destructive(self):
         source = self.source
 
-        self.assertIn("预览清理候选", source)
-        self.assertIn('TEXT("preview_generated_props_cleanup")', source)
+        self.assertIn("清空列表", source)
+        self.assertIn("已清理当前 Gate 导入历史列表", source)
+        self.assertIn("这不会删除磁盘 Package 或 UE 资产", source)
+        self.assertNotIn("预览清理候选", source)
+        self.assertNotIn("预览可清理历史", source)
         self.assertNotIn('TEXT("cleanup_asset_forge_generated_props"), TargetPackageDir', source)
+
+    def test_gate_has_manual_package_root_and_clear_list_controls(self):
+        source = self.source
+
+        for text in [
+            "DesktopPlatform",
+            "选择包体目录",
+            "只看已选目录",
+            "扫描来源",
+            "已选目录",
+            "ManualPackageRoot",
+            "bScanManualRootOnly",
+            "HandleChoosePackageRootClicked",
+            "HandleClearListClicked",
+            "清空列表",
+            "历史包体会保留",
+            "bScanManualRootOnly = false",
+            "这不会删除磁盘 Package 或 UE 资产",
+        ]:
+            self.assertIn(text, source)
+
+    def test_gate_right_column_uses_import_first_product_order(self):
+        source = self.source
+
+        ordered_labels = [
+            'LOCTEXT("PackageSourceRecord", "1 来源记录")',
+            'LOCTEXT("WriteApprovalSection", "2 导入控制")',
+            'LOCTEXT("PackageContentSection", "3 包体内容")',
+            'LOCTEXT("ImportStrategySection", "4 导入策略")',
+            'LOCTEXT("HistorySection", "5 历史与报告")',
+        ]
+        positions = [source.index(label) for label in ordered_labels]
+
+        self.assertEqual(positions, sorted(positions))
+        self.assertNotIn("2 包体画像", source)
+        self.assertNotIn("3 包内资产", source)
+        self.assertNotIn("2 入审与导入", source)
+        self.assertNotIn("5 入审与导入", source)
+        self.assertNotIn("6 历史与报告", source)
 
     def test_gate_surfaces_package_version_and_project_preset(self):
         source = self.source
@@ -85,9 +127,11 @@ class UnrealEditorGateCppTest(unittest.TestCase):
         self.assertIn("GetHeaderStatusColor", source)
         self.assertIn("StatusPillDynamic", source)
         self.assertIn("PackageCountsLabel", source)
-        self.assertIn("放行 %d / 警告 %d / 阻断 %d / 待预检 %d", source)
+        self.assertIn("放行 %d / 警告 %d / 阻断 %d / 待检查 %d", source)
         self.assertIn("FLinearColor(0.55f, 0.65f, 0.72f, 1.0f)", source)
-        self.assertIn("true", source[source.index("PackageSourceRecord"):source.index("PackageDetail")])
+        self.assertIn("true", source[source.index("PackageSourceRecord"):source.index("WriteApprovalSection")])
+        self.assertIn("FDateTime::UtcNow()", source)
+        self.assertIn("LocalOffset", source)
 
     def test_gate_package_rows_use_selection_dots_not_expand_arrows(self):
         source = self.source
@@ -167,24 +211,34 @@ class UnrealEditorGateCppTest(unittest.TestCase):
     def test_gate_button_copy_uses_actionable_import_language(self):
         source = self.source
 
-        self.assertIn("生成入审报告", source)
-        self.assertIn("预演导入计划（不写入）", source)
+        self.assertIn("检查并导入选中包体", source)
+        self.assertIn("仅检查", source)
+        self.assertIn("不写入验证", source)
+        self.assertIn("仅导入已放行", source)
+        self.assertIn("PrimaryActionButton", source)
+        self.assertIn("HandlePrimaryImportClicked", source)
         self.assertIn("dry_run_gate_for_package_dir", source)
+        self.assertIn("import_approved_package_dir", source)
         self.assertIn("EPythonCommandExecutionMode::ExecuteFile", source)
         self.assertNotIn("EPythonCommandExecutionMode::ExecuteStatement", source)
         self.assertIn("return FString::Printf(TEXT(\"exec(%s)\"), *PythonStringLiteral(Script));", source)
+        primary_handler = source[source.index("FReply HandlePrimaryImportClicked") : source.index("FReply HandlePreviewClicked")]
         preview_handler = source[source.index("FReply HandlePreviewClicked") : source.index("FReply HandleDryRunClicked")]
         dry_run_handler = source[source.index("FReply HandleDryRunClicked") : source.index("FReply HandleImportClicked")]
-        self.assertIn('ExecuteGatePythonCommand(TEXT("preview_gate_for_package_dir"), SelectedPackage->PackageDir, BuildGateImportOptionsJson())', preview_handler)
-        self.assertIn('ExecuteGatePythonCommand(TEXT("dry_run_gate_for_package_dir"), SelectedPackage->PackageDir, BuildGateImportOptionsJson())', dry_run_handler)
-        self.assertIn("正式导入选中包体", source)
+        self.assertIn('ExecuteGatePythonCommand(TEXT("preview_gate_for_package_dir"), PackageDir, BuildGateImportOptionsJson())', primary_handler)
+        self.assertIn('ExecuteGatePythonCommand(TEXT("import_approved_package_dir"), PackageDir, BuildGateImportOptionsJson())', primary_handler)
+        self.assertIn("RefreshPackagesAndRestoreSelection(PackageDir)", primary_handler)
+        self.assertIn('ExecuteGatePythonCommand(TEXT("preview_gate_for_package_dir"), PackageDir, BuildGateImportOptionsJson())', preview_handler)
+        self.assertIn("RefreshPackagesAndRestoreSelection(PackageDir)", preview_handler)
+        self.assertIn('ExecuteGatePythonCommand(TEXT("dry_run_gate_for_package_dir"), PackageDir, BuildGateImportOptionsJson())', dry_run_handler)
+        self.assertIn("RefreshPackagesAndRestoreSelection(PackageDir)", dry_run_handler)
         self.assertIn("CanImportSelectedPackage", source)
-        self.assertIn("当前报告未放行或仍有错误，正式导入已禁用。", source)
-        self.assertIn("当前包体未被报告放行，无法正式导入", source)
+        self.assertIn("当前报告未放行或仍有错误，导入已禁用。", source)
+        self.assertIn("当前包体未放行，未写入 UE", source)
         self.assertIn("GetWriteContentSummaryText", source)
         self.assertIn("写入内容", source)
-        self.assertIn("检查层只生成入审报告；预演层按当前设置生成 dry-run 计划但不写资产；写入层只导入当前选中包体。", source)
-        self.assertIn("正式导入只写入当前选中包体；Static Mesh 始终导入；%s；%s；UE FBX 自动材质/贴图导入保持关闭。", source)
+        self.assertIn("主操作会先生成检查报告；报告放行后才正式写入 UE。仅检查可用于复核，不会创建资产。", source)
+        self.assertIn("只写入当前选中包体；Static Mesh 始终导入；%s；%s；UE FBX 自动材质/贴图导入保持关闭。", source)
         self.assertIn("基础导入", source)
         self.assertIn("默认导入 Static Mesh", source)
         self.assertIn("材质贴图", source)
@@ -192,7 +246,7 @@ class UnrealEditorGateCppTest(unittest.TestCase):
         self.assertIn("导入贴图资产", source)
         self.assertIn("高级设置：变换 / 单位", source)
         self.assertIn("高级设置：构建输出", source)
-        self.assertIn("5 入审与导入", source)
+        self.assertIn("2 导入控制", source)
         self.assertIn("bool bGateImportMaterials = true;", source)
         self.assertIn("bool bGateImportTextures = true;", source)
         self.assertIn('Options->SetBoolField(TEXT("fbx_import_materials"), false);', source)
@@ -208,6 +262,9 @@ class UnrealEditorGateCppTest(unittest.TestCase):
         self.assertNotIn("门禁报告：", source)
         self.assertNotIn("复核导入预演（不写入）", source)
         self.assertNotIn("批准导入当前包体", source)
+        self.assertNotIn("检查层", source)
+        self.assertNotIn("预演层", source)
+        self.assertNotIn("写入层", source)
         self.assertNotIn("默认选中 %s", source)
         self.assertIn("请在左侧明确选择一个包体", source)
 

@@ -104,7 +104,7 @@ def build_gate_panel_state(package_dir="", export_root="", latest_maya_log_path=
         "status": "ready" if selected_package_dir else history.get("status", "empty"),
         "status_label": "导入门禁已就绪" if selected_package_dir else history.get("status_label", "暂无可审包体"),
         "title": "Asset Forge 导入门禁工作台",
-        "subtitle": "扫描本地 AF 导出包，生成入审报告、预演导入计划后再正式导入。",
+        "subtitle": "扫描本地 AF 导出包，选择 Package，检查通过后导入。",
         "export_root": _display_export_roots(export_root),
         "latest_package_dir": history.get("latest_package_dir", ""),
         "history": history,
@@ -209,7 +209,7 @@ def build_package_summary(package_dir, acceptance_report=None):
         "errors": gate.get("errors", []),
         "blocking_checks": gate.get("blocking_checks", []),
         "warning_checks": gate.get("warning_checks", []),
-        "next_action": gate.get("next_action", "先生成入审报告，再决定是否预演导入计划。"),
+        "next_action": gate.get("next_action", "先检查当前包体，再决定是否导入。"),
         "overwrite_strategy": _overwrite_strategy(manifest, acceptance_report),
         "report_path": active_report_path,
         "latest_report_path": latest_report.get("report_path", ""),
@@ -514,7 +514,7 @@ def _status_label(status):
 
 def _risk_summary(manifest, gate, has_manifest):
     if not has_manifest:
-        return {"code": "error", "status": "阻断", "message": "包体缺少 manifest，无法正式导入。"}
+        return {"code": "error", "status": "阻断", "message": "包体缺少 manifest，无法导入。"}
     gate_status = str(gate.get("status", "") or "").lower()
     if gate_status in ("error", "failed", "fail"):
         return {"code": "error", "status": "阻断", "message": "门禁发现阻断项，需要修复后再导入。"}
@@ -528,7 +528,7 @@ def _risk_summary(manifest, gate, has_manifest):
         return {"code": "warning", "status": "需复核", "message": "manifest 中包含材质或贴图风险，需要人工确认。"}
     if _mesh_status(manifest) == "missing_source":
         return {"code": "warning", "status": "需复核", "message": "FBX 源文件路径存在但当前不可访问。"}
-    return {"code": "unchecked", "status": "待入审", "message": "尚未生成入审报告。"}
+    return {"code": "unchecked", "status": "待检查", "message": "尚未检查当前包体。"}
 
 
 def _manifest_risks(manifest):
@@ -847,7 +847,7 @@ def _gate_summary(report):
             "errors": [],
             "blocking_checks": [],
             "warning_checks": [],
-            "next_action": "先生成入审报告，再决定是否预演导入计划。",
+            "next_action": "先检查当前包体，再决定是否导入。",
         }
     summary = report.get("summary", {}) or {}
     warnings = _messages_from_items(summary.get("warnings", []))
@@ -897,13 +897,13 @@ def _approval_summary(summary):
     if summary.get("can_accept"):
         return {
             "enabled": True,
-            "label": "正式导入",
+            "label": "仅导入已放行",
             "message": "门禁通过，可以导入到 {0}".format(summary.get("target_path", "")),
         }
     return {
         "enabled": False,
         "label": "暂不导入",
-        "message": summary.get("risk_message", "") or "需要先生成入审报告。",
+        "message": summary.get("risk_message", "") or "需要先检查当前包体。",
     }
 
 

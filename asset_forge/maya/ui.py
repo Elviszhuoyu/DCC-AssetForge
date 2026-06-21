@@ -31,7 +31,7 @@ EMPTY_SELECTION_GUIDANCE = (
     "如果场景唯一可导出资产，Asset Forge 会在扫描时自动兜底；"
     "如果有多个候选资产，它不会猜测。"
 )
-PREFLIGHT_REPAIR_REPORT_HINT = "预检阶段不写报告；导出被阻断时会写调试报告。"
+PREFLIGHT_REPAIR_REPORT_HINT = "检查阶段不写报告；导出被阻断时会写调试报告。"
 STATUS_COLORS = {
     "ok": (0.09, 0.17, 0.14),
     "warning": (0.18, 0.15, 0.10),
@@ -96,7 +96,7 @@ class AssetForgeMayaWindow(object):
         if self.cmds.window(WINDOW_NAME, exists=True):
             self.cmds.deleteUI(WINDOW_NAME)
 
-        self.cmds.window(WINDOW_NAME, title=BUILD_LABEL, widthHeight=(980, 780))
+        self.cmds.window(WINDOW_NAME, title=BUILD_LABEL, widthHeight=(980, 780), sizeable=True)
         if hasattr(self.cmds, "scrollLayout"):
             self.controls["main_scroll"] = self.cmds.scrollLayout(childResizable=True, verticalScrollBarThickness=16)
         self.cmds.columnLayout(adjustableColumn=True, rowSpacing=7)
@@ -126,8 +126,8 @@ class AssetForgeMayaWindow(object):
         self.cmds.columnLayout(adjustableColumn=True, rowSpacing=2)
         self.cmds.text(label="Asset Forge Maya 发布工作台", align="left")
         self.cmds.text(label="v0.1.8 / Build 2026-06-03-R10", align="left")
-        self.cmds.text(label="Maya 导出 Package -> UE Gate 入审报告 / 预演导入计划 / 正式导入", align="left")
-        self.cmds.text(label="Maya 负责导出包和建议；UE Gate 负责生成入审报告、预演导入计划和正式导入。", align="left")
+        self.cmds.text(label="Maya 负责检查当前选择并导出 Asset Forge Package。", align="left")
+        self.cmds.text(label="UE Gate 接收 Package，检查通过后导入到项目目录。", align="left")
         self.cmds.setParent("..")
         self._build_mcp_header_controls()
         self.cmds.setParent("..")
@@ -136,7 +136,6 @@ class AssetForgeMayaWindow(object):
         self.controls["next_action"] = self._status_text(INITIAL_NEXT_ACTION, "info", height=30)
         self.controls["overview_panel"] = self._status_text(format_overview_panel({}, {}, {}), "panel", height=30)
         self._build_status_card_row()
-        self._build_issue_locator()
         self._end_section()
 
     def _build_project_preset_panel(self):
@@ -164,11 +163,6 @@ class AssetForgeMayaWindow(object):
         self.controls["issue_card"] = self._status_button("issue_card", format_issue_card({}), self._focus_preflight_panel, "waiting", height=30, width=230)
         self.controls["export_card"] = self._status_button("export_card", format_export_card({}, {}), self._focus_export_panel, "waiting", height=30, width=230)
         self.cmds.setParent("..")
-
-    def _build_issue_locator(self):
-        self._section("问题定位", collapse=False, key="issue_locator_section")
-        self.controls["issue_locator"] = self.cmds.scrollField(editable=False, wordWrap=True, height=126, text=format_issue_locator({}, {}, {}))
-        self._end_section()
 
     def _build_mcp_header_controls(self):
         self.cmds.rowLayout(numberOfColumns=3, adjustableColumn=1, columnWidth3=(150, 50, 50))
@@ -342,12 +336,16 @@ class AssetForgeMayaWindow(object):
             return
 
     def _build_primary_actions(self):
-        self._section("发布动作", collapse=False, key="action_section")
+        self._section("导出控制", collapse=False, key="action_section")
         self._button_row(
             [
-                ("1 扫描资产", self._scan, 160),
-                ("2 检查风险", self._validate, 160),
-                ("3 导出 Package 给 UE Gate", self._export, 240),
+                ("检查并导出 Package", self._export, 280),
+            ]
+        )
+        self._button_row(
+            [
+                ("只扫描", self._scan, 160),
+                ("只检查", self._validate, 160),
             ]
         )
         self._end_section()
@@ -358,7 +356,7 @@ class AssetForgeMayaWindow(object):
         self.cmds.menuItem(label=TARGET_PLATFORM_PC)
         self.cmds.menuItem(label=TARGET_PLATFORM_HIGH_END_MOBILE)
         self.cmds.menuItem(label=TARGET_PLATFORM_MOBILE)
-        self.cmds.optionMenu(self.controls["platform"], edit=True, value=TARGET_PLATFORM_HIGH_END_MOBILE)
+        self.cmds.optionMenu(self.controls["platform"], edit=True, value=TARGET_PLATFORM_PC)
 
         self.controls["material_profile"] = self.cmds.optionMenu(label="材质匹配规则")
         for profile in get_project_material_profiles()["profiles"]:
@@ -382,9 +380,9 @@ class AssetForgeMayaWindow(object):
         self.controls["asset_name_override"] = self.cmds.textFieldGrp(label="包体/文件夹名", text="", adjustableColumn=2)
         self.controls["package_version_mode"] = self._option_menu("包体迭代模式", ["overwrite", "auto_increment"], "overwrite")
         self.controls["triangle_budget"] = self.cmds.intFieldGrp(label="三角面预算", value1=50000, adjustableColumn=2)
-        self._button_row([("修复资产名前缀", self._rename_prefix, 180)])
+        self._button_row([("修复资产名前缀", self._rename_prefix, 180), ("应用 Transform", self._apply_transform_fix, 160)])
         self._section("资产详情", collapse=True, key="asset_detail_section")
-        self.controls["asset_identity"] = self.cmds.scrollField(editable=False, wordWrap=True, height=112, text=format_asset_identity({}))
+        self.controls["asset_identity"] = self.cmds.scrollField(editable=False, wordWrap=True, height=96, text=format_asset_identity({}))
         self._end_section()
         self._end_section()
 
@@ -402,26 +400,26 @@ class AssetForgeMayaWindow(object):
         self.controls["texture_prefix"] = self.cmds.textFieldGrp(label="贴图前缀", text="T_", adjustableColumn=2)
         self._button_row([("扫描贴图目录", self._scan_texture_folder, 150), ("修复贴图前缀", self._rename_texture_prefix, 180)])
         self._section("贴图详情", collapse=True, key="texture_detail_section")
-        self.controls["texture_summary"] = self.cmds.scrollField(editable=False, wordWrap=True, height=168, text=format_empty_texture_details())
+        self.controls["texture_summary"] = self.cmds.scrollField(editable=False, wordWrap=True, height=132, text=format_empty_texture_details())
         self._end_section()
         self._end_section()
 
     def _build_preflight_panel(self):
-        self._section("4 风险检查", collapse=False, key="preflight_section")
-        self.controls["preflight_hint"] = self.cmds.text(label="风险检查：未预检", align="left")
+        self._section("4 检查详情", collapse=False, key="preflight_section")
+        self.controls["preflight_hint"] = self.cmds.text(label="检查：未执行", align="left")
         self._section("检查详情", collapse=True, key="preflight_detail_section")
-        self.controls["preflight"] = self.cmds.scrollField(editable=False, wordWrap=True, height=186, text=format_empty_preflight_details())
+        self.controls["preflight"] = self.cmds.scrollField(editable=False, wordWrap=True, height=150, text=format_empty_preflight_details())
         self._end_section()
         self._end_section()
 
     def _build_advanced_settings(self):
-        self.cmds.text(label="高级设置 / 导入策略（写入 Package，UE Gate 可复核）", align="left")
+        self.cmds.text(label="高级设置 / 导入建议（写入 Package，UE Gate 可复核）", align="left")
         self._section("基础导入", collapse=True)
-        self.cmds.text(label="Maya 只生成 Package 和导入建议；UE Gate 按“生成入审报告 -> 预演导入计划 -> 正式导入”执行。", align="left")
+        self.cmds.text(label="Maya 只生成 Package 和导入建议；UE Gate 会先检查，放行后再导入。", align="left")
         self._end_section()
 
         self._section("网格构建", collapse=True)
-        self.cmds.text(label="保持 Mesh / 独立 Mesh 关系清晰；Combine Meshes、法线、LOD、Nanite 会在 UE Gate 预演导入计划中确认。", align="left")
+        self.cmds.text(label="保持 Mesh / 独立 Mesh 关系清晰；Combine Meshes、法线、LOD、Nanite 会在 UE Gate 导入前确认。", align="left")
         self.controls["nanite_policy"] = self._option_menu("Nanite 策略建议", ["project_default", "enable", "disable", "report_only"], "project_default")
         self.controls["static_mesh_lod_group"] = self.cmds.textFieldGrp(label="Mesh LODGroup 建议", text="project_default", adjustableColumn=2)
         self.controls["static_mesh_lod_import_policy"] = self._option_menu("Mesh LOD 导入策略建议", ["import_existing", "project_default", "ignore_lods", "report_only"], "import_existing")
@@ -596,11 +594,11 @@ class AssetForgeMayaWindow(object):
             texture_folder=self._texture_folder(),
             texture_set_token=self._texture_set_token(),
             target_path=self._target_path(),
-            asset_name_override=self._asset_name_override(),
+            asset_name_override="",
             rules=self._active_rules(),
             texture_import_policy=self._texture_import_policy(),
             static_mesh_import_policy=self._static_mesh_import_policy(),
-            source_name_suffix="Maya",
+            source_name_suffix="",
         )
         self.last_scan = preflight["scan"]
         self.last_validation = preflight["validation"]
@@ -619,7 +617,7 @@ class AssetForgeMayaWindow(object):
             self._set_next_action("下一步：点击“检查”，确认是否可以导出。")
             self._refresh_status_cards(self.last_scan, self.last_validation, self.last_texture_scan)
             self._set_panel("asset_identity", format_asset_identity(self.last_scan))
-            self._set_panel("preflight", "下一步：点击“检查”查看阻断项、警告和可修复项。")
+            self._set_panel("preflight", "下一步：点击“检查”查看阻断项、注意项和可修复项。")
             self._focus_asset_panel()
             self._set_results("模型扫描完成。")
             self._log_operation("scan_model", "success", outputs={"asset_name": self.last_scan.get("asset_name", ""), "mesh_count": self.last_scan.get("mesh_count", 0)})
@@ -633,7 +631,7 @@ class AssetForgeMayaWindow(object):
             if preflight.get("selection_changed"):
                 text = "检测到当前 Maya 选择已变化，已自动重新扫描。\n\n" + text
             self._apply_preflight_to_ui(preflight["scan"], preflight["validation"], preflight.get("texture_folder_scan", {}), text)
-            self._set_results("预检完成。")
+            self._set_results("检查完成。")
             repair_actions = repair_actions_for_state(preflight["scan"], preflight["validation"], preflight.get("texture_folder_scan", {}))
             self._log_operation(
                 "preflight",
@@ -704,7 +702,7 @@ class AssetForgeMayaWindow(object):
                         self._target_platform(),
                         self._target_path(),
                     )
-                self._apply_preflight_to_ui(preflight["scan"], preflight["validation"], preflight.get("texture_folder_scan", {}), preflight_text, status="导出前预检未通过")
+                self._apply_preflight_to_ui(preflight["scan"], preflight["validation"], preflight.get("texture_folder_scan", {}), preflight_text, status="导出前检查未通过")
                 self._set_results(format_export_blocked_result(preflight["scan"], preflight["validation"], debug_report_path))
                 self._log_operation(
                     "export_preflight_blocked",
@@ -724,11 +722,11 @@ class AssetForgeMayaWindow(object):
                 material_profile=self._material_profile(),
                 texture_folder=self._texture_folder(),
                 texture_set_token=self._texture_set_token(),
-                asset_name_override=self._asset_name_override(),
+                asset_name_override="",
                 rules=self._active_rules(),
                 texture_import_policy=self._texture_import_policy(),
                 static_mesh_import_policy=self._static_mesh_import_policy(),
-                source_name_suffix="Maya",
+                source_name_suffix="",
                 package_name_override=self._asset_name_override(),
                 package_version_mode=self._package_version_mode(),
                 project_preset=self._settings_from_ui(),
@@ -738,7 +736,7 @@ class AssetForgeMayaWindow(object):
             self.last_texture_scan = self.last_scan.get("texture_folder_scan", {})
             self.last_package_dir = result.get("package_dir", "")
             self._apply_preflight_to_ui(result["scan"], result["validation"], self.last_texture_scan, format_preflight_summary(result["scan"], result["validation"], self.last_texture_scan), status="导出完成")
-            self._set_next_action("下一步：到 UE Gate 选择该 Package，生成入审报告并预演导入计划，再查看 UE 日志与导入报告。")
+            self._set_next_action("下一步：到 UE Gate 选择该 Package，点击“检查并导入”，再查看 UE 日志与导入报告。")
             self._set_results(format_export_result_summary(result))
             self._log_operation("export_success", "success", outputs=_export_log_outputs(result), report_path=result.get("export_report_path", ""))
         except ExportValidationError as exc:
@@ -791,6 +789,49 @@ class AssetForgeMayaWindow(object):
             self._log_operation("fix_asset_name_prefix", "success", inputs={"mesh_prefix": self._name_prefix()}, outputs={"renamed": renamed})
         except Exception as exc:
             self._show_error(exc, "fix_asset_name_prefix")
+        finally:
+            if undo_open:
+                self.cmds.undoInfo(closeChunk=True)
+
+    def _apply_transform_fix(self, *args):
+        undo_open = False
+        try:
+            scan = self.last_scan or self.pipeline.scan_selection()
+            targets = _transform_fix_targets(scan)
+            if not targets:
+                raise RuntimeError("没有可应用 Transform 的 Maya transform 节点。")
+            if self._should_confirm_prefix_fix():
+                answer = self.cmds.confirmDialog(
+                    title="确认应用 Transform",
+                    message=_format_transform_fix_preview(scan, targets),
+                    button=["执行", "取消"],
+                    defaultButton="执行",
+                    cancelButton="取消",
+                    dismissString="取消",
+                )
+                if answer != "执行":
+                    self._set_summary("状态：已取消 Transform 修复")
+                    self._set_results("未修改 Maya 场景。")
+                    self._log_operation("apply_transform_fix", "cancelled", outputs={"targets": targets})
+                    return
+            if not hasattr(self.cmds, "makeIdentity"):
+                raise RuntimeError("当前 Maya cmds 环境不支持 makeIdentity，无法应用 Transform。")
+            if hasattr(self.cmds, "undoInfo"):
+                self.cmds.undoInfo(openChunk=True, chunkName="Asset Forge 应用 Transform")
+                undo_open = True
+            self.cmds.makeIdentity(targets, apply=True, translate=True, rotate=True, scale=True, normal=False)
+            if hasattr(self.cmds, "select"):
+                self.cmds.select(targets, replace=True)
+            self.last_scan = self.pipeline.scan_selection()
+            self.last_validation = None
+            self._set_summary("状态：Transform 已应用")
+            self._refresh_status_cards(self.last_scan, self.last_validation, self.last_texture_scan)
+            self._set_panel("asset_identity", format_asset_identity(self.last_scan))
+            self._set_panel("preflight", "已应用 Transform，请重新点击“检查”。")
+            self._set_results("已应用 Transform: {0}".format(", ".join([item.split("|")[-1] for item in targets])))
+            self._log_operation("apply_transform_fix", "success", outputs={"targets": targets})
+        except Exception as exc:
+            self._show_error(exc, "apply_transform_fix")
         finally:
             if undo_open:
                 self.cmds.undoInfo(closeChunk=True)
@@ -907,7 +948,7 @@ class AssetForgeMayaWindow(object):
                 "triangle_budget": self._triangle_budget(),
                 "mesh_prefix": self._name_prefix(),
                 "package_name_override": self._asset_name_override(),
-                "asset_name_override": self._asset_name_override(),
+                "asset_name_override": "",
                 "package_version_mode": self._package_version_mode(),
                 "texture_prefix": self._texture_prefix(),
                 "texture_set_token": self._texture_set_token(),
@@ -1058,11 +1099,11 @@ class AssetForgeMayaWindow(object):
         if scan.get("auto_selected_texture_sets"):
             lines.append("- 未填写贴图集关键词，系统已自动选择当前最优贴图集；如不正确，请填写 a1,d1 或完整名称片段后重新扫描。")
         elif scan.get("selected_texture_set_short_names"):
-            lines.append("- 已按当前关键词选择贴图集；确认数量和用途后继续预检。")
+            lines.append("- 已按当前关键词选择贴图集；确认数量和用途后继续检查。")
         elif scan.get("rename_suggestions"):
             lines.append("- 如需规范命名，先确认贴图集，再点击“一键添加贴图前缀”。")
         else:
-            lines.append("- 可以继续预检或导出。")
+            lines.append("- 可以继续检查或导出。")
         return "\n".join(lines)
 
     def _apply_preflight_to_ui(self, scan, validation, texture_scan, preflight_text, status=""):
@@ -1121,23 +1162,18 @@ class AssetForgeMayaWindow(object):
         self._set_label("asset_hint", format_asset_card(scan))
         self._set_label("texture_hint", format_texture_card(texture_scan, scan))
         self._set_label("preflight_hint", format_issue_card(validation))
-        self._set_panel("issue_locator", format_issue_locator(scan, validation, texture_scan))
 
     def _focus_asset_panel(self, *args):
         self._expand_sections("asset_section", "asset_detail_section")
-        self._set_panel("issue_locator", format_issue_locator(self.last_scan or {}, self.last_validation or {}, self.last_texture_scan or {}, preferred="asset"))
 
     def _focus_texture_panel(self, *args):
         self._expand_sections("texture_section", "texture_detail_section")
-        self._set_panel("issue_locator", format_issue_locator(self.last_scan or {}, self.last_validation or {}, self.last_texture_scan or {}, preferred="texture"))
 
     def _focus_preflight_panel(self, *args):
-        self._expand_sections("issue_locator_section", "preflight_section", "preflight_detail_section")
-        self._set_panel("issue_locator", format_issue_locator(self.last_scan or {}, self.last_validation or {}, self.last_texture_scan or {}, preferred="risk"))
+        self._expand_sections("preflight_section", "preflight_detail_section")
 
     def _focus_export_panel(self, *args):
         self._expand_sections("action_section", "preflight_section", "preflight_detail_section")
-        self._set_panel("issue_locator", format_issue_locator(self.last_scan or {}, self.last_validation or {}, self.last_texture_scan or {}, preferred="export"))
 
     def _expand_sections(self, *names):
         if not hasattr(self.cmds, "frameLayout"):
@@ -1288,9 +1324,9 @@ def format_empty_texture_details():
 def format_empty_preflight_details():
     return "\n".join(
         [
-            "尚未执行风险检查。",
-            "下一步：先扫描资产，再点击“检查风险”。",
-            "这里会列出阻断项、警告项和可点击的修复建议。",
+            "尚未执行检查。",
+            "下一步：先扫描资产，再点击“只检查”。",
+            "这里会列出阻断项、注意项和可点击的修复建议。",
         ]
     )
 
@@ -1302,7 +1338,7 @@ def format_issue_locator(scan, validation, texture_scan=None, preferred=""):
     warnings, errors = _checks_by_status(validation) if validation else ([], [])
     lines = [
         "定位：{0}".format(_locator_title(preferred, scan, validation, texture_scan)),
-        "资产：{0}    贴图：{1} 张    阻断/警告：{2}/{3}".format(
+        "资产：{0}    贴图：{1} 张    阻断/注意：{2}/{3}".format(
             scan.get("asset_name", "未扫描") or "未扫描",
             texture_scan.get("matched_count", len(scan.get("textures", []) or [])),
             len(errors),
@@ -1315,9 +1351,9 @@ def format_issue_locator(scan, validation, texture_scan=None, preferred=""):
         for item in errors[:6]:
             lines.extend(_format_locator_check(item, "阻断"))
     elif warnings:
-        lines.append("警告项：")
+        lines.append("注意项：")
         for item in warnings[:6]:
-            lines.extend(_format_locator_check(item, "警告"))
+            lines.extend(_format_locator_check(item, "注意"))
     elif texture_scan.get("issues"):
         lines.append("贴图问题：")
         for item in texture_scan.get("issues", [])[:6]:
@@ -1328,11 +1364,11 @@ def format_issue_locator(scan, validation, texture_scan=None, preferred=""):
             else:
                 lines.append("- {0}".format(item))
     elif validation.get("can_export"):
-        lines.append("结果：预检通过，可以导出 Package 给 UE Gate。")
-        lines.append("下一步：导出后在 UE Gate 生成入审报告、预演导入计划，再正式导入。")
+        lines.append("结果：检查通过，可以导出 Package。")
+        lines.append("下一步：导出后在 UE Gate 选择该 Package，点击“检查并导入”。")
     elif scan:
-        lines.append("结果：资产已扫描，尚未执行风险检查。")
-        lines.append("下一步：点击“检查风险”。")
+        lines.append("结果：资产已扫描，尚未执行检查。")
+        lines.append("下一步：点击“只检查”。")
     else:
         lines.append("结果：尚未扫描资产。")
         lines.append("下一步：选择资产根节点后点击“扫描资产”。")
@@ -1345,13 +1381,13 @@ def _locator_title(preferred, scan, validation, texture_scan):
     if preferred == "texture":
         return "贴图详情"
     if preferred == "risk":
-        return "风险检查详情"
+        return "检查详情"
     if preferred == "export":
         return "导出前状态"
     if validation:
         warnings, errors = _checks_by_status(validation)
         if errors or warnings:
-            return "风险检查详情"
+            return "检查详情"
     if texture_scan:
         return "贴图详情"
     if scan:
@@ -1391,14 +1427,14 @@ def _overview_status_line(scan, validation):
     scan = scan or {}
     validation = validation or {}
     if validation.get("can_export"):
-        return "通过 | 预检完成，可以导出 Package 给 UE Gate"
+        return "通过 | 检查完成，可以导出 Package"
     warnings, errors = _checks_by_status(validation) if validation else ([], [])
     if errors:
         return "阻断 | 先处理风险项，再重新检查"
     if warnings:
-        return "警告 | 复核警告项后再导出"
+        return "注意 | 复核注意项后再导出"
     if scan:
-        return "已扫描 | 下一步执行风险检查"
+        return "已扫描 | 下一步执行检查"
     return "未扫描 | 选择资产根节点，然后扫描"
 
 
@@ -1435,12 +1471,12 @@ def _overview_texture_line(texture_scan, scan=None):
 def _overview_risk_line(validation):
     validation = validation or {}
     if not validation:
-        return "未预检"
+        return "未检查"
     warnings, errors = _checks_by_status(validation)
     if errors:
-        return "阻断 {0} / 警告 {1}".format(len(errors), len(warnings))
+        return "阻断 {0} / 注意 {1}".format(len(errors), len(warnings))
     if warnings:
-        return "警告 {0}".format(len(warnings))
+        return "注意 {0}".format(len(warnings))
     return "通过" if validation.get("can_export") else "待确认"
 
 
@@ -1450,7 +1486,7 @@ def _overview_export_line(scan, validation, texture_scan=None):
     if not scan:
         return "等待扫描"
     if not validation:
-        return "等待预检"
+        return "等待检查"
     return "可导出" if validation.get("can_export") else "已阻断"
 
 
@@ -1483,17 +1519,17 @@ def format_texture_card(texture_scan, scan=None):
 def format_issue_card(validation):
     validation = validation or {}
     if not validation:
-        return "风险 | 未预检 · 扫描后检查"
+        return "风险 | 未检查 · 扫描后检查"
     warnings, errors = _checks_by_status(validation)
     if errors:
         prefix = "阻断"
     elif warnings:
-        prefix = "警告"
+        prefix = "注意"
     elif validation.get("can_export"):
         prefix = "通过"
     else:
         prefix = "待确认"
-    return "风险 | {0} · 阻断 {1} · 警告 {2}".format(prefix, len(errors), len(warnings))
+    return "风险 | {0} · 阻断 {1} · 注意 {2}".format(prefix, len(errors), len(warnings))
 
 
 def format_export_card(scan, validation, texture_scan=None):
@@ -1501,9 +1537,9 @@ def format_export_card(scan, validation, texture_scan=None):
     validation = validation or {}
     texture_scan = texture_scan or {}
     if not scan:
-        return "发布 | 等待扫描 · 资产和预检"
+        return "发布 | 等待扫描 · 资产和检查"
     if not validation:
-        return "发布 | 待预检 · 先检查"
+        return "发布 | 待检查 · 先检查"
     if validation.get("can_export"):
         texture_count = texture_scan.get("matched_count", len(scan.get("textures", [])))
         return "发布 | 可导出 · 贴图 {0} 张".format(texture_count)
@@ -1513,23 +1549,23 @@ def format_export_card(scan, validation, texture_scan=None):
 def format_scan_stage(scan):
     scan = scan or {}
     if not scan:
-        return "01 扫描资产 · 待开始"
-    return "01 扫描资产 · 已识别 {0}".format(scan.get("asset_name", "未命名"))
+        return "01 扫描 · 待开始"
+    return "01 扫描 · 已识别 {0}".format(scan.get("asset_name", "未命名"))
 
 
 def format_check_stage(scan, validation):
     scan = scan or {}
     validation = validation or {}
     if not scan:
-        return "02 检查风险 · 等待扫描"
+        return "02 检查 · 等待扫描"
     if not validation:
-        return "02 检查风险 · 可执行"
+        return "02 检查 · 可执行"
     warnings, errors = _checks_by_status(validation)
     if errors:
-        return "02 检查风险 · 阻断 {0} / 警告 {1}".format(len(errors), len(warnings))
+        return "02 检查 · 阻断 {0} / 注意 {1}".format(len(errors), len(warnings))
     if warnings:
-        return "02 检查风险 · 警告 {0} / 可复核".format(len(warnings))
-    return "02 检查风险 · 通过"
+        return "02 检查 · 注意 {0} / 可复核".format(len(warnings))
+    return "02 检查 · 通过"
 
 
 def format_export_stage(scan, validation):
@@ -1538,7 +1574,7 @@ def format_export_stage(scan, validation):
     if not scan:
         return "03 导出 Package · 等待扫描"
     if not validation:
-        return "03 导出 Package · 等待预检"
+        return "03 导出 Package · 等待检查"
     if validation.get("can_export"):
         return "03 导出 Package · 可导出"
     return "03 导出 Package · 阻断"
@@ -1562,7 +1598,7 @@ def _summary_state(text):
     text = text or ""
     if "错误" in text or "不可导出" in text or "阻断" in text:
         return "error"
-    if "警告" in text or "待确认" in text:
+    if "警告" in text or "注意" in text or "待确认" in text:
         return "warning"
     if "可导出" in text or "完成" in text or "就绪" in text:
         return "ok"
@@ -1697,7 +1733,7 @@ def format_preflight_summary(scan, validation, texture_scan=None):
                 )
             )
             lines.append("  下一步：点击“一键修复资产名前缀”或手动把导出资产名改成 {0}。".format(expected_name))
-    lines.extend(["", "警告项："])
+    lines.extend(["", "注意项："])
     if not warnings:
         lines.append("- 无")
     for item in warnings:
@@ -1757,7 +1793,7 @@ def format_next_action_summary(scan, validation, texture_scan=None):
     if texture_action and "未扫描" not in texture_action:
         return texture_action
     if (validation or {}).get("can_export"):
-        return "下一步：确认导出根目录和 UE 目标路径后，点击“导出 Package 给 UE Gate”。"
+        return "下一步：确认导出根目录和 UE 目标路径后，点击“检查并导出 Package”。"
     return "下一步：先点击“扫描”与“检查”，根据阻断项修复资产。"
 
 
@@ -1816,6 +1852,24 @@ def repair_actions_for_state(scan, validation, texture_scan=None):
                     "can_run_from_ui_flow": False,
                 }
             )
+    transform_check = _first_check(validation, "frozen_transform")
+    if transform_check or scan.get("frozen_transform") is False or scan.get("illegal_scale"):
+        actions.append(
+            {
+                "id": "apply_transform_fix",
+                "source_check": "frozen_transform",
+                "kind": "maya_ui_callback",
+                "label": "应用 Transform",
+                "problem": (transform_check or {}).get("message", "Transform 未归零或存在非法缩放"),
+                "button_label": "应用 Transform",
+                "target_label": "应用 Transform 按钮",
+                "ui_callback": "_apply_transform_fix",
+                "target_count": len(_transform_fix_targets(scan)),
+                "next_action": "点击“应用 Transform”后重新扫描和检查。",
+                "next_step": "点击“应用 Transform”后重新扫描和检查。",
+                "can_run_from_ui_flow": True,
+            }
+        )
     if texture_scan.get("issues"):
         actions.append(
             {
@@ -1890,12 +1944,12 @@ def _texture_scan_problem(texture_scan):
 
 def _next_action_for_texture_scan(scan):
     if not scan:
-        return "下一步：如使用外部贴图目录，请先点击“扫描贴图目录”；否则继续预检。"
+        return "下一步：如使用外部贴图目录，请先点击“扫描贴图目录”；否则继续检查。"
     if scan.get("issues"):
         return "下一步：检查贴图集问题；如存在多套贴图，请输入 a1,d1 这类关键词后重新扫描。"
     if scan.get("rename_suggestions"):
         return "下一步：如需要统一贴图命名，确认贴图集后再点击“一键添加贴图前缀”。"
-    return "下一步：贴图集已匹配，继续预检或导出。"
+    return "下一步：贴图集已匹配，继续检查或导出。"
 
 
 def _checks_by_status(validation):
@@ -1907,6 +1961,13 @@ def _checks_by_status(validation):
 
 def _blocking_checks(validation):
     return [item for item in validation.get("checks", []) if item.get("status") == "error"]
+
+
+def _first_check(validation, check_id):
+    for item in (validation or {}).get("checks", []) or []:
+        if item.get("id") == check_id:
+            return item
+    return None
 
 
 def _blocking_messages(validation):
@@ -1944,7 +2005,7 @@ def _next_action_for_check(item, scan=None):
         return "冻结 Transform 后重新扫描。"
     if check_id == "texture_set_selection":
         return "在“贴图集关键词”中选择正确候选贴图集后重新扫描。"
-    return "修复该检查项后重新预检。"
+    return "修复该检查项后重新检查。"
 
 
 def _source_label(source):
@@ -1973,6 +2034,29 @@ def _expected_prefixed_name(asset_name, item):
     if asset_name and not asset_name.startswith(prefix):
         return prefix + asset_name
     return asset_name or prefix + "Asset"
+
+
+def _transform_fix_targets(scan):
+    result = []
+    for item in list((scan or {}).get("asset_roots", []) or []) + list((scan or {}).get("transforms", []) or []):
+        if item and item not in result:
+            result.append(item)
+    return result
+
+
+def _format_transform_fix_preview(scan, targets):
+    lines = [
+        "Asset Forge 将在一个 Maya Undo Chunk 中执行 makeIdentity。",
+        "范围：当前资产根节点和 Mesh Transform。",
+        "资产：{0}".format((scan or {}).get("asset_name", "未命名")),
+        "节点数：{0}".format(len(targets or [])),
+        "",
+    ]
+    for item in list(targets or [])[:8]:
+        lines.append("- {0}".format(item.split("|")[-1]))
+    if len(targets or []) > 8:
+        lines.append("- ...")
+    return "\n".join(lines)
 
 
 def _format_project_settings(settings):
@@ -2015,7 +2099,7 @@ def _format_log_entry(data):
     if outputs.get("can_import") is not None:
         details.append("UE Gate={0}".format(_status_value_label(outputs.get("can_import"))))
     if outputs.get("warning_count") is not None:
-        details.append("警告={0}".format(outputs.get("warning_count")))
+        details.append("注意={0}".format(outputs.get("warning_count")))
     if outputs.get("error_count") is not None:
         details.append("阻断={0}".format(outputs.get("error_count")))
     if outputs.get("repair_action_count") is not None:
@@ -2050,13 +2134,14 @@ def _operation_label(operation):
     labels = {
         "startup": "打开工作台",
         "scan_model": "扫描资产",
-        "preflight": "检查风险",
+        "preflight": "检查",
         "scan_texture_folder": "扫描贴图目录",
         "export_start": "开始导出",
         "export_success": "导出成功",
         "export_preflight_blocked": "导出前检查未通过",
         "export_failed": "导出失败",
         "fix_asset_name_prefix": "修复资产名前缀",
+        "apply_transform_fix": "应用 Transform",
         "add_texture_prefix": "修复贴图前缀",
         "open_package_dir": "打开导出目录",
         "ai_analyze": "AI 分析",
@@ -2080,7 +2165,7 @@ def _log_status_label(status):
 
 def _import_status_label(value):
     if value == "pending_ue_dry_run":
-        return "待生成入审报告"
+        return "待导入检查"
     return value
 
 
@@ -2098,7 +2183,7 @@ def format_export_result_summary(result):
         "包体名：{0} | 模式：{1}".format(outputs.get("package_name") or "未记录", outputs.get("package_version_mode") or "overwrite"),
         "清单：{0}".format(outputs.get("manifest_path") or "未写出"),
         "报告：{0}".format(outputs.get("report_path") or "未写出"),
-        "状态：可导出={0} | UE Gate={1} | 警告/阻断={2}/{3}".format(
+        "状态：可导出={0} | UE Gate={1} | 注意/阻断={2}/{3}".format(
             _bool_status(outputs.get("can_export")),
             _import_status_label(outputs.get("can_import") or "pending_ue_dry_run"),
             outputs.get("warning_count", 0),
@@ -2117,7 +2202,7 @@ def format_export_blocked_result(scan, validation, report_path=""):
         "导出阻断 | Package 未生成",
         "发布包：未生成",
         "报告：{0}".format(outputs.get("report_path") or "未写出"),
-        "状态：可导出={0} | UE Gate={1} | 警告/阻断={2}/{3}".format(
+        "状态：可导出={0} | UE Gate={1} | 注意/阻断={2}/{3}".format(
             _bool_status(outputs.get("can_export")),
             _bool_status(outputs.get("can_import")),
             outputs.get("warning_count", 0),
@@ -2160,8 +2245,8 @@ def _export_log_outputs(result):
         "package_version_mode": ((result.get("manifest", {}) or {}).get("package_naming", {}) or {}).get("version_mode", ""),
         "package_naming": (result.get("manifest", {}) or {}).get("package_naming", {}),
         "report_path": result.get("export_report_path", ""),
-        "operator_action": "UE Gate: 选择该 Package -> 生成入审报告 -> 预演导入计划 -> 正式导入",
-        "next_step": "在 UE Gate 里选择该 Package，按清单生成入审报告、预演导入计划、正式导入",
+        "operator_action": "UE Gate: 选择该 Package -> 检查并导入",
+        "next_step": "在 UE Gate 里选择该 Package，确认检查结果后导入",
         "portfolio_capture_hint": result.get("portfolio_capture_hint")
         or _portfolio_capture_hint(True, scan, validation, result.get("export_report_path", "")),
     }
@@ -2206,7 +2291,7 @@ def _portfolio_capture_hint(can_export, scan, validation, report_path="", repair
     asset_name = (scan or {}).get("asset_name", "Asset")
     normalized_report_path = (report_path or "").replace("\\", "/")
     if can_export:
-        return "录制前看这里：资产 {0} 已可导出；打开导出报告 {1}；下一步在 UE Gate 选择该 Package，生成入审报告、预演导入计划、正式导入。".format(
+        return "录制前看这里：资产 {0} 已可导出；打开导出报告 {1}；下一步在 UE Gate 选择该 Package，检查并导入。".format(
             asset_name,
             normalized_report_path or "待生成报告",
         )

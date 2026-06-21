@@ -116,7 +116,7 @@ class UnrealEditorWidgetSchemaTest(unittest.TestCase):
         self.assertIn("Asset Forge 导入门禁工作台", _text_by_widget(plan, "AFG_BrandName"))
         self.assertEqual(
             [item["title"] for item in plan["section_layout"]],
-            ["1 扫描与选择导出包", "2 生成入审报告", "3 导入历史与正式导入", "4 报告与下一步"],
+            ["1 包体来源", "2 导入控制", "3 包体内容", "4 导入策略"],
         )
         self.assertTrue(all(item["collapsible"] for item in plan["section_layout"]))
 
@@ -165,8 +165,8 @@ class UnrealEditorWidgetSchemaTest(unittest.TestCase):
         self.assertIn("导入历史", _text_by_widget(plan, "AFG_ImportHistoryTitle"))
         self.assertIn("导入策略分组", _text_by_widget(plan, "AFG_ApprovalTitle"))
         self.assertIn("基础导入 / 网格构建 / 材质贴图 / 高级设置", _text_by_widget(plan, "AFG_ApprovalSummary"))
-        self.assertIn("入审报告只写报告", _text_by_widget(plan, "AFG_ImportScopeSummary"))
-        self.assertIn("入审报告", _text_by_widget(plan, "AFG_IssueTitle"))
+        self.assertIn("检查只写报告", _text_by_widget(plan, "AFG_ImportScopeSummary"))
+        self.assertIn("检查报告", _text_by_widget(plan, "AFG_IssueTitle"))
         self.assertIn("打开报告", _text_by_widget(plan, "AFG_OpenReportButtonLabel"))
 
     def test_editor_widget_validation_rejects_schema_regressions(self):

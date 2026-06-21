@@ -16,7 +16,7 @@ import zlib
 from asset_forge.blender.fbx_exporter import BlenderFbxExporter
 from asset_forge.blender.scanner import BlenderStaticPropScanner, clean_asset_name_prefix
 from asset_forge.maya.manifest_writer import IMPORT_PRESET_BY_PLATFORM
-from asset_forge.shared.constants import SOURCE_DCC_BLENDER, TARGET_PLATFORM_HIGH_END_MOBILE
+from asset_forge.shared.constants import SOURCE_DCC_BLENDER, TARGET_PLATFORM_PC
 from asset_forge.shared.material_profile_schema import resolve_material_profile
 
 
@@ -70,7 +70,7 @@ class BlenderAssetForgeProvider(object):
     def preflight_static_prop(self, params=None):
         params = params or {}
         scan = self._scan_for_validation(params)
-        target_platform = params.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE
+        target_platform = params.get("target_platform") or TARGET_PLATFORM_PC
         validation = self._validation(scan, target_platform, params)
         return {
             "status": "success" if validation.get("can_export") else "blocked",
@@ -90,7 +90,7 @@ class BlenderAssetForgeProvider(object):
             raise RuntimeError("缺少 export_root，无法写出 Blender package contract")
         target_path = sanitize_unreal_package_path(params.get("target_path") or "/Game/Props")
         material_profile = params.get("material_profile") or "Props_Opaque_PainterUE_ARM"
-        target_platform = params.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE
+        target_platform = params.get("target_platform") or TARGET_PLATFORM_PC
         use_asset_folder = params.get("use_asset_folder", True)
         scan = self._scan_for_validation(dict(params, target_path=target_path))
         validation = self._validation(scan, target_platform, params)
@@ -120,8 +120,10 @@ class BlenderAssetForgeProvider(object):
             "manifest_path": package["manifest_path"],
             "export_report_path": package["export_report_path"],
             "package_dir": package["package_dir"],
+            "scan": scan,
             "manifest": manifest,
             "validation": validation,
+            "can_export": bool(validation.get("can_export")),
             "next_action": report["next_action"],
         }
 
@@ -132,7 +134,7 @@ class BlenderAssetForgeProvider(object):
             raise RuntimeError("缺少 export_root，无法导出 Blender package")
         target_path = sanitize_unreal_package_path(params.get("target_path") or "/Game/Props")
         material_profile = params.get("material_profile") or "Props_Opaque_PainterUE_ARM"
-        target_platform = params.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE
+        target_platform = params.get("target_platform") or TARGET_PLATFORM_PC
         use_asset_folder = params.get("use_asset_folder", True)
         scan = self._scan_for_validation(dict(params, target_path=target_path))
         validation = self._validation(scan, target_platform, params)
@@ -148,7 +150,9 @@ class BlenderAssetForgeProvider(object):
                 "fbx_export_status": "blocked",
                 "export_report_path": package["export_report_path"],
                 "package_dir": package["package_dir"],
+                "scan": scan,
                 "validation": validation,
+                "can_export": False,
                 "next_action": "修复 Blender Static Prop preflight 阻断项后再导出。",
             }
         exported_fbx = self.exporter.export_objects(scan.get("asset_roots", []), package["fbx_path"], rename_map=self._export_name_map(scan))
@@ -183,8 +187,10 @@ class BlenderAssetForgeProvider(object):
             "manifest_path": package["manifest_path"],
             "export_report_path": package["export_report_path"],
             "package_dir": package["package_dir"],
+            "scan": scan,
             "manifest": manifest,
             "validation": validation,
+            "can_export": bool(validation.get("can_export")),
             "next_action": "运行 UE accept-flow 导入 Blender package。" if fbx_exists else "检查 Blender FBX exporter 输出文件。",
         }
 

@@ -496,6 +496,26 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertEqual(manifest["project_preset"]["preset_name"], "Team")
         self.assertTrue(result["package_dir"].endswith("/SM_B_Blender_v002"))
 
+    def test_export_result_includes_scan_for_ui_status_counts(self):
+        class WritingExporter(object):
+            def export_objects(self, _asset_roots, fbx_path, rename_map=None):
+                parent = os.path.dirname(fbx_path)
+                if parent and not os.path.isdir(parent):
+                    os.makedirs(parent)
+                with open(fbx_path, "wb") as stream:
+                    stream.write(b"fbx")
+                return fbx_path
+
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(root_name="B"), exporter=WritingExporter())
+
+        result = provider.export_static_prop_package({"export_root": self.temp_dir, "target_path": "/Game/Props/Blender"})
+
+        self.assertEqual(result["status"], "success")
+        self.assertIn("scan", result)
+        self.assertTrue(result["scan"]["materials"])
+        self.assertTrue(result["scan"]["textures"])
+        self.assertEqual(len(result["scan"]["textures"]), len(result["manifest"]["textures"]))
+
     def test_source_name_suffix_drives_blender_default_publish_identity(self):
         provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(root_name="B"))
 

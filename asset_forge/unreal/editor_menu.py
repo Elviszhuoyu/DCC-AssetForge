@@ -150,7 +150,7 @@ def preview_gate_for_package_dir(package_dir, report_path=None, unreal_module=No
     )
     _notify_user(
         "Asset Forge Gate",
-        "入审报告完成：{0}\n报告：{1}".format(report.get("status", ""), report.get("report_path", "")),
+        "检查报告完成：{0}\n报告：{1}".format(report.get("status", ""), report.get("report_path", "")),
         unreal_module,
     )
     return report
@@ -185,7 +185,7 @@ def dry_run_gate_for_package_dir(package_dir, report_path=None, unreal_module=No
     )
     _notify_user(
         "Asset Forge Gate",
-        "预演导入计划完成：{0}\n报告：{1}".format(report.get("status", ""), report.get("report_path", "")),
+        "导入计划检查完成：{0}\n报告：{1}".format(report.get("status", ""), report.get("report_path", "")),
         unreal_module,
     )
     return report

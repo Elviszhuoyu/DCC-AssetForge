@@ -51,6 +51,7 @@ class MayaProjectSettingsTest(unittest.TestCase):
         self.assertEqual(settings["mesh_prefix"], "SM_")
         self.assertEqual(settings["texture_set_token"], "")
         self.assertEqual(settings["package_version_mode"], "overwrite")
+        self.assertEqual(settings["target_platform"], "pc")
 
     def test_version_mode_aliases_and_invalid_padding_fall_back(self):
         settings = normalize_project_settings({"package_version_mode": "versioned", "package_version_padding": "bad"})

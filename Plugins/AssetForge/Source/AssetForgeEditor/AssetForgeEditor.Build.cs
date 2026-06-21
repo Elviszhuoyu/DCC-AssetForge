@@ -11,6 +11,7 @@ public class AssetForgeEditor : ModuleRules
             {
                 "Core",
                 "CoreUObject",
+                "DesktopPlatform",
                 "Engine",
                 "InputCore",
                 "Json",

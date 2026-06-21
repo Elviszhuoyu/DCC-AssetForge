@@ -34,10 +34,10 @@ class BlenderUiStateTest(unittest.TestCase):
         self.assertEqual(ui._status_icon("warning"), "QUESTION")
         self.assertNotEqual(ui._status_icon("warning"), "ERROR")
         self.assertEqual(ui._status_badge("ok"), "[通过]")
-        self.assertEqual(ui._status_badge("warning"), "[警告]")
+        self.assertEqual(ui._status_badge("warning"), "[注意]")
         self.assertEqual(ui._status_badge("blocked"), "[阻断]")
         self.assertEqual(ui._status_icon_value("ok"), 0)
-        self.assertEqual(ui._line_state("状态：可导出 | 分数：56 | 通过/警告/阻断：8/4/0"), "warning")
+        self.assertEqual(ui._line_state("状态：可导出 | 分数：56 | 通过/注意/阻断：8/4/0"), "warning")
 
     def test_texture_detail_separates_node_folder_and_placeholder_sources(self):
         ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
@@ -101,6 +101,23 @@ class BlenderUiStateTest(unittest.TestCase):
         self.assertIn(ui.ASSETFORGE_OT_restart_bridge, ui.CLASSES)
         self.assertEqual(ui.ASSETFORGE_OT_restart_bridge.bl_idname, "asset_forge.restart_bridge")
 
+    def test_transform_fix_operator_is_registered_with_blender_undo(self):
+        ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
+
+        self.assertIn(ui.ASSETFORGE_OT_apply_transform_fix, ui.CLASSES)
+        self.assertEqual(ui.ASSETFORGE_OT_apply_transform_fix.bl_idname, "asset_forge.apply_transform_fix")
+        self.assertIn("UNDO", ui.ASSETFORGE_OT_apply_transform_fix.bl_options)
+
+    def test_transform_fix_collects_meshes_under_effective_root(self):
+        ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
+        root = types.SimpleNamespace(name="Root", type="EMPTY", parent=None)
+        mesh = types.SimpleNamespace(name="MeshA", type="MESH", parent=root, children_recursive=[])
+        helper = types.SimpleNamespace(name="Helper", type="EMPTY", parent=root, children_recursive=[])
+        root.children_recursive = [mesh, helper]
+        context = types.SimpleNamespace(selected_objects=[mesh], active_object=mesh)
+
+        self.assertEqual(ui._transform_fix_mesh_objects(context), [mesh])
+
     def test_project_preset_buttons_match_maya_apply_flow(self):
         ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
 
@@ -110,6 +127,32 @@ class BlenderUiStateTest(unittest.TestCase):
         self.assertNotIn("CSV", ui.ASSETFORGE_OT_load_project_preset.bl_description)
         self.assertIn("JSON", ui.ASSETFORGE_OT_save_project_preset.bl_description)
         self.assertNotIn("CSV", ui.ASSETFORGE_OT_save_project_preset.bl_description)
+
+    def test_export_result_keeps_manifest_counts_when_scan_is_missing(self):
+        ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
+        settings = types.SimpleNamespace()
+        result = {
+            "status": "success",
+            "fbx_export_status": "success",
+            "can_continue_to_ue": True,
+            "can_export": True,
+            "package_dir": "D:/Exports/SM_B",
+            "next_action": "运行 UE accept-flow 导入 Blender package。",
+            "manifest": {
+                "asset_name": "SM_B_Blender",
+                "materials": [{"name": "B_a1"}, {"name": "B_b1"}],
+                "textures": [{"usage": "base_color"}, {"usage": "normal"}, {"usage": "packed_arm"}],
+                "package_naming": {"package_name": "Blender_Exp_v003", "version_mode": "auto_increment"},
+            },
+            "validation": {"can_export": True, "summary": {"warnings": 1, "errors": 0, "passes": 8}, "checks": []},
+        }
+
+        ui._apply_result_to_settings(settings, "export", result, "D:/Reports/export.json")
+
+        self.assertEqual(settings.last_asset_name, "资产 | SM_B_Blender")
+        self.assertEqual(settings.last_texture_status, "贴图 | 2 材质 / 3 贴图")
+        self.assertEqual(settings.last_issue_status, "注意 | 1 项")
+        self.assertEqual(settings.last_export_status, "发布 | 已导出")
 
     def test_params_include_publish_rule_fields(self):
         ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
@@ -136,7 +179,9 @@ class BlenderUiStateTest(unittest.TestCase):
         params = ui._params(context)
 
         self.assertEqual(params["selection"], ["B"])
-        self.assertEqual(params["asset_name_override"], "SM_B_Blender")
+        self.assertEqual(params["package_name_override"], "SM_B_Blender")
+        self.assertEqual(params["asset_name_override"], "")
+        self.assertEqual(params["source_name_suffix"], "")
         self.assertEqual(params["mesh_prefix"], "AF_")
         self.assertEqual(params["triangle_budget"], 123)
 

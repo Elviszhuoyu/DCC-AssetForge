@@ -26,6 +26,8 @@ class UnrealEditorWidgetActionsTest(unittest.TestCase):
                 "dry_run_package",
                 "preview_package_gate",
                 "open_report",
+                "preview_cleanup_generated_props",
+                "cleanup_generated_props",
                 "import_package",
                 "dry_run_all",
                 "import_all",
@@ -38,10 +40,10 @@ class UnrealEditorWidgetActionsTest(unittest.TestCase):
         descriptions = [item["description"] for item in plan]
 
         self.assertIn("刷新包体", labels)
-        self.assertIn("生成入审报告", labels)
-        self.assertIn("预演导入计划", labels)
-        self.assertIn("正式导入", labels)
-        self.assertTrue(any("入审报告" in item or "预演导入计划" in item for item in descriptions))
+        self.assertIn("仅检查", labels)
+        self.assertIn("仅检查导入计划", labels)
+        self.assertIn("仅导入已放行", labels)
+        self.assertTrue(any("导入计划" in item or "导入状态" in item for item in descriptions))
 
     def test_actions_delegate_to_pipeline(self):
         pipeline = FakePipeline()

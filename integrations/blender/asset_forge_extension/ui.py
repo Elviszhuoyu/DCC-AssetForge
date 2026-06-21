@@ -35,7 +35,7 @@ _STATUS_ICON_COLORS = {
 
 
 class ASSETFORGE_PG_settings(bpy.types.PropertyGroup):
-    target_platform: bpy.props.EnumProperty(name="目标平台", items=[(TARGET_PLATFORM_PC, "pc", "PC"), (TARGET_PLATFORM_HIGH_END_MOBILE, "high_end_mobile", "高端移动"), (TARGET_PLATFORM_MOBILE, "mobile", "移动")], default=TARGET_PLATFORM_HIGH_END_MOBILE)  # type: ignore
+    target_platform: bpy.props.EnumProperty(name="目标平台", items=[(TARGET_PLATFORM_PC, "pc", "PC"), (TARGET_PLATFORM_HIGH_END_MOBILE, "high_end_mobile", "高端移动"), (TARGET_PLATFORM_MOBILE, "mobile", "移动")], default=TARGET_PLATFORM_PC)  # type: ignore
     export_root: bpy.props.StringProperty(name="导出根目录", subtype="DIR_PATH", default="")  # type: ignore
     target_path: bpy.props.StringProperty(name="UE 目标路径", default=DEFAULT_TARGET_PATH)  # type: ignore
     material_profile: bpy.props.StringProperty(name="材质匹配规则", default=DEFAULT_MATERIAL_PROFILE)  # type: ignore
@@ -55,14 +55,14 @@ class ASSETFORGE_PG_settings(bpy.types.PropertyGroup):
     texture_streaming_policy: bpy.props.EnumProperty(name="Texture Streaming 策略", items=[("project_default", "project_default", "项目默认"), ("streaming", "streaming", "Streaming"), ("never_stream", "never_stream", "Never Stream")], default="project_default")  # type: ignore
     texture_group: bpy.props.StringProperty(name="Texture Group 建议", default="project_default")  # type: ignore
     last_status: bpy.props.StringProperty(name="状态", default="未扫描 | 等待选择资产")  # type: ignore
-    next_action: bpy.props.StringProperty(name="下一步", default="下一步 | 选中资产根节点 -> 扫描资产")  # type: ignore
+    next_action: bpy.props.StringProperty(name="下一步", default="下一步 | 选中资产根节点 -> 检查并导出 Package")  # type: ignore
     last_asset_name: bpy.props.StringProperty(name="资产", default="未扫描")  # type: ignore
     last_texture_status: bpy.props.StringProperty(name="贴图", default="未扫描")  # type: ignore
-    last_issue_status: bpy.props.StringProperty(name="风险", default="未预检")  # type: ignore
+    last_issue_status: bpy.props.StringProperty(name="风险", default="未检查")  # type: ignore
     last_export_status: bpy.props.StringProperty(name="发布", default="等待扫描")  # type: ignore
     asset_detail: bpy.props.StringProperty(name="资产详情", default="当前资产根节点：未扫描\n当前导出资产名：未扫描\n来源：未扫描")  # type: ignore
     texture_detail: bpy.props.StringProperty(name="贴图详情", default="贴图匹配：未扫描\n贴图集关键词可留空：系统会按材质名和贴图目录自动推断；多套无法唯一判断时会在检查阶段阻断。")  # type: ignore
-    preflight_detail: bpy.props.StringProperty(name="检查详情", default="风险检查：未预检")  # type: ignore
+    preflight_detail: bpy.props.StringProperty(name="检查详情", default="检查：未执行")  # type: ignore
     result_detail: bpy.props.StringProperty(name="结果", default="等待操作")  # type: ignore
     last_report_path: bpy.props.StringProperty(name="报告", default="")  # type: ignore
 
@@ -138,7 +138,7 @@ class ASSETFORGE_OT_restart_bridge(bpy.types.Operator):
 
 class ASSETFORGE_OT_scan_selection(bpy.types.Operator):
     bl_idname = "asset_forge.scan_selection"
-    bl_label = "1 扫描资产"
+    bl_label = "只扫描"
     bl_description = "扫描当前选择；若只激活子物体，会自动提升到最上层父组"
 
     def execute(self, context):
@@ -147,7 +147,7 @@ class ASSETFORGE_OT_scan_selection(bpy.types.Operator):
 
 class ASSETFORGE_OT_preflight_selection(bpy.types.Operator):
     bl_idname = "asset_forge.preflight_selection"
-    bl_label = "2 检查风险"
+    bl_label = "只检查"
     bl_description = "运行 Static Prop 共享规则检查"
 
     def execute(self, context):
@@ -156,11 +156,50 @@ class ASSETFORGE_OT_preflight_selection(bpy.types.Operator):
 
 class ASSETFORGE_OT_export_package(bpy.types.Operator):
     bl_idname = "asset_forge.export_package"
-    bl_label = "3 导出 Package 给 UE Gate"
-    bl_description = "导出 FBX、材质/贴图占位与 manifest，交给 UE Gate 接收"
+    bl_label = "检查并导出 Package"
+    bl_description = "先检查当前资产，再导出 FBX、材质/贴图占位与 manifest，交给 UE Gate 接收"
 
     def execute(self, context):
         return _run_provider_action(context, "export")
+
+
+class ASSETFORGE_OT_apply_transform_fix(bpy.types.Operator):
+    bl_idname = "asset_forge.apply_transform_fix"
+    bl_label = "应用 Transform"
+    bl_description = "应用当前资产 Mesh 的位移、旋转和缩放；支持 Blender Undo，不保存 .blend"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        settings = context.scene.asset_forge_settings
+        targets = _transform_fix_mesh_objects(context)
+        if not targets:
+            self.report({"WARNING"}, "没有可应用 Transform 的 Mesh 对象")
+            return {"CANCELLED"}
+        original_selection = list(getattr(context, "selected_objects", []) or [])
+        original_active = getattr(context, "active_object", None)
+        try:
+            bpy.ops.object.select_all(action="DESELECT")
+            for obj in targets:
+                obj.select_set(True)
+            context.view_layer.objects.active = targets[0]
+            bpy.ops.object.transform_apply(location=True, rotation=True, scale=True, properties=True)
+        except Exception as exc:
+            settings.result_detail = "Transform 修复失败：{0}".format(exc)
+            return {"CANCELLED"}
+        finally:
+            try:
+                bpy.ops.object.select_all(action="DESELECT")
+                for obj in original_selection:
+                    obj.select_set(True)
+                if original_active is not None:
+                    context.view_layer.objects.active = original_active
+            except Exception:
+                pass
+        settings.last_status = "已修复 | Transform"
+        settings.last_issue_status = "风险 | 待复检"
+        settings.preflight_detail = "已应用 Transform。\n下一步：点击“只检查”重新检查。"
+        settings.result_detail = "已应用 Transform: {0}".format(", ".join([obj.name for obj in targets]))
+        return {"FINISHED"}
 
 
 class ASSETFORGE_OT_load_project_preset(bpy.types.Operator):
@@ -301,17 +340,17 @@ class ASSETFORGE_PT_status_panel(bpy.types.Panel):
 
 class ASSETFORGE_PT_actions_panel(bpy.types.Panel):
     bl_idname = "ASSETFORGE_PT_actions_panel"
-    bl_label = "发布动作"
+    bl_label = "导出控制"
     bl_parent_id = "ASSETFORGE_PT_main_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
 
     def draw(self, context):
         layout = self.layout
+        layout.operator("asset_forge.export_package", text="检查并导出 Package", icon="EXPORT")
         row = layout.row(align=True)
-        row.operator("asset_forge.scan_selection", text="1 扫描", icon="VIEWZOOM")
-        row.operator("asset_forge.preflight_selection", text="2 检查", icon="CHECKMARK")
-        layout.operator("asset_forge.export_package", text="3 导出 Package 给 UE Gate", icon="EXPORT")
+        row.operator("asset_forge.scan_selection", text="只扫描", icon="VIEWZOOM")
+        row.operator("asset_forge.preflight_selection", text="只检查", icon="CHECKMARK")
         _draw_mcp_action_controls(layout)
 
 
@@ -345,6 +384,7 @@ class ASSETFORGE_PT_asset_panel(bpy.types.Panel):
         layout.prop(s, "asset_name_override")
         layout.prop(s, "package_version_mode")
         layout.prop(s, "triangle_budget")
+        layout.operator("asset_forge.apply_transform_fix", text="应用 Transform", icon="EMPTY_ARROWS")
         _draw_text_block(layout, s.asset_detail)
 
 
@@ -367,7 +407,7 @@ class ASSETFORGE_PT_texture_panel(bpy.types.Panel):
 
 class ASSETFORGE_PT_preflight_panel(bpy.types.Panel):
     bl_idname = "ASSETFORGE_PT_preflight_panel"
-    bl_label = "4 风险检查"
+    bl_label = "4 检查详情"
     bl_parent_id = "ASSETFORGE_PT_main_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -389,7 +429,7 @@ class ASSETFORGE_PT_policy_panel(bpy.types.Panel):
     def draw(self, context):
         s = context.scene.asset_forge_settings
         layout = self.layout
-        layout.label(text="基础导入：Blender 写 Package，UE Gate 入审/预演/导入。", icon="FILE_TICK")
+        layout.label(text="基础导入：Blender 写 Package，UE Gate 检查通过后导入。", icon="FILE_TICK")
         layout.label(text="网格构建", icon="MESH_DATA")
         layout.prop(s, "nanite_policy")
         layout.prop(s, "static_mesh_lod_group")
@@ -426,6 +466,7 @@ CLASSES = (
     ASSETFORGE_OT_scan_selection,
     ASSETFORGE_OT_preflight_selection,
     ASSETFORGE_OT_export_package,
+    ASSETFORGE_OT_apply_transform_fix,
     ASSETFORGE_OT_load_project_preset,
     ASSETFORGE_OT_save_project_preset,
     ASSETFORGE_OT_apply_project_preset,
@@ -522,8 +563,8 @@ def _params(context):
         "target_path": s.target_path or DEFAULT_TARGET_PATH,
         "material_profile": s.material_profile or DEFAULT_MATERIAL_PROFILE,
         "package_name_override": s.asset_name_override,
-        "asset_name_override": s.asset_name_override,
-        "source_name_suffix": "Blender",
+        "asset_name_override": "",
+        "source_name_suffix": "",
         "package_version_mode": getattr(s, "package_version_mode", "overwrite"),
         "mesh_prefix": s.mesh_prefix or "SM_",
         "triangle_budget": int(s.triangle_budget or 0),
@@ -544,12 +585,12 @@ def _project_settings_from_blender(s):
             "triangle_budget": int(getattr(s, "triangle_budget", 0) or 0),
             "mesh_prefix": getattr(s, "mesh_prefix", "SM_") or "SM_",
             "package_name_override": getattr(s, "asset_name_override", ""),
-            "asset_name_override": getattr(s, "asset_name_override", ""),
+            "asset_name_override": "",
             "package_version_mode": getattr(s, "package_version_mode", "overwrite"),
             "texture_prefix": getattr(s, "texture_prefix", "T_") or "T_",
             "texture_set_token": getattr(s, "texture_set_token", ""),
             "ue_target_path": getattr(s, "target_path", DEFAULT_TARGET_PATH) or DEFAULT_TARGET_PATH,
-            "target_platform": getattr(s, "target_platform", TARGET_PLATFORM_HIGH_END_MOBILE),
+            "target_platform": getattr(s, "target_platform", TARGET_PLATFORM_PC),
             "material_profile": getattr(s, "material_profile", DEFAULT_MATERIAL_PROFILE) or DEFAULT_MATERIAL_PROFILE,
             "virtual_texture_policy": getattr(s, "virtual_texture_policy", "project_default") or "project_default",
             "texture_streaming_policy": getattr(s, "texture_streaming_policy", "project_default") or "project_default",
@@ -608,6 +649,24 @@ def _effective_root_names(context):
     return roots
 
 
+def _transform_fix_mesh_objects(context):
+    objects = list(getattr(context, "selected_objects", []) or [])
+    active = getattr(context, "active_object", None)
+    if not objects and active is not None:
+        objects = [active]
+    roots = []
+    for obj in objects:
+        root = _top_parent(obj)
+        if root not in roots:
+            roots.append(root)
+    meshes = []
+    for root in roots:
+        for obj in [root] + list(getattr(root, "children_recursive", []) or []):
+            if getattr(obj, "type", "") == "MESH" and obj not in meshes:
+                meshes.append(obj)
+    return meshes
+
+
 def _top_parent(obj):
     current = obj
     visited = set()
@@ -631,6 +690,8 @@ def _is_organization_root(obj):
 
 def _apply_result_to_settings(s, action, result, report_path):
     scan = result.get("scan", {}) if isinstance(result, dict) else {}
+    if not scan and isinstance(result, dict):
+        scan = _scan_from_manifest(result.get("manifest", {}) or {})
     validation = result.get("validation", {}) if isinstance(result, dict) else {}
     summary = validation.get("summary", {}) if isinstance(validation, dict) else {}
     checks = validation.get("checks", []) if isinstance(validation, dict) else []
@@ -644,31 +705,50 @@ def _apply_result_to_settings(s, action, result, report_path):
     s.texture_detail = _format_texture_detail(scan)
     if action == "scan":
         s.last_status = "已扫描 | {0}".format(asset_name)
-        s.last_issue_status = "风险 | 未预检"
+        s.last_issue_status = "风险 | 未检查"
         s.last_export_status = "发布 | 等待检查"
-        s.preflight_detail = "风险检查：未预检\n下一步：点击“2 检查风险”。"
+        s.preflight_detail = "检查：未执行\n下一步：点击“只检查”，或直接点击“检查并导出 Package”。"
         s.result_detail = "扫描完成。\n报告：{0}".format(report_path)
-        s.next_action = "下一步 | 检查风险 -> 修复阻断项 -> 导出 Package"
+        s.next_action = "下一步 | 检查 -> 修复阻断项 -> 导出 Package"
         return
     s.preflight_detail = _format_preflight_detail(validation)
     if errors:
-        s.last_issue_status = "阻断 | {0} 项 / 警告 {1}".format(errors, warnings)
+        s.last_issue_status = "阻断 | {0} 项 / 注意 {1}".format(errors, warnings)
         s.last_export_status = "发布 | 已阻断"
         s.next_action = _next_action_from_checks(checks)
     elif warnings:
-        s.last_issue_status = "警告 | {0} 项".format(warnings)
+        s.last_issue_status = "注意 | {0} 项".format(warnings)
         s.last_export_status = "发布 | 可导出" if result.get("can_export") else "发布 | 待确认"
-        s.next_action = "下一步 | 可导出，但建议确认警告项后再进入 UE Gate。"
+        s.next_action = "下一步 | 可导出，但建议确认注意项后再进入 UE Gate。"
     else:
         s.last_issue_status = "通过 | 0 阻断"
         s.last_export_status = "发布 | 可导出"
-        s.next_action = "下一步 | 导出 Package 给 UE Gate。"
+        s.next_action = "下一步 | 检查并导出 Package。"
     if action == "preflight":
         s.last_status = "已检查 | 可导出 {0}".format(bool(result.get("can_export")))
-        s.result_detail = "风险检查完成。\n报告：{0}".format(report_path)
+        s.result_detail = "检查完成。\n报告：{0}".format(report_path)
     else:
         s.last_status = "导出 {0} | FBX {1}".format(result.get("status", ""), result.get("fbx_export_status", ""))
+        if result.get("status") == "success" and result.get("can_continue_to_ue"):
+            s.last_export_status = "发布 | 已导出"
+            s.next_action = "下一步 | 在 UE Gate 选择该 Package，点击“检查并导入”。"
         s.result_detail = _format_export_result(result, report_path)
+
+
+def _scan_from_manifest(manifest):
+    if not isinstance(manifest, dict) or not manifest:
+        return {}
+    return {
+        "asset_name": manifest.get("asset_name", ""),
+        "materials": manifest.get("materials", []) or [],
+        "textures": manifest.get("textures", []) or [],
+        "material_slot_details": manifest.get("material_slots", []) or [],
+        "material_texture_sets": manifest.get("material_texture_sets", []) or [],
+        "material_texture_bindings": manifest.get("material_texture_bindings", []) or [],
+        "texture_folder_scan": manifest.get("texture_folder_scan", {}) or {},
+        "texture_selection_policy": manifest.get("texture_selection_policy", {}) or {},
+        "package_naming": manifest.get("package_naming", {}) or {},
+    }
 
 
 def _format_asset_detail(scan):
@@ -772,9 +852,9 @@ def _textures_from_scan(scan):
 
 def _format_preflight_detail(validation):
     if not validation:
-        return "风险检查：未预检"
+        return "检查：未执行"
     summary = validation.get("summary", {}) or {}
-    lines = ["状态：{0} | 分数：{1} | 通过/警告/阻断：{2}/{3}/{4}".format("可导出" if validation.get("can_export") else "不可导出", validation.get("score", 0), summary.get("passes", 0), summary.get("warnings", 0), summary.get("errors", 0))]
+    lines = ["状态：{0} | 分数：{1} | 通过/注意/阻断：{2}/{3}/{4}".format("可导出" if validation.get("can_export") else "不可导出", validation.get("score", 0), summary.get("passes", 0), summary.get("warnings", 0), summary.get("errors", 0))]
     for item in validation.get("checks", []) or []:
         lines.append("{0} {1}：{2}".format(_check_marker(item.get("status")), item.get("label") or item.get("id"), item.get("message", "")))
     return "\n".join(lines)
@@ -799,7 +879,7 @@ def _next_action_from_checks(checks):
             if item.get("id") == "frozen_transform":
                 return "下一步 | 冻结/应用根节点 Transform 后重新检查。"
             return "下一步 | 修复阻断项“{0}”后重新检查。".format(item.get("label") or item.get("id"))
-    return "下一步 | 确认警告项后导出 Package。"
+    return "下一步 | 确认注意项后导出 Package。"
 
 
 def _bridge_module(try_enable=False):
@@ -956,7 +1036,7 @@ def _issue_state(s):
         return "error"
     if "阻断" in text:
         return "blocked"
-    if "警告" in text:
+    if "警告" in text or "注意" in text:
         return "warning"
     if "通过" in text:
         return "ok"
@@ -987,9 +1067,13 @@ def _status_line(layout, text, state):
 def _draw_text_block(layout, text, alert=False):
     box = layout.box()
     for line in str(text or "").split("\n")[:12]:
+        state = _line_state(line)
         row = box.row()
-        row.alert = bool(alert)
-        row.label(text=_clip(line, 88))
+        row.alert = bool(alert) or state in ("error", "blocked")
+        if state in ("ok", "warning", "blocked", "error"):
+            _status_label(row, "{0} {1}".format(_status_badge(state), _clip(_strip_check_marker(line), 88)), state)
+        else:
+            row.label(text=_clip(line, 88))
 
 
 def _draw_preflight_block(layout, text):
@@ -1025,7 +1109,7 @@ def _status_label(layout, text, state):
 def _status_badge(state):
     return {
         "ok": "[通过]",
-        "warning": "[警告]",
+        "warning": "[注意]",
         "blocked": "[阻断]",
         "error": "[错误]",
         "info": "[信息]",
@@ -1034,29 +1118,35 @@ def _status_badge(state):
 
 
 def _check_marker(status):
-    return {"pass": "[PASS]", "warning": "[WARN]", "error": "[BLOCK]", "info": "[INFO]"}.get(status, "[?]")
+    return {"pass": "[通过]", "warning": "[注意]", "error": "[阻断]", "info": "[信息]"}.get(status, "[?]")
 
 
 def _line_state(line):
     text = str(line or "")
     if text.startswith("状态：可导出"):
-        return "warning" if "警告/阻断：0/0" not in text else "ok"
+        return "warning" if "注意/阻断：0/0" not in text and "警告/阻断：0/0" not in text else "ok"
     if text.startswith("状态：不可导出"):
         return "blocked"
-    if text.startswith("[BLOCK]") or text.startswith("[FAIL]") or "不可导出" in text or "阻断" in text or "失败" in text:
+    if text.startswith("[阻断]") or text.startswith("[BLOCK]") or text.startswith("[FAIL]") or "不可导出" in text or "阻断" in text or "失败" in text:
         return "blocked"
-    if text.startswith("[WARN]") or "警告" in text:
+    if text.startswith("[注意]") or text.startswith("[WARN]") or "警告" in text or "注意" in text:
         return "warning"
-    if text.startswith("[PASS]") or "：通过" in text or " 通过" in text:
+    if text.startswith("[通过]") or text.startswith("[PASS]") or "：通过" in text or " 通过" in text:
         return "ok"
-    if text.startswith("[INFO]"):
+    if "success" in text or "已导出" in text or "完成" in text or "可导出" in text:
+        return "ok"
+    if "0 贴图" in text or "需填写" in text or "多套候选" in text or "未发现 Image Texture" in text:
+        return "warning"
+    if "未扫描" in text or "等待" in text:
+        return "waiting"
+    if text.startswith("[信息]") or text.startswith("[INFO]"):
         return "info"
     return "info"
 
 
 def _strip_check_marker(line):
     text = str(line or "")
-    for marker in ("[PASS] ", "[WARN] ", "[BLOCK] ", "[FAIL] ", "[INFO] "):
+    for marker in ("[通过] ", "[注意] ", "[阻断] ", "[信息] ", "[PASS] ", "[WARN] ", "[BLOCK] ", "[FAIL] ", "[INFO] "):
         if text.startswith(marker):
             return text[len(marker) :]
     return text

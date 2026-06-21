@@ -219,7 +219,7 @@ class UnrealEditorMenuTest(unittest.TestCase):
         self.assertFalse(captured["require_import"])
         self.assertFalse(captured["auto_bootstrap_material_assets"])
         self.assertEqual(captured["import_options"], {"build_nanite": False, "import_mesh_lods": True})
-        self.assertIn("入审报告完成：pass", fake_unreal.EditorDialog.messages[-1][1])
+        self.assertIn("检查报告完成：pass", fake_unreal.EditorDialog.messages[-1][1])
 
     def test_dry_run_gate_uses_distinct_ui_action(self):
         from asset_forge.unreal import acceptance_runner
@@ -245,7 +245,7 @@ class UnrealEditorMenuTest(unittest.TestCase):
         self.assertEqual(captured["command_args"], ["ue_gate", "--dry-run", package_dir])
         self.assertFalse(captured["run_import"])
         self.assertFalse(captured["require_import"])
-        self.assertIn("预演导入计划完成：pass", fake_unreal.EditorDialog.messages[-1][1])
+        self.assertIn("导入计划检查完成：pass", fake_unreal.EditorDialog.messages[-1][1])
         self.assertNotIn("模拟导入", fake_unreal.EditorDialog.messages[-1][1])
 
     def test_import_approved_package_requires_user_confirmation(self):

@@ -123,7 +123,7 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertIn("问题=导出资产名缺少 SM_ 前缀", summary)
         self.assertIn("入口=点击“修复资产名前缀”按钮", summary)
         self.assertNotIn("_rename_prefix", summary)
-        self.assertIn("报告=预检阶段不写报告；导出被阻断时会写调试报告。", summary)
+        self.assertIn("报告=检查阶段不写报告；导出被阻断时会写调试报告。", summary)
         self.assertNotIn("mesh_exists", summary)
 
     def test_asset_identity_guides_empty_selection_and_first_selection_naming(self):
@@ -256,13 +256,13 @@ class MayaUiEntryTest(unittest.TestCase):
 
         self.assertEqual(format_asset_card(scan), "资产 | SM_B · Mesh 1 · Tri 1.2k")
         self.assertEqual(format_texture_card(texture_scan, scan), "贴图 | 就绪 · 3 张 · 问题 0")
-        self.assertEqual(format_issue_card(validation), "风险 | 通过 · 阻断 0 · 警告 0")
+        self.assertEqual(format_issue_card(validation), "风险 | 通过 · 阻断 0 · 注意 0")
         self.assertEqual(format_export_card(scan, validation, texture_scan), "发布 | 可导出 · 贴图 3 张")
-        self.assertEqual(format_scan_stage(scan), "01 扫描资产 · 已识别 SM_B")
-        self.assertEqual(format_check_stage(scan, validation), "02 检查风险 · 通过")
+        self.assertEqual(format_scan_stage(scan), "01 扫描 · 已识别 SM_B")
+        self.assertEqual(format_check_stage(scan, validation), "02 检查 · 通过")
         self.assertEqual(format_export_stage(scan, validation), "03 导出 Package · 可导出")
         overview = format_overview_panel(scan, validation, texture_scan)
-        self.assertIn("通过 | 预检完成，可以导出 Package 给 UE Gate", overview)
+        self.assertIn("通过 | 检查完成，可以导出 Package", overview)
         self.assertIn("资产 SM_B / Mesh 1 / Tri 1.2k", overview)
         self.assertIn("贴图 3 张 / 问题 0", overview)
         self.assertIn("风险 通过", overview)
@@ -272,8 +272,8 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertEqual(_polish_next_action_text("下一步：点击检查"), "下一步 | 点击检查")
         self.assertEqual(format_asset_card({}), "资产 | 未扫描 · 选择后扫描")
         self.assertEqual(format_texture_card({}), "贴图 | 未扫描 · 选择目录")
-        self.assertEqual(format_issue_card({}), "风险 | 未预检 · 扫描后检查")
-        self.assertEqual(format_export_card({}, {}), "发布 | 等待扫描 · 资产和预检")
+        self.assertEqual(format_issue_card({}), "风险 | 未检查 · 扫描后检查")
+        self.assertEqual(format_export_card({}, {}), "发布 | 等待扫描 · 资产和检查")
 
     def test_status_cards_have_semantic_visual_states(self):
         scan = _successful_scan()
@@ -357,8 +357,8 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertEqual(outputs["can_import"], "pending_ue_dry_run")
         self.assertEqual(outputs["report_path"], "")
         self.assertIn("录制前看这里：资产 SM_zuti 已可导出", outputs["portfolio_capture_hint"])
-        self.assertIn("下一步在 UE Gate 选择该 Package，生成入审报告、预演导入计划、正式导入", outputs["portfolio_capture_hint"])
-        self.assertEqual(outputs["operator_action"], "UE Gate: 选择该 Package -> 生成入审报告 -> 预演导入计划 -> 正式导入")
+        self.assertIn("下一步在 UE Gate 选择该 Package，检查并导入", outputs["portfolio_capture_hint"])
+        self.assertEqual(outputs["operator_action"], "UE Gate: 选择该 Package -> 检查并导入")
         self.assertIn("选择该 Package", outputs["next_step"])
         self.assertEqual(outputs["texture_import_policy"]["texture_streaming_policy"], "never_stream")
 
@@ -376,10 +376,10 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertIn("导出完成 | Package 已生成，等待 UE Gate", summary)
         self.assertIn("发布包：D:/Exports/SM_B", summary)
         self.assertIn("报告：D:/Exports/SM_B/SM_B_export_report.json", summary)
-        self.assertIn("状态：可导出=true | UE Gate=待生成入审报告 | 警告/阻断=0/0", summary)
-        self.assertIn("UE Gate: 选择该 Package -> 生成入审报告 -> 预演导入计划 -> 正式导入", summary)
+        self.assertIn("状态：可导出=true | UE Gate=待导入检查 | 注意/阻断=0/0", summary)
+        self.assertIn("UE Gate: 选择该 Package -> 检查并导入", summary)
         self.assertIn("录制前看这里：资产 SM_B 已可导出；打开导出报告 D:/Exports/SM_B/SM_B_export_report.json", summary)
-        self.assertIn("下一步：在 UE Gate 里选择该 Package，按清单生成入审报告、预演导入计划、正式导入", summary)
+        self.assertIn("下一步：在 UE Gate 里选择该 Package，确认检查结果后导入", summary)
 
     def test_blocked_export_result_summary_reuses_validation_counts(self):
         summary = maya_ui.format_export_blocked_result(
@@ -391,7 +391,7 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertIn("导出阻断 | Package 未生成", summary)
         self.assertIn("发布包：未生成", summary)
         self.assertIn("报告：D:/Reports/zuti_export_blocked_report.json", summary)
-        self.assertIn("状态：可导出=false | UE Gate=false | 警告/阻断=0/1", summary)
+        self.assertIn("状态：可导出=false | UE Gate=false | 注意/阻断=0/1", summary)
         self.assertIn("修复：先处理第一阻断项 -> 重新检查 -> 再导出", summary)
         self.assertIn("第一阻断：导出资产名缺少 SM_ 前缀", summary)
         self.assertIn("录制前看这里：资产 zuti 还不能导出；先展示第一个修复项“修复资产名前缀”", summary)
@@ -472,7 +472,8 @@ class MayaUiEntryTest(unittest.TestCase):
 
         self.assertEqual(active["export_root"], "E:/Repo/导出")
         self.assertEqual(active["texture_root"], "E:/Repo/测试/Test01/Tex")
-        self.assertEqual(active["asset_name_override"], "SM_HK416D_Custom")
+        self.assertEqual(active["package_name_override"], "SM_HK416D_Custom")
+        self.assertEqual(active["asset_name_override"], "")
         self.assertEqual(active["build_reversed_index_buffer"], "enable")
         self.assertEqual(active["generate_lightmap_uvs"], "disable")
         self.assertEqual(active["collision_complexity"], "use_complex_as_simple")
@@ -489,14 +490,14 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertTrue(pipeline.blocked_report_written)
         self.assertIn("导出阻断 | Package 未生成", cmds.results)
         self.assertIn("报告", cmds.results)
-        self.assertIn("状态：可导出=false | UE Gate=false | 警告/阻断=0/1", cmds.results)
+        self.assertIn("状态：可导出=false | UE Gate=false | 注意/阻断=0/1", cmds.results)
         self.assertIn("修复：先处理第一阻断项 -> 重新检查 -> 再导出", cmds.results)
         self.assertIn("第一阻断：导出资产名缺少 SM_ 前缀", cmds.results)
         self.assertIn("下一步：先修复第一阻断项：导出资产名缺少 SM_ 前缀；然后重新检查并重试导出", cmds.results)
         self.assertIn("问题=导出资产名缺少 SM_ 前缀", cmds.results)
         self.assertIn("报告=D:/Reports/zuti_export_blocked_report.json", cmds.results)
         self.assertIn("UE Gate=false", cmds.scroll_values["last_maya_log"])
-        self.assertIn("警告=0", cmds.scroll_values["last_maya_log"])
+        self.assertIn("注意=0", cmds.scroll_values["last_maya_log"])
         self.assertIn("阻断=1", cmds.scroll_values["last_maya_log"])
         self.assertIn("问题=导出资产名缺少 SM_ 前缀", cmds.scroll_values["last_maya_log"])
         self.assertIn("报告=D:/Reports/zuti_export_blocked_report.json", cmds.scroll_values["last_maya_log"])
@@ -551,16 +552,16 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertIn("清单：", cmds.results)
         self.assertIn("发布包：D:/Exports/SM_B", cmds.results)
         self.assertIn("报告：D:/Exports/SM_B/SM_B_export_report.json", cmds.results)
-        self.assertIn("状态：可导出=true | UE Gate=待生成入审报告 | 警告/阻断=0/0", cmds.results)
-        self.assertIn("UE Gate: 选择该 Package -> 生成入审报告 -> 预演导入计划 -> 正式导入", cmds.results)
-        self.assertIn("下一步：在 UE Gate 里选择该 Package，按清单生成入审报告、预演导入计划、正式导入", cmds.results)
+        self.assertIn("状态：可导出=true | UE Gate=待导入检查 | 注意/阻断=0/0", cmds.results)
+        self.assertIn("UE Gate: 选择该 Package -> 检查并导入", cmds.results)
+        self.assertIn("下一步：在 UE Gate 里选择该 Package，确认检查结果后导入", cmds.results)
         self.assertIn("日志路径：", cmds.results)
         self.assertIn("导出成功", cmds.scroll_values["last_maya_log"])
         self.assertNotIn("export_success", cmds.scroll_values["last_maya_log"])
         self.assertIn("发布包=D:/Exports/SM_B", cmds.scroll_values["last_maya_log"])
         self.assertIn("可导出=true", cmds.scroll_values["last_maya_log"])
-        self.assertIn("UE Gate=待生成入审报告", cmds.scroll_values["last_maya_log"])
-        self.assertIn("警告=0", cmds.scroll_values["last_maya_log"])
+        self.assertIn("UE Gate=待导入检查", cmds.scroll_values["last_maya_log"])
+        self.assertIn("注意=0", cmds.scroll_values["last_maya_log"])
 
     def test_texture_prefix_rename_cancel_does_not_touch_disk(self):
         cmds = FakeTexturePrefixCmds(os.path.join(self.temp_dir, "settings.json"), confirm_answer="取消")
@@ -636,6 +637,31 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertEqual(cmds.undo_calls, [])
         self.assertIn("未修改 Maya 场景", cmds.results)
 
+    def test_transform_fix_uses_confirm_dialog_and_single_undo_chunk(self):
+        cmds = FakeTransformFixCmds(os.path.join(self.temp_dir, "settings.json"), confirm_answer="__default__")
+        pipeline = FakeTransformFixPipeline()
+        window = AssetForgeMayaWindow(cmds_module=cmds, pipeline=pipeline, log_root=self.temp_dir)
+        window.controls = _fake_full_controls()
+
+        window._apply_transform_fix()
+
+        self.assertEqual(cmds.identity_targets, ["|zuti", "|zuti|SM_B_a"])
+        self.assertEqual(cmds.undo_calls, [("open", "Asset Forge 应用 Transform"), ("close", "")])
+        self.assertIn("makeIdentity", cmds.confirm_messages[0])
+        self.assertIn("Transform 已应用", cmds.summary)
+
+    def test_repair_actions_include_transform_fix_for_warning_state(self):
+        actions = repair_actions_for_state(
+            dict(_successful_scan(), frozen_transform=False, transforms=["|SM_B|SM_B_a"]),
+            {"checks": [{"id": "frozen_transform", "status": "warning", "message": "Transform 未归零"}]},
+            {},
+        )
+        by_id = dict((item["id"], item) for item in actions)
+
+        self.assertIn("apply_transform_fix", by_id)
+        self.assertEqual(by_id["apply_transform_fix"]["button_label"], "应用 Transform")
+        self.assertEqual(by_id["apply_transform_fix"]["target_count"], 2)
+
     def test_choose_directory_buttons_write_back_to_frontend_fields(self):
         cmds = FakeDirectoryButtonCmds(os.path.join(self.temp_dir, "settings.json"))
         window = AssetForgeMayaWindow(cmds_module=cmds, pipeline=FakePipeline(), log_root=self.temp_dir)
@@ -708,24 +734,23 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertIn("启动", labels)
         self.assertIn("状态", labels)
         self.assertIn("发布状态", labels)
-        self.assertIn("问题定位", labels)
-        self.assertIn("发布动作", labels)
+        self.assertIn("导出控制", labels)
         self.assertIn("未扫描 | 选择资产根节点，然后扫描", labels)
-        self.assertIn("资产 未扫描    贴图 未扫描    风险 未预检    发布 等待扫描", labels)
+        self.assertIn("资产 未扫描    贴图 未扫描    风险 未检查    发布 等待扫描", labels)
         self.assertIn("资产 | 未扫描 · 选择后扫描", labels)
         self.assertIn("贴图 | 未扫描 · 选择目录", labels)
-        self.assertIn("风险 | 未预检 · 扫描后检查", labels)
-        self.assertIn("发布 | 等待扫描 · 资产和预检", labels)
+        self.assertIn("风险 | 未检查 · 扫描后检查", labels)
+        self.assertIn("发布 | 等待扫描 · 资产和检查", labels)
         self.assertIn("1 发布目标", labels)
         self.assertIn("2 资产概览", labels)
         self.assertIn("3 贴图匹配", labels)
-        self.assertIn("4 风险检查", labels)
+        self.assertIn("4 检查详情", labels)
         self.assertIn("资产详情", labels)
         self.assertIn("贴图匹配", labels)
         self.assertIn("贴图详情", labels)
         self.assertIn("检查详情", labels)
         self.assertIn("结果 / 日志", labels)
-        self.assertIn("导入策略（写入 Package，UE Gate 可复核）", labels)
+        self.assertIn("导入建议（写入 Package，UE Gate 可复核）", labels)
         self.assertIn("基础导入", labels)
         self.assertIn("网格构建", labels)
         self.assertIn("材质贴图", labels)
@@ -738,9 +763,9 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertIn("Nanite 策略建议", labels)
         self.assertIn("Mesh LOD 导入策略建议", labels)
         self.assertIn("Maya 操作日志", labels)
-        self.assertIn("1 扫描资产", labels)
-        self.assertIn("2 检查风险", labels)
-        self.assertIn("3 导出 Package 给 UE Gate", labels)
+        self.assertIn("检查并导出 Package", labels)
+        self.assertIn("只扫描", labels)
+        self.assertIn("只检查", labels)
         self.assertIn("导出调试信息", labels)
         self.assertIn("修复资产名前缀", labels)
         self.assertIn("贴图集关键词", labels)
@@ -750,12 +775,11 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertIn(format_asset_identity({}), scroll_text)
         self.assertIn(format_empty_texture_details(), scroll_text)
         self.assertIn(format_empty_preflight_details(), scroll_text)
-        self.assertIn("定位：等待扫描", scroll_text)
         self.assertEqual(cmds.scroll_layout_count, 1)
-        self.assertEqual(cmds.scroll_layout_kwargs["verticalScrollBarThickness"], 16)
-        self.assertIn(126, cmds.scroll_field_heights)
-        self.assertIn(168, cmds.scroll_field_heights)
-        self.assertIn(186, cmds.scroll_field_heights)
+        self.assertIn(16, cmds.scroll_layout_thicknesses)
+        self.assertIn(96, cmds.scroll_field_heights)
+        self.assertIn(132, cmds.scroll_field_heights)
+        self.assertIn(150, cmds.scroll_field_heights)
         self.assertIn(64, cmds.scroll_field_heights)
         self.assertIn(76, cmds.scroll_field_heights)
 
@@ -792,7 +816,7 @@ class MayaUiEntryTest(unittest.TestCase):
             preferred="risk",
         )
 
-        self.assertIn("定位：风险检查详情", text)
+        self.assertIn("定位：检查详情", text)
         self.assertIn("[阻断] unmatched_material | 对象：B_a1", text)
         self.assertIn("位置：材质贴图绑定 -> 贴图详情 / 检查详情", text)
         self.assertIn("补齐缺失贴图集", text)
@@ -974,6 +998,15 @@ class FakePrefixFixCmds(FakeTexturePrefixCmds):
             self.undo_calls.append(("close", ""))
 
 
+class FakeTransformFixCmds(FakePrefixFixCmds):
+    def __init__(self, save_path, confirm_answer):
+        super(FakeTransformFixCmds, self).__init__(save_path, confirm_answer)
+        self.identity_targets = []
+
+    def makeIdentity(self, targets, **kwargs):
+        self.identity_targets = list(targets)
+
+
 class FakeDirectoryButtonCmds(FakeEditableUiCmds):
     def __init__(self, save_path):
         super(FakeDirectoryButtonCmds, self).__init__(save_path)
@@ -1022,6 +1055,8 @@ class FakeBuildCmds(FakeFullUiCmds):
         self.counter = 0
         self.scroll_layout_count = 0
         self.scroll_layout_kwargs = {}
+        self.scroll_layout_heights = []
+        self.scroll_layout_thicknesses = []
         self.scroll_field_kwargs = {}
         self.scroll_field_heights = []
 
@@ -1039,6 +1074,10 @@ class FakeBuildCmds(FakeFullUiCmds):
     def scrollLayout(self, *args, **kwargs):
         self.scroll_layout_count += 1
         self.scroll_layout_kwargs = dict(kwargs)
+        if kwargs.get("verticalScrollBarThickness") is not None:
+            self.scroll_layout_thicknesses.append(kwargs.get("verticalScrollBarThickness"))
+        if kwargs.get("height") is not None:
+            self.scroll_layout_heights.append(kwargs.get("height"))
         return "main_scroll"
 
     def rowLayout(self, *args, **kwargs):
@@ -1263,6 +1302,19 @@ class FakePrefixFixPipeline(object):
     def rename_mesh_transforms_with_prefix(self, prefix):
         self.rename_mesh_calls += 1
         return ["|SM_zuti|SM_B_a"]
+
+
+class FakeTransformFixPipeline(object):
+    rules = {}
+
+    def __init__(self):
+        self.adapter = self
+
+    def get_current_selection(self):
+        return ["|zuti"]
+
+    def scan_selection(self):
+        return dict(_blocked_scan(), asset_roots=["|zuti"], transforms=["|zuti|SM_B_a"], frozen_transform=False)
 
 
 class FakeAnalyzePipeline(object):

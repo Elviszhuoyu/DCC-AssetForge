@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime
 
-from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
+from asset_forge.shared.constants import TARGET_PLATFORM_PC
 from asset_forge.shared.package_naming import PACKAGE_VERSION_MODE_OVERWRITE, normalize_package_version_mode
 from asset_forge.shared.path_utils import normalize_path
 from asset_forge.shared.unreal_path import sanitize_unreal_package_path
@@ -94,7 +94,7 @@ DEFAULT_PROJECT_SETTINGS = {
     "package_version_padding": 3,
     "package_version_start": 1,
     "ue_target_path": "/Game/Props",
-    "target_platform": TARGET_PLATFORM_HIGH_END_MOBILE,
+    "target_platform": TARGET_PLATFORM_PC,
     "material_profile": "Props_Opaque_PainterUE_ARM",
     "virtual_texture_policy": "project_default",
     "texture_streaming_policy": "project_default",
@@ -134,13 +134,14 @@ def normalize_project_settings(data):
         or ""
     )
     result["package_name_override"] = package_name
-    # Backward-compatible alias used by existing scanner/exporter code.
-    result["asset_name_override"] = package_name
+    # Old presets sometimes used asset_name_override as the package/folder name.
+    # Keep it as a migration input above, but do not let a package name rename meshes.
+    result["asset_name_override"] = str(result.get("asset_name_override") or "")
     result["package_version_mode"] = normalize_package_version_mode(result.get("package_version_mode"))
     result["package_version_padding"] = _positive_int(result.get("package_version_padding"), 3)
     result["package_version_start"] = _positive_int(result.get("package_version_start"), 1)
     result["ue_target_path"] = sanitize_unreal_package_path(result.get("ue_target_path") or "/Game/Props")
-    result["target_platform"] = str(result.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE)
+    result["target_platform"] = str(result.get("target_platform") or TARGET_PLATFORM_PC)
     result["material_profile"] = str(result.get("material_profile") or "Props_Opaque_PainterUE_ARM")
     result["virtual_texture_policy"] = _choice(
         result.get("virtual_texture_policy"),

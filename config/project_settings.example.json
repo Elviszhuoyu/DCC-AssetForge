@@ -1,7 +1,7 @@
 {
   "schema": "asset_forge_project_preset",
   "version": "0.3",
-  "preset_name": "HighEndMobile Props",
+  "preset_name": "PC Static Props",
   "preset_version": "2026.06",
   "updated_at": "2026-06-20T21:20:00+08:00",
   "package_name_override": "",
@@ -15,7 +15,7 @@
   "texture_prefix": "T_",
   "texture_set_token": "",
   "ue_target_path": "/Game/Props",
-  "target_platform": "high_end_mobile",
+  "target_platform": "pc",
   "material_profile": "Props_Opaque_PainterUE_ARM",
   "virtual_texture_policy": "project_default",
   "texture_streaming_policy": "project_default",
