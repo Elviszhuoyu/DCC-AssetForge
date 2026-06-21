@@ -101,6 +101,16 @@ class BlenderUiStateTest(unittest.TestCase):
         self.assertIn(ui.ASSETFORGE_OT_restart_bridge, ui.CLASSES)
         self.assertEqual(ui.ASSETFORGE_OT_restart_bridge.bl_idname, "asset_forge.restart_bridge")
 
+    def test_project_preset_buttons_match_maya_apply_flow(self):
+        ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
+
+        self.assertIn(ui.ASSETFORGE_OT_apply_project_preset, ui.CLASSES)
+        self.assertEqual(ui.ASSETFORGE_OT_apply_project_preset.bl_idname, "asset_forge.apply_project_preset")
+        self.assertIn("JSON", ui.ASSETFORGE_OT_load_project_preset.bl_description)
+        self.assertNotIn("CSV", ui.ASSETFORGE_OT_load_project_preset.bl_description)
+        self.assertIn("JSON", ui.ASSETFORGE_OT_save_project_preset.bl_description)
+        self.assertNotIn("CSV", ui.ASSETFORGE_OT_save_project_preset.bl_description)
+
     def test_params_include_publish_rule_fields(self):
         ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
         settings = types.SimpleNamespace(

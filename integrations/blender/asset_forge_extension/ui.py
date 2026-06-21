@@ -166,10 +166,10 @@ class ASSETFORGE_OT_export_package(bpy.types.Operator):
 class ASSETFORGE_OT_load_project_preset(bpy.types.Operator):
     bl_idname = "asset_forge.load_project_preset"
     bl_label = "加载预设"
-    bl_description = "加载团队通用 Asset Forge 项目预设 JSON / CSV"
+    bl_description = "加载团队通用 Asset Forge 项目预设 JSON"
 
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore
-    filter_glob: bpy.props.StringProperty(default="*.json;*.csv", options={"HIDDEN"})  # type: ignore
+    filter_glob: bpy.props.StringProperty(default="*.json", options={"HIDDEN"})  # type: ignore
 
     def execute(self, context):
         settings = load_project_settings(self.filepath)
@@ -186,10 +186,10 @@ class ASSETFORGE_OT_load_project_preset(bpy.types.Operator):
 class ASSETFORGE_OT_save_project_preset(bpy.types.Operator):
     bl_idname = "asset_forge.save_project_preset"
     bl_label = "保存预设"
-    bl_description = "保存当前 Blender 工作台参数为团队通用项目预设 JSON / CSV"
+    bl_description = "保存当前 Blender 工作台参数为团队通用项目预设 JSON"
 
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore
-    filter_glob: bpy.props.StringProperty(default="*.json;*.csv", options={"HIDDEN"})  # type: ignore
+    filter_glob: bpy.props.StringProperty(default="*.json", options={"HIDDEN"})  # type: ignore
 
     def execute(self, context):
         settings = _project_settings_from_blender(context.scene.asset_forge_settings)
@@ -204,6 +204,19 @@ class ASSETFORGE_OT_save_project_preset(bpy.types.Operator):
         self.filepath = current or os.path.join(_default_export_root(), "asset_forge_project_preset.json")
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
+
+
+class ASSETFORGE_OT_apply_project_preset(bpy.types.Operator):
+    bl_idname = "asset_forge.apply_project_preset"
+    bl_label = "应用当前预设"
+    bl_description = "把当前 Blender 工作台参数归一化为当前项目预设；不读取或写入文件"
+
+    def execute(self, context):
+        settings = _project_settings_from_blender(context.scene.asset_forge_settings)
+        _apply_project_settings_to_blender(context.scene.asset_forge_settings, settings)
+        context.scene.asset_forge_settings.project_preset_status = format_project_settings_summary(settings, max_rows=10)
+        context.scene.asset_forge_settings.next_action = "下一步 | 当前 UI 参数已应用为项目预设，可扫描资产。"
+        return {"FINISHED"}
 
 
 class ASSETFORGE_OT_open_last_report(bpy.types.Operator):
@@ -262,6 +275,7 @@ class ASSETFORGE_PT_project_preset_panel(bpy.types.Panel):
         row = layout.row(align=True)
         row.operator("asset_forge.load_project_preset", text="加载预设", icon="FILE_FOLDER")
         row.operator("asset_forge.save_project_preset", text="保存预设", icon="FILE_TICK")
+        layout.operator("asset_forge.apply_project_preset", text="应用当前预设", icon="CHECKMARK")
         if s.project_preset_path:
             layout.label(text=os.path.basename(s.project_preset_path), icon="TEXT")
         _draw_text_block(layout, s.project_preset_status)
@@ -414,6 +428,7 @@ CLASSES = (
     ASSETFORGE_OT_export_package,
     ASSETFORGE_OT_load_project_preset,
     ASSETFORGE_OT_save_project_preset,
+    ASSETFORGE_OT_apply_project_preset,
     ASSETFORGE_OT_open_last_report,
     ASSETFORGE_PT_main_panel,
     ASSETFORGE_PT_project_preset_panel,

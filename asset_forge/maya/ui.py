@@ -984,7 +984,7 @@ class AssetForgeMayaWindow(object):
 
     def _load_project_settings(self, *args):
         try:
-            paths = self.cmds.fileDialog2(fileMode=1, caption="加载 Asset Forge 项目预设 JSON / CSV") or []
+            paths = self.cmds.fileDialog2(fileMode=1, caption="加载 Asset Forge 项目预设 JSON") or []
             if not paths:
                 return
             settings = load_project_settings(paths[0])
@@ -1000,7 +1000,7 @@ class AssetForgeMayaWindow(object):
 
     def _save_project_settings(self, *args):
         try:
-            paths = self.cmds.fileDialog2(fileMode=0, caption="保存 Asset Forge 项目预设 JSON / CSV") or []
+            paths = self.cmds.fileDialog2(fileMode=0, caption="保存 Asset Forge 项目预设 JSON") or []
             if not paths:
                 return
             settings = self._settings_from_ui()

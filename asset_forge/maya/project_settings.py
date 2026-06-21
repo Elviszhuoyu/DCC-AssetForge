@@ -4,7 +4,6 @@
 from __future__ import absolute_import
 
 import io
-import csv
 import json
 import os
 from datetime import datetime
@@ -52,13 +51,11 @@ PROJECT_SETTINGS_EXPORT_KEYS = [
     "version",
     "preset_name",
     "preset_version",
-    "updated_at",
     "ue_target_path",
     "export_root",
     "package_name_override",
     "package_version_mode",
     "package_version_padding",
-    "package_version_start",
     "target_platform",
     "material_profile",
     "triangle_budget",
@@ -72,6 +69,8 @@ PROJECT_SETTINGS_EXPORT_KEYS = [
     "virtual_texture_policy",
     "texture_streaming_policy",
     "texture_group",
+    "updated_at",
+    "package_version_start",
     "build_reversed_index_buffer",
     "generate_lightmap_uvs",
     "collision_complexity",
@@ -185,8 +184,6 @@ def _positive_int(value, default):
 
 
 def load_project_settings(path):
-    if str(path or "").lower().endswith(".csv"):
-        return load_project_settings_csv(path)
     with io.open(path, "r", encoding="utf-8") as stream:
         return normalize_project_settings(json.load(stream))
 
@@ -198,43 +195,10 @@ def save_project_settings(path, settings):
     parent = os.path.dirname(os.path.abspath(path))
     if parent and not os.path.isdir(parent):
         os.makedirs(parent)
-    if path.lower().endswith(".csv"):
-        save_project_settings_csv(path, active)
-        return normalize_path(path)
     with io.open(path, "w", encoding="utf-8") as stream:
         json.dump(active, stream, ensure_ascii=False, indent=2, sort_keys=True)
         stream.write("\n")
     return normalize_path(path)
-
-
-def load_project_settings_csv(path):
-    data = {}
-    with io.open(path, "r", encoding="utf-8-sig", newline="") as stream:
-        reader = csv.DictReader(stream)
-        if not reader.fieldnames:
-            return normalize_project_settings(data)
-        for row in reader:
-            key = (row.get("key") or row.get("字段") or "").strip()
-            if not key:
-                continue
-            data[key] = row.get("value", row.get("值", ""))
-    return normalize_project_settings(data)
-
-
-def save_project_settings_csv(path, settings):
-    active = normalize_project_settings(settings)
-    with io.open(path, "w", encoding="utf-8-sig", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=["key", "label", "value", "ue_interface"])
-        writer.writeheader()
-        for row in project_settings_rows(active, include_all=True):
-            writer.writerow(
-                {
-                    "key": row["key"],
-                    "label": row["label"],
-                    "value": row["value"],
-                    "ue_interface": row["ue_interface"],
-                }
-            )
 
 
 def project_settings_rows(settings, include_all=False):
@@ -297,6 +261,6 @@ def normalize_project_settings_path(path):
     root, extension = os.path.splitext(active)
     if extension == ".*":
         return root + ".json"
-    if extension.lower() not in [".json", ".csv"]:
+    if extension.lower() != ".json":
         return active + ".json"
     return active
