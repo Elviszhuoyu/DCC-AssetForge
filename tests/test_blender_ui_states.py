@@ -33,6 +33,10 @@ class BlenderUiStateTest(unittest.TestCase):
 
         self.assertEqual(ui._status_icon("warning"), "QUESTION")
         self.assertNotEqual(ui._status_icon("warning"), "ERROR")
+        self.assertEqual(ui._status_badge("ok"), "[通过]")
+        self.assertEqual(ui._status_badge("warning"), "[警告]")
+        self.assertEqual(ui._status_badge("blocked"), "[阻断]")
+        self.assertEqual(ui._status_icon_value("ok"), 0)
         self.assertEqual(ui._line_state("状态：可导出 | 分数：56 | 通过/警告/阻断：8/4/0"), "warning")
 
     def test_texture_detail_separates_node_folder_and_placeholder_sources(self):
@@ -58,6 +62,38 @@ class BlenderUiStateTest(unittest.TestCase):
         self.assertIn("normal[目录]", text)
         self.assertIn("packed_arm[占位]", text)
         self.assertNotIn("已发现节点贴图", text)
+
+    def test_texture_detail_explains_blank_token_auto_selection(self):
+        ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
+        scan = {
+            "materials": [],
+            "textures": [],
+            "texture_folder_scan": {
+                "texture_set_token": "",
+                "auto_material_texture_set_token": "B",
+                "selected_texture_sets": [{"set_name": "HK416_D_B_a1"}],
+            },
+        }
+
+        text = ui._format_texture_detail(scan)
+
+        self.assertIn("贴图集关键词：留空，已按材质名自动识别 B", text)
+
+    def test_texture_detail_warns_when_blank_token_is_ambiguous(self):
+        ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")
+        scan = {
+            "materials": [],
+            "textures": [],
+            "texture_folder_scan": {
+                "texture_set_token": "",
+                "requires_texture_set_selection": True,
+                "texture_sets": [{"set_name": "A"}, {"set_name": "B"}],
+            },
+        }
+        settings = types.SimpleNamespace(last_texture_status="贴图 | 4 材质 / 12 贴图", texture_detail=ui._format_texture_detail(scan))
+
+        self.assertIn("需填写关键词", settings.texture_detail)
+        self.assertEqual(ui._texture_state(settings), "warning")
 
     def test_restart_bridge_operator_is_registered_and_visible(self):
         ui = importlib.import_module("integrations.blender.asset_forge_extension.ui")

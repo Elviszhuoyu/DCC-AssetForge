@@ -6,9 +6,11 @@ from __future__ import absolute_import
 import importlib
 import json
 import os
+import struct
 import sys
 import time
 import traceback
+import zlib
 
 import bpy  # type: ignore
 
@@ -22,6 +24,14 @@ DEFAULT_TARGET_PATH = "/Game/Props"
 DEFAULT_MATERIAL_PROFILE = "Props_Opaque_PainterUE_ARM"
 MIN_BRIDGE_VERSION = "0.2.0"
 _PREVIEWS = None
+_STATUS_ICON_COLORS = {
+    "ok": (36, 190, 132, 255),
+    "warning": (236, 180, 54, 255),
+    "blocked": (232, 92, 92, 255),
+    "error": (232, 72, 72, 255),
+    "info": (72, 155, 240, 255),
+    "waiting": (150, 158, 168, 255),
+}
 
 
 class ASSETFORGE_PG_settings(bpy.types.PropertyGroup):
@@ -51,7 +61,7 @@ class ASSETFORGE_PG_settings(bpy.types.PropertyGroup):
     last_issue_status: bpy.props.StringProperty(name="风险", default="未预检")  # type: ignore
     last_export_status: bpy.props.StringProperty(name="发布", default="等待扫描")  # type: ignore
     asset_detail: bpy.props.StringProperty(name="资产详情", default="当前资产根节点：未扫描\n当前导出资产名：未扫描\n来源：未扫描")  # type: ignore
-    texture_detail: bpy.props.StringProperty(name="贴图详情", default="贴图匹配：未扫描\nBlender 会读取材质 Image Texture 节点；缺失槽位会生成可追踪占位贴图。")  # type: ignore
+    texture_detail: bpy.props.StringProperty(name="贴图详情", default="贴图匹配：未扫描\n贴图集关键词可留空：系统会按材质名和贴图目录自动推断；多套无法唯一判断时会在检查阶段阻断。")  # type: ignore
     preflight_detail: bpy.props.StringProperty(name="检查详情", default="风险检查：未预检")  # type: ignore
     result_detail: bpy.props.StringProperty(name="结果", default="等待操作")  # type: ignore
     last_report_path: bpy.props.StringProperty(name="报告", default="")  # type: ignore
@@ -666,6 +676,9 @@ def _format_texture_detail(scan):
     materials = scan.get("materials", []) if isinstance(scan, dict) else []
     textures = _textures_from_scan(scan) if isinstance(scan, dict) else []
     lines = ["贴图匹配：{0} 材质 / {1} 贴图".format(len(materials), len(textures))]
+    folder_scan = scan.get("texture_folder_scan", {}) if isinstance(scan, dict) else {}
+    if folder_scan:
+        lines.extend(_texture_folder_selection_lines(folder_scan))
     if not textures:
         lines.append("未发现 Image Texture 节点；导出时会生成 BaseColor/Normal/ARM 占位贴图，UE Gate 可追踪。")
     else:
@@ -677,6 +690,23 @@ def _format_texture_detail(scan):
         usage_text = _material_texture_usage_summary(material_textures)
         lines.append("- {0} | {1} | BaseColor {2}".format(material.get("name", ""), usage_text, _compact_color(material.get("base_color", []))))
     return "\n".join(lines)
+
+
+def _texture_folder_selection_lines(folder_scan):
+    token = str(folder_scan.get("texture_set_token") or folder_scan.get("texture_set_filter") or "").strip()
+    auto_token = str(folder_scan.get("auto_material_texture_set_token") or "").strip()
+    selected = folder_scan.get("selected_texture_sets") or []
+    if token:
+        return ["贴图集关键词：{0}".format(token)]
+    if auto_token:
+        return ["贴图集关键词：留空，已按材质名自动识别 {0}".format(auto_token)]
+    if folder_scan.get("requires_texture_set_selection"):
+        names = ", ".join([item.get("set_name", "") for item in folder_scan.get("texture_sets", [])[:6]])
+        return ["贴图集关键词：留空但存在多套候选，需填写关键词后再导出。候选：{0}".format(names)]
+    if selected:
+        names = ", ".join([item.get("set_name", "") for item in selected[:4]])
+        return ["贴图集关键词：留空，已自动选择 {0}".format(names)]
+    return ["贴图集关键词：留空，系统会按材质名/资产名自动推断。"]
 
 
 def _texture_source_summary(textures):
@@ -895,7 +925,14 @@ def _asset_state(s):
 
 
 def _texture_state(s):
-    return "waiting" if "未扫描" in s.last_texture_status else "warning" if "0 贴图" in s.last_texture_status else "ok"
+    detail = s.texture_detail or ""
+    if "未扫描" in s.last_texture_status:
+        return "waiting"
+    if "需填写关键词" in detail or "多套候选" in detail:
+        return "warning"
+    if "0 贴图" in s.last_texture_status:
+        return "warning"
+    return "ok"
 
 
 def _issue_state(s):
@@ -923,13 +960,13 @@ def _export_state(s):
 def _status_card(row, text, state):
     item = row.row(align=True)
     item.alert = state in ("error", "blocked")
-    item.label(text=_clip(text, 32), icon=_status_icon(state))
+    _status_label(item, "{0} {1}".format(_status_badge(state), _clip(text, 32)), state)
 
 
 def _status_line(layout, text, state):
     row = layout.row(align=True)
     row.alert = state in ("error", "blocked")
-    row.label(text=_clip(text, 70), icon=_status_icon(state))
+    _status_label(row, "{0} {1}".format(_status_badge(state), _clip(text, 70)), state)
 
 
 def _draw_text_block(layout, text, alert=False):
@@ -946,11 +983,39 @@ def _draw_preflight_block(layout, text):
         state = _line_state(line)
         row = box.row()
         row.alert = state in ("error", "blocked")
-        row.label(text=_clip(_strip_check_marker(line), 88), icon=_status_icon(state))
+        _status_label(row, "{0} {1}".format(_status_badge(state), _clip(_strip_check_marker(line), 88)), state)
 
 
 def _status_icon(state):
     return {"ok": "CHECKMARK", "warning": "QUESTION", "blocked": "CANCEL", "error": "CANCEL", "info": "INFO", "waiting": "TIME"}.get(state, "INFO")
+
+
+def _status_icon_value(state):
+    if _PREVIEWS is None:
+        return 0
+    key = "status_{0}".format(state if state in _STATUS_ICON_COLORS else "info")
+    if key not in _PREVIEWS:
+        return 0
+    return _PREVIEWS[key].icon_id
+
+
+def _status_label(layout, text, state):
+    icon_value = _status_icon_value(state)
+    if icon_value:
+        layout.label(text=text, icon_value=icon_value)
+    else:
+        layout.label(text=text, icon=_status_icon(state))
+
+
+def _status_badge(state):
+    return {
+        "ok": "[通过]",
+        "warning": "[警告]",
+        "blocked": "[阻断]",
+        "error": "[错误]",
+        "info": "[信息]",
+        "waiting": "[等待]",
+    }.get(state, "[信息]")
 
 
 def _check_marker(status):
@@ -1028,6 +1093,7 @@ def _register_previews():
     try:
         import bpy.utils.previews  # type: ignore
         _PREVIEWS = bpy.utils.previews.new()
+        _register_status_icons(_PREVIEWS)
         for filename in ("IconMayaHeader.png", "IconHeader.png", "Icon128.png"):
             icon_path = os.path.join(_repo_root(), "Plugins", "AssetForge", "Resources", filename)
             if os.path.exists(icon_path):
@@ -1035,6 +1101,59 @@ def _register_previews():
                 break
     except Exception:
         _PREVIEWS = None
+
+
+def _register_status_icons(previews):
+    icon_dir = os.path.join(_repo_root(), "AssetForgeReports", "blender_ui", "status_icons")
+    if not os.path.isdir(icon_dir):
+        os.makedirs(icon_dir)
+    for state, color in _STATUS_ICON_COLORS.items():
+        icon_path = os.path.join(icon_dir, "status_{0}.png".format(state))
+        if not os.path.exists(icon_path):
+            _write_status_icon_png(icon_path, color)
+        previews.load("status_{0}".format(state), icon_path, "IMAGE")
+
+
+def _write_status_icon_png(path, color):
+    width = 16
+    height = 16
+    pixels = []
+    cx = 7.5
+    cy = 7.5
+    for y in range(height):
+        for x in range(width):
+            dist = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+            if dist <= 5.8:
+                pixels.append(color)
+            elif dist <= 7.0:
+                pixels.append((max(0, color[0] - 36), max(0, color[1] - 36), max(0, color[2] - 36), color[3]))
+            else:
+                pixels.append((0, 0, 0, 0))
+    _write_png_rgba(path, width, height, pixels)
+
+
+def _write_png_rgba(path, width, height, pixels):
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent and not os.path.isdir(parent):
+        os.makedirs(parent)
+    rows = []
+    for y in range(height):
+        row = bytearray([0])
+        for x in range(width):
+            row.extend(bytearray(pixels[y * width + x]))
+        rows.append(bytes(row))
+    raw = b"".join(rows)
+    payload = b"\x89PNG\r\n\x1a\n"
+    payload += _png_chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+    payload += _png_chunk(b"IDAT", zlib.compress(raw))
+    payload += _png_chunk(b"IEND", b"")
+    with open(path, "wb") as stream:
+        stream.write(payload)
+
+
+def _png_chunk(kind, data):
+    body = kind + data
+    return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
 
 
 def _unregister_previews():
