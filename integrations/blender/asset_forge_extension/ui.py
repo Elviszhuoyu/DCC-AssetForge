@@ -156,10 +156,10 @@ class ASSETFORGE_OT_export_package(bpy.types.Operator):
 class ASSETFORGE_OT_load_project_preset(bpy.types.Operator):
     bl_idname = "asset_forge.load_project_preset"
     bl_label = "加载预设"
-    bl_description = "加载团队通用 Asset Forge 项目预设 JSON"
+    bl_description = "加载团队通用 Asset Forge 项目预设 JSON / CSV"
 
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore
-    filter_glob: bpy.props.StringProperty(default="*.json", options={"HIDDEN"})  # type: ignore
+    filter_glob: bpy.props.StringProperty(default="*.json;*.csv", options={"HIDDEN"})  # type: ignore
 
     def execute(self, context):
         settings = load_project_settings(self.filepath)
@@ -176,10 +176,10 @@ class ASSETFORGE_OT_load_project_preset(bpy.types.Operator):
 class ASSETFORGE_OT_save_project_preset(bpy.types.Operator):
     bl_idname = "asset_forge.save_project_preset"
     bl_label = "保存预设"
-    bl_description = "保存当前 Blender 工作台参数为团队通用项目预设 JSON"
+    bl_description = "保存当前 Blender 工作台参数为团队通用项目预设 JSON / CSV"
 
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore
-    filter_glob: bpy.props.StringProperty(default="*.json", options={"HIDDEN"})  # type: ignore
+    filter_glob: bpy.props.StringProperty(default="*.json;*.csv", options={"HIDDEN"})  # type: ignore
 
     def execute(self, context):
         settings = _project_settings_from_blender(context.scene.asset_forge_settings)

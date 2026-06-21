@@ -4,6 +4,7 @@
 from __future__ import absolute_import
 
 import io
+import csv
 import json
 import os
 from datetime import datetime
@@ -17,12 +18,16 @@ from asset_forge.shared.unreal_path import sanitize_unreal_package_path
 PROJECT_SETTINGS_VERSION = "0.3"
 
 PROJECT_SETTINGS_LABELS = {
+    "schema": ("配置类型", "asset_forge.preset.schema"),
+    "version": ("配置格式版本", "asset_forge.preset.schema_version"),
     "preset_name": ("预设名称", "asset_forge.preset.name"),
     "preset_version": ("预设版本", "asset_forge.preset.version"),
+    "updated_at": ("更新时间", "asset_forge.preset.updated_at"),
     "export_root": ("导出根目录", "dcc.export_root"),
     "package_name_override": ("包体/文件夹名", "dcc.package_name"),
     "package_version_mode": ("包体迭代模式", "dcc.package_version_mode"),
     "package_version_padding": ("版本号位数", "dcc.package_version_padding"),
+    "package_version_start": ("起始版本号", "dcc.package_version_start"),
     "texture_root": ("贴图目录", "dcc.texture_root"),
     "texture_set_token": ("贴图集关键词", "dcc.texture_set_token"),
     "triangle_budget": ("三角面最大上限", "asset_forge.validation.triangle_budget"),
@@ -37,7 +42,40 @@ PROJECT_SETTINGS_LABELS = {
     "nanite_policy": ("Nanite 策略", "ue.static_mesh.nanite_policy"),
     "static_mesh_lod_group": ("Mesh LODGroup", "ue.static_mesh.lod_group"),
     "static_mesh_lod_import_policy": ("Mesh LOD 导入策略", "ue.static_mesh.lod_import_policy"),
+    "build_reversed_index_buffer": ("反向索引缓冲", "ue.static_mesh.build_reversed_index_buffer"),
+    "generate_lightmap_uvs": ("生成 Lightmap UV", "ue.static_mesh.generate_lightmap_uvs"),
+    "collision_complexity": ("碰撞复杂度", "ue.static_mesh.collision_complexity"),
 }
+
+PROJECT_SETTINGS_EXPORT_KEYS = [
+    "schema",
+    "version",
+    "preset_name",
+    "preset_version",
+    "updated_at",
+    "ue_target_path",
+    "export_root",
+    "package_name_override",
+    "package_version_mode",
+    "package_version_padding",
+    "package_version_start",
+    "target_platform",
+    "material_profile",
+    "triangle_budget",
+    "mesh_prefix",
+    "texture_root",
+    "texture_set_token",
+    "texture_prefix",
+    "nanite_policy",
+    "static_mesh_lod_group",
+    "static_mesh_lod_import_policy",
+    "virtual_texture_policy",
+    "texture_streaming_policy",
+    "texture_group",
+    "build_reversed_index_buffer",
+    "generate_lightmap_uvs",
+    "collision_complexity",
+]
 
 DEFAULT_PROJECT_SETTINGS = {
     "version": PROJECT_SETTINGS_VERSION,
@@ -147,6 +185,8 @@ def _positive_int(value, default):
 
 
 def load_project_settings(path):
+    if str(path or "").lower().endswith(".csv"):
+        return load_project_settings_csv(path)
     with io.open(path, "r", encoding="utf-8") as stream:
         return normalize_project_settings(json.load(stream))
 
@@ -158,17 +198,50 @@ def save_project_settings(path, settings):
     parent = os.path.dirname(os.path.abspath(path))
     if parent and not os.path.isdir(parent):
         os.makedirs(parent)
+    if path.lower().endswith(".csv"):
+        save_project_settings_csv(path, active)
+        return normalize_path(path)
     with io.open(path, "w", encoding="utf-8") as stream:
         json.dump(active, stream, ensure_ascii=False, indent=2, sort_keys=True)
         stream.write("\n")
     return normalize_path(path)
 
 
-def project_settings_rows(settings):
+def load_project_settings_csv(path):
+    data = {}
+    with io.open(path, "r", encoding="utf-8-sig", newline="") as stream:
+        reader = csv.DictReader(stream)
+        if not reader.fieldnames:
+            return normalize_project_settings(data)
+        for row in reader:
+            key = (row.get("key") or row.get("字段") or "").strip()
+            if not key:
+                continue
+            data[key] = row.get("value", row.get("值", ""))
+    return normalize_project_settings(data)
+
+
+def save_project_settings_csv(path, settings):
+    active = normalize_project_settings(settings)
+    with io.open(path, "w", encoding="utf-8-sig", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=["key", "label", "value", "ue_interface"])
+        writer.writeheader()
+        for row in project_settings_rows(active, include_all=True):
+            writer.writerow(
+                {
+                    "key": row["key"],
+                    "label": row["label"],
+                    "value": row["value"],
+                    "ue_interface": row["ue_interface"],
+                }
+            )
+
+
+def project_settings_rows(settings, include_all=False):
     """Return table-like preset rows for DCC UI status blocks."""
     active = normalize_project_settings(settings)
     rows = []
-    for key in [
+    keys = PROJECT_SETTINGS_EXPORT_KEYS if include_all else [
         "preset_name",
         "preset_version",
         "ue_target_path",
@@ -189,7 +262,8 @@ def project_settings_rows(settings):
         "virtual_texture_policy",
         "texture_streaming_policy",
         "texture_group",
-    ]:
+    ]
+    for key in keys:
         label, ue_interface = PROJECT_SETTINGS_LABELS.get(key, (key, ""))
         rows.append(
             {
@@ -223,6 +297,6 @@ def normalize_project_settings_path(path):
     root, extension = os.path.splitext(active)
     if extension == ".*":
         return root + ".json"
-    if extension.lower() != ".json":
+    if extension.lower() not in [".json", ".csv"]:
         return active + ".json"
     return active

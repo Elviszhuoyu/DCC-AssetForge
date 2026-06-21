@@ -97,6 +97,36 @@ class MayaProjectSettingsTest(unittest.TestCase):
         self.assertEqual(raw["texture_prefix"], "T_")
         self.assertEqual(raw["version"], "0.3")
 
+    def test_load_save_roundtrip_utf8_csv_for_excel_exchange(self):
+        path = os.path.join(self.temp_dir, "project_settings.csv")
+
+        saved_path = save_project_settings(
+            path,
+            {
+                "preset_name": "团队道具预设",
+                "preset_version": "0.3",
+                "export_root": "D:/Exports",
+                "texture_root": "D:/贴图",
+                "triangle_budget": "64000",
+                "package_version_mode": "auto_increment",
+                "package_version_padding": 5,
+                "ue_target_path": "/Game/Props/Team",
+            },
+        )
+        loaded = load_project_settings(saved_path)
+
+        self.assertEqual(saved_path.replace("\\", "/").endswith("project_settings.csv"), True)
+        self.assertEqual(loaded["preset_name"], "团队道具预设")
+        self.assertEqual(loaded["texture_root"], "D:/贴图")
+        self.assertEqual(loaded["triangle_budget"], 64000)
+        self.assertEqual(loaded["package_version_mode"], "auto_increment")
+        self.assertEqual(loaded["package_version_padding"], 5)
+        self.assertEqual(loaded["ue_target_path"], "/Game/Props/Team")
+        with open(saved_path, "r", encoding="utf-8-sig") as stream:
+            raw = stream.read()
+        self.assertIn("key,label,value,ue_interface", raw)
+        self.assertIn("triangle_budget,三角面最大上限,64000,asset_forge.validation.triangle_budget", raw)
+
 
 if __name__ == "__main__":
     unittest.main()
