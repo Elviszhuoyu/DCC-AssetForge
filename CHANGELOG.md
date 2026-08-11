@@ -6,6 +6,10 @@ The project follows semantic versioning for released repository versions. JSON p
 
 ## [Unreleased]
 
+No unreleased changes are currently documented.
+
+## [0.1.0] — 2026-08-11
+
 ### Added
 
 - English and Simplified Chinese public entry pages.
@@ -22,6 +26,5 @@ The project follows semantic versioning for released repository versions. JSON p
 - Offline tests are required for this preparation pass.
 - Fresh Maya, Blender, and Unreal host validation remains pending and must not be inferred from CI.
 
-## 0.1.0 — Not released
-
-The source manifests currently use `0.1.0`. This heading is a release candidate placeholder, not evidence that a tag or GitHub Release exists.
+[Unreleased]: https://github.com/Elviszhuoyu/DCC-AssetForge/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Elviszhuoyu/DCC-AssetForge/releases/tag/v0.1.0

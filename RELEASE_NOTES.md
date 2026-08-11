@@ -1,6 +1,6 @@
-# DCC AssetForge 0.1.0 — Release Candidate Notes
+# DCC AssetForge 0.1.0
 
-This is a draft for the first public GitHub Release. It does not mean a tag or Release has been created.
+Released on 2026-08-11 as the first tagged public version of DCC AssetForge.
 
 ## What this release is
 
@@ -16,12 +16,15 @@ DCC AssetForge 0.1.0 establishes an auditable static-prop path from Maya or Blen
 - Fixed-action localhost MCP bridges for Maya and Blender; arbitrary Python execution is not the default production boundary.
 - English and Simplified Chinese documentation, security policy, contribution guide, third-party inventory, issue/PR templates, and host-independent CI.
 
-## Verified for this release-candidate preparation
+## Verified for this release
 
-- Python source compilation.
-- Host-independent unit and contract tests.
+- Python source compilation on Windows with Python 3.9 and 3.12.
+- All 756 host-independent unit and contract tests in CI and an anonymous clean clone.
 - UTF-8, U+FFFD, tracked private-path, forbidden binary, and tracked file-size checks.
 - Offline generation of a small redacted static-prop package.
+- Anonymous repository clone and public README rendering, including language links, CI badge, and Mermaid workflow diagram.
+- Temporary Blender add-on installation and exact manual removal without opening Blender.
+- Unreal plugin installation dry-run against an isolated fixture project without opening Unreal Editor.
 - Repository whitespace checks.
 
 ## Host validation boundary
@@ -36,13 +39,15 @@ Blender 4.2 is the manifest minimum, not a claim that every Blender version from
 - 3ds Max and a standalone desktop application are out of scope.
 - Unreal material evidence does not replace final TA visual inspection.
 - Automatic uninstall is not included; the README documents explicit per-host removal paths.
-- No official screenshots or GIFs are included in this candidate.
+- No official screenshots or GIFs are included in this release.
 - The DCC AssetForge name and six original AF icons are governed by `BRAND_ASSET_POLICY.md`, not the MIT License; modified public forks must follow that policy.
 - The Blender add-on is prepared for direct/manual installation, not submission to the official Blender Extensions Platform; that platform has a separate GPL-3.0-or-later requirement.
 
 ## Upgrade and compatibility
 
-This is the first proposed public release. Internal identifiers remain `asset_forge`, `AssetForge`, `AssetForgeEditor`, `/AssetForge`, and existing `ASSET_FORGE_*`/schema keys. They are compatibility contracts and were not renamed with the public brand.
+This is the first public release. Internal identifiers remain `asset_forge`, `AssetForge`, `AssetForgeEditor`, `/AssetForge`, and existing `ASSET_FORGE_*`/schema keys. They are compatibility contracts and were not renamed with the public brand.
+
+The GitHub Release contains the automatically generated source archives only. It does not bundle Maya, Blender, Unreal Engine, project binaries, scenes, models, or textures.
 
 ## License
 

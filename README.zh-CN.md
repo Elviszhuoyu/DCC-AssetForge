@@ -6,7 +6,7 @@
 
 DCC AssetForge 是面向技术美术与美术团队的开源 DCC 到 Unreal 静态道具工作流。它把 Maya 或 Blender 中的资产整理为可审计包，再由 Unreal Editor 端的 Gate 先检查、后导入。
 
-仓库现已公开，正在准备首个带标签的 GitHub Release。当前三个代码 manifest 一致标记为 `0.1.0`，尚未创建正式 Release。真实宿主截图和 GIF 尚未准备完成，因此首版使用架构图、命令和脱敏示例，不伪造展示素材。
+当前公开版本为 [v0.1.0](https://github.com/Elviszhuoyu/DCC-AssetForge/releases/tag/v0.1.0)，与 Python、Blender 和 Unreal 三处 manifest 一致。真实宿主截图和 GIF 尚未准备完成，因此首版使用架构图、命令和脱敏示例，不伪造展示素材。
 
 > DCC AssetForge 是独立项目，与 Autodesk、Blender Foundation、Epic Games 没有隶属、背书或赞助关系。Maya、Blender、Unreal Engine 是其各自权利人的商标。
 
