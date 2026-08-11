@@ -2,7 +2,12 @@
 
 ## Supported versions
 
-There is no tagged public release yet. Security fixes currently target the latest `main` branch. This section will be updated when a supported release exists.
+| Version | Supported |
+| --- | --- |
+| 0.1.x | Yes |
+| Earlier or unreleased snapshots | No |
+
+Security fixes target the latest `0.1.x` release and the current `main` branch.
 
 ## Reporting a vulnerability
 
