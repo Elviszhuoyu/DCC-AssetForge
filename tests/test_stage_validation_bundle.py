@@ -103,7 +103,7 @@ class StageValidationBundleTest(unittest.TestCase):
                             "assetforge_editor_linked": True,
                             "blocked_by_plugin": "UE_MCP_Bridge",
                             "blocker_summary": "duplicate JsonSerializer.cpp source filenames",
-                            "ubt_log_path": "<USER_HOME>/AppData/Local/UnrealBuildTool/Log.txt",
+                            "ubt_log_path": "D:/AssetForgeFixtures/UnrealBuildTool/Log.txt",
                             "next_action": "Fix or disable UE_MCP_Bridge, then rerun closed-editor UBT.",
                         },
                     }

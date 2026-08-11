@@ -1,12 +1,10 @@
 from __future__ import absolute_import
 
-from datetime import datetime
 from pathlib import Path
-import re
 import unittest
 
 
-SCAN_ROOTS = ["asset_forge", "scripts", "tests", "config", "Dev_doc"]
+SCAN_ROOTS = ["asset_forge", "scripts", "tests", "config", "Plugins"]
 SCAN_EXTENSIONS = {".py", ".json", ".md", ".txt"}
 
 
@@ -55,7 +53,7 @@ def mojibake_from_text_codes(*codes):
     return marker_from_codes(*codes).encode("utf-8").decode("gbk", "ignore")
 
 
-def dev_doc_mojibake_markers():
+def source_mojibake_markers():
     return mojibake_markers() + [
         chr(0x5BB8),
         chr(0x6DC7),
@@ -117,7 +115,7 @@ def portfolio_user_text_mojibake_markers():
 class SourceMojibakeSentinelTest(unittest.TestCase):
     def test_source_and_tests_do_not_contain_common_mojibake_markers(self):
         offenders = []
-        markers = dev_doc_mojibake_markers()
+        markers = source_mojibake_markers()
         for root_name in SCAN_ROOTS:
             root = Path(root_name)
             if not root.exists():
@@ -132,23 +130,6 @@ class SourceMojibakeSentinelTest(unittest.TestCase):
                 found = [marker for marker in markers if marker in text]
                 if found:
                     offenders.append("{0}: {1}".format(path.as_posix(), [marker.encode("unicode_escape").decode("ascii") for marker in found]))
-        self.assertEqual(offenders, [])
-
-    def test_dev_doc_markdown_does_not_contain_common_gbk_utf8_mojibake_fragments(self):
-        offenders = []
-        markers = dev_doc_mojibake_markers()
-        root = Path("Dev_doc")
-        if not root.exists():
-            return
-
-        for path in root.glob("*.md"):
-            try:
-                text = path.read_text(encoding="utf-8-sig")
-            except UnicodeDecodeError:
-                continue
-            found = [marker for marker in markers if marker in text]
-            if found:
-                offenders.append("{0}: {1}".format(path.as_posix(), [marker.encode("unicode_escape").decode("ascii") for marker in found]))
         self.assertEqual(offenders, [])
 
     def test_texture_set_user_copy_does_not_use_legacy_token_name(self):
@@ -182,16 +163,6 @@ class SourceMojibakeSentinelTest(unittest.TestCase):
                 if found:
                     offenders.append("{0}: {1}".format(path.as_posix(), [marker.encode("unicode_escape").decode("ascii") for marker in found]))
         self.assertEqual(offenders, [])
-
-    def test_log_entries_are_reverse_chronological_and_show_latest_entry_first(self):
-        path = Path("Dev_doc") / "LOG.md"
-        text = path.read_text(encoding="utf-8-sig")
-        title_times = re.findall(r"^## (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) CST", text, flags=re.MULTILINE)
-        parsed = [datetime.strptime(item, "%Y-%m-%d %H:%M") for item in title_times]
-        self.assertTrue(parsed)
-        self.assertEqual(parsed[0], max(parsed))
-        self.assertEqual(parsed, sorted(parsed, reverse=True))
-
 
 if __name__ == "__main__":
     unittest.main()

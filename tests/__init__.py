@@ -1,2 +1,1 @@
-"""Asset Forge tests."""
-
+"""DCC AssetForge tests."""

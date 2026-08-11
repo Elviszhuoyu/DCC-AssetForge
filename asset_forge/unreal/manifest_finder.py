@@ -1,4 +1,4 @@
-"""Find Asset Forge manifest files for Unreal import."""
+"""Find DCC AssetForge manifest files for Unreal import."""
 
 from __future__ import absolute_import
 

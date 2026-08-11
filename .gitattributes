@@ -1,8 +1,34 @@
+* text=auto eol=lf
+
 *.py text eol=lf
 *.json text eol=lf
 *.md text eol=lf
 *.txt text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+*.toml text eol=lf
+*.uplugin text eol=lf
+*.ini text eol=lf
+*.mod text eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.cs text eol=lf
 *.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.fbx binary
+*.obj binary
+*.abc binary
+*.usd binary
+*.usdc binary
+*.blend binary
+*.ma binary
+*.mb binary
+*.uasset binary
+*.umap binary
+*.zip binary
+*.7z binary
 
+# No path currently uses Git LFS. Introduce LFS filters only through a reviewed
+# policy change; do not silently convert existing history.

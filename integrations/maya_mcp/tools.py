@@ -23,10 +23,10 @@ def tool_definitions():
                 "include_stale": {"type": "boolean", "default": False},
             },
         ),
-        _tool("maya_status", "检查 Maya bridge、当前场景和 Asset Forge 加载状态。", {}),
+        _tool("maya_status", "检查 Maya bridge、当前场景和 DCC AssetForge 加载状态。", {}),
         _tool(
             "maya_load_asset_forge",
-            "清理旧模块缓存并加载当前仓库版本的 Asset Forge Maya 入口。",
+            "清理旧模块缓存并加载当前仓库版本的 DCC AssetForge Maya 入口。",
             {
                 "repo_root": {"type": "string"},
                 "open_ui": {"type": "boolean", "default": False},
@@ -34,7 +34,7 @@ def tool_definitions():
         ),
         _tool(
             "maya_install_asset_forge_ui_shelf",
-            "安装或刷新 Asset Forge Maya 发布工作台 shelf 按钮，使用统一 AF 图标并强制加载当前仓库代码。",
+            "安装或刷新 DCC AssetForge Maya 发布工作台 shelf 按钮，使用统一 AF 图标并强制加载当前仓库代码。",
             {
                 "repo_root": {"type": "string"},
                 "shelf_name": {"type": "string", "default": "AssetForge"},
@@ -42,7 +42,7 @@ def tool_definitions():
         ),
         _tool(
             "maya_install_mcp_bridge_shelf",
-            "安装或刷新 Asset Forge Maya MCP shelf 按钮，使用 Maya 专用 MCP 图标并指向当前仓库 bridge。",
+            "安装或刷新 DCC AssetForge Maya MCP shelf 按钮，使用 Maya 专用 MCP 图标并指向当前仓库 bridge。",
             {
                 "repo_root": {"type": "string"},
             },
@@ -75,7 +75,7 @@ def tool_definitions():
         _static_prop_tool("maya_preflight_static_prop", "执行 Static Prop 导出前检查，但不导出 FBX。"),
         _static_prop_tool(
             "maya_export_static_prop_package",
-            "导出标准 Asset Forge Static Prop package。",
+            "导出标准 DCC AssetForge Static Prop package。",
             extra={
                 "export_root": {"type": "string"},
                 "target_path": {"type": "string", "default": "/Game/Props"},
@@ -84,7 +84,7 @@ def tool_definitions():
         ),
         _static_prop_tool(
             "maya_run_static_prop_ui_flow",
-            "Run the Asset Forge Maya UI flow through whitelisted window callbacks: scan, optional prefix fixes, preflight, optional texture scan, and export.",
+            "Run the DCC AssetForge Maya UI flow through whitelisted window callbacks: scan, optional prefix fixes, preflight, optional texture scan, and export.",
             extra={
                 "export_root": {"type": "string"},
                 "target_path": {"type": "string", "default": "/Game/Props"},
@@ -106,7 +106,7 @@ def tool_definitions():
         ),
         _tool(
             "maya_reset_session",
-            "清理选择，并可选新建空场景与清理 Asset Forge 模块缓存。",
+            "清理选择，并可选新建空场景与清理 DCC AssetForge 模块缓存。",
             {
                 "new_scene": {"type": "boolean", "default": False},
                 "purge_asset_forge_modules": {"type": "boolean", "default": False},

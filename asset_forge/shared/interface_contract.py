@@ -89,12 +89,12 @@ def _resolve_manifest_path(path):
 
 
 def _missing_manifest_report(path):
-    check = _check("manifest", "error", "manifest", "未找到 Asset Forge manifest：{0}".format(normalize_path(path)))
+    check = _check("manifest", "error", "manifest", "未找到 DCC AssetForge manifest：{0}".format(normalize_path(path)))
     summary = create_acceptance_summary(
         "error",
         [],
         [_message(check)],
-        "确认资产包目录内存在 Asset Forge manifest 后重新执行接口契约检查",
+        "确认资产包目录内存在 DCC AssetForge manifest 后重新执行接口契约检查",
     )
     report = {
         "version": REPORT_VERSION,

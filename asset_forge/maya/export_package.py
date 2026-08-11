@@ -1,4 +1,4 @@
-"""Asset Forge export package path planning."""
+"""DCC AssetForge export package path planning."""
 
 from __future__ import absolute_import
 

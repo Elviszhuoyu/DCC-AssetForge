@@ -1,4 +1,4 @@
-"""Default Unreal Asset Forge material package planning schema."""
+"""Default DCC AssetForge material package planning schema for Unreal."""
 
 from __future__ import absolute_import
 
@@ -28,7 +28,7 @@ DEFAULT_PACKAGE_ROOT = "/AssetForge"
 
 
 def get_default_material_package_plan():
-    """Return the planned UE plugin content layout for Asset Forge materials."""
+    """Return the planned UE plugin content layout for DCC AssetForge materials."""
     return {
         "version": MATERIAL_PACKAGE_VERSION,
         "root": DEFAULT_PACKAGE_ROOT,
@@ -375,7 +375,7 @@ def _material_instance(name, path, parent_material, scalar_overrides=None, vecto
         "vector_overrides": vector_overrides or {},
         "static_switch_overrides": static_switch_overrides or {},
         "texture_overrides": texture_overrides or {},
-        "purpose": "Default Asset Forge material preset for common hard-surface/prop workflows.",
+        "purpose": "Default DCC AssetForge material preset for common hard-surface/prop workflows.",
     }
 
 

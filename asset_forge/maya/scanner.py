@@ -1,4 +1,4 @@
-"""Core Maya scene scanner for Asset Forge v0.1."""
+"""Core Maya scene scanner for DCC AssetForge 0.1."""
 
 from __future__ import absolute_import
 

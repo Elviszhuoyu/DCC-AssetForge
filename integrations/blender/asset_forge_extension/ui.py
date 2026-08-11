@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Blender Asset Forge workbench UI."""
+"""Blender DCC AssetForge workbench UI."""
 
 from __future__ import absolute_import
 
@@ -205,7 +205,7 @@ class ASSETFORGE_OT_apply_transform_fix(bpy.types.Operator):
 class ASSETFORGE_OT_load_project_preset(bpy.types.Operator):
     bl_idname = "asset_forge.load_project_preset"
     bl_label = "加载预设"
-    bl_description = "加载团队通用 Asset Forge 项目预设 JSON"
+    bl_description = "加载团队通用 DCC AssetForge 项目预设 JSON"
 
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore
     filter_glob: bpy.props.StringProperty(default="*.json", options={"HIDDEN"})  # type: ignore
@@ -261,7 +261,7 @@ class ASSETFORGE_OT_apply_project_preset(bpy.types.Operator):
 class ASSETFORGE_OT_open_last_report(bpy.types.Operator):
     bl_idname = "asset_forge.open_last_report"
     bl_label = "打开报告"
-    bl_description = "打开最近一次 Asset Forge 报告"
+    bl_description = "打开最近一次 DCC AssetForge 报告"
 
     def execute(self, context):
         path = context.scene.asset_forge_settings.last_report_path
@@ -277,10 +277,10 @@ class ASSETFORGE_OT_open_last_report(bpy.types.Operator):
 
 class ASSETFORGE_PT_main_panel(bpy.types.Panel):
     bl_idname = "ASSETFORGE_PT_main_panel"
-    bl_label = "Asset Forge"
+    bl_label = "DCC AssetForge"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Asset Forge"
+    bl_category = "DCC AssetForge"
 
     def draw(self, context):
         layout = self.layout
@@ -290,9 +290,9 @@ class ASSETFORGE_PT_main_panel(bpy.types.Panel):
         title = row.row(align=True)
         icon_value = _logo_icon_value()
         if icon_value:
-            title.label(text="Asset Forge Blender 发布工作台", icon_value=icon_value)
+            title.label(text="DCC AssetForge Blender 发布工作台", icon_value=icon_value)
         else:
-            title.label(text="Asset Forge Blender 发布工作台", icon="PLUGIN")
+            title.label(text="DCC AssetForge Blender 发布工作台", icon="PLUGIN")
         active = _current_bridge()
         row.label(text="MCP: {0} 运行中".format(active.port) if active else "MCP: 未运行", icon="CHECKMARK" if active else "TIME")
         row.operator("asset_forge.refresh_status", text="", icon="FILE_REFRESH")
@@ -520,7 +520,7 @@ def _run_provider_action(context, action):
                 settings.export_root = params["export_root"]
             result = provider.export_static_prop_package(params)
         else:
-            raise RuntimeError("Unknown Asset Forge action: {0}".format(action))
+            raise RuntimeError("Unknown DCC AssetForge action: {0}".format(action))
         report_path = _write_ui_report(action, result)
         _apply_result_to_settings(settings, action, result, report_path)
         return {"FINISHED"}

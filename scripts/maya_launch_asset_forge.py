@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Force-launch Asset Forge inside Maya from the current repository checkout.
+"""Force-launch DCC AssetForge inside Maya from the current repository checkout.
 
 This file is intentionally independent from ``asset_forge_maya`` so it can fix
 the case where Maya has already imported an older module from another sys.path.
@@ -53,7 +53,7 @@ def _repo_root_from_context():
         return os.path.abspath(os.path.join(os.path.dirname(bootstrap_path), os.pardir))
 
     raise RuntimeError(
-        "无法定位 Asset Forge 仓库根目录：Maya exec 环境没有 __file__。"
+        "无法定位 DCC AssetForge 仓库根目录：Maya exec 环境没有 __file__。"
         "请设置 ASSET_FORGE_REPO_ROOT，或使用推荐启动代码注入 __file__ / ASSET_FORGE_BOOTSTRAP_PATH。"
     )
 
@@ -81,7 +81,7 @@ def _purge_asset_forge_modules():
 
 def _load_entry_module(entry_script):
     if not os.path.exists(entry_script):
-        raise RuntimeError("找不到 Asset Forge Maya 入口脚本: {0}".format(entry_script))
+        raise RuntimeError("找不到 DCC AssetForge Maya 入口脚本: {0}".format(entry_script))
 
     try:
         import importlib.util
@@ -101,7 +101,7 @@ def _load_bridge_module(repo_root):
     """Load the bridge script from this checkout, not Maya's cached sys.modules."""
     bridge_script = os.path.join(_maya_scripts_dir(repo_root), BRIDGE_MODULE_NAME + ".py")
     if not os.path.exists(bridge_script):
-        raise RuntimeError("找不到 Asset Forge Maya bridge 脚本: {0}".format(bridge_script))
+        raise RuntimeError("找不到 DCC AssetForge Maya bridge 脚本: {0}".format(bridge_script))
 
     old_bridge = sys.modules.get(BRIDGE_MODULE_NAME)
     if old_bridge is not None and getattr(old_bridge, "_SERVER", None) is not None:
@@ -184,15 +184,15 @@ def bootstrap(repo_root=None, open_ui=True, quiet=False):
 
     if not callable(getattr(module, "reload_and_show", None)):
         raise RuntimeError(
-            "Asset Forge Maya 入口已加载，但缺少 reload_and_show: {0}".format(
+            "DCC AssetForge Maya 入口已加载，但缺少 reload_and_show: {0}".format(
                 getattr(module, "__file__", "<unknown>")
             )
         )
 
     if not quiet:
-        print("[AssetForge] repo_root = {0}".format(active_root))
-        print("[AssetForge] entry = {0}".format(getattr(module, "__file__", entry_script)))
-        print("[AssetForge] purged_modules = {0}".format(len(purged)))
+        print("[DCC AssetForge] repo_root = {0}".format(active_root))
+        print("[DCC AssetForge] entry = {0}".format(getattr(module, "__file__", entry_script)))
+        print("[DCC AssetForge] purged_modules = {0}".format(len(purged)))
 
     if open_ui:
         return module.reload_and_show()
@@ -213,7 +213,7 @@ def launch():
 
 
 def install_ui_shelf_button(repo_root=None, shelf_name=UI_SHELF_NAME):
-    """Install the main Asset Forge Maya workbench shelf button."""
+    """Install the main DCC AssetForge Maya workbench shelf button."""
     active_root = os.path.abspath(repo_root or _repo_root_from_context())
     import maya.cmds as cmds
 
@@ -225,8 +225,8 @@ def install_ui_shelf_button(repo_root=None, shelf_name=UI_SHELF_NAME):
     button = cmds.shelfButton(
         UI_SHELF_BUTTON,
         parent=shelf,
-        label="Asset Forge",
-        annotation="Open Asset Forge Maya publish workbench from the current repository",
+        label="DCC AssetForge",
+        annotation="Open the DCC AssetForge Maya workbench from the current repository",
         image=icon_path,
         image1=icon_path,
         imageOverlayLabel="",
@@ -241,7 +241,7 @@ def install_ui_shelf_button(repo_root=None, shelf_name=UI_SHELF_NAME):
         "button": button,
         "repo_root": active_root,
         "icon": icon_path,
-        "next_action": "Shelf 按钮 Asset Forge 已安装；点击后会清理旧模块并打开当前仓库的 Maya 发布工作台。",
+        "next_action": "Shelf 按钮 DCC AssetForge 已安装；点击后会清理旧模块并打开当前仓库的 Maya 发布工作台。",
     }
 
 
@@ -331,7 +331,7 @@ def check(repo_root=None, write_log=False):
             "can_accept": False,
             "warnings": [],
             "errors": [{"source": "maya_bootstrap", "message": str(exc)}],
-            "next_action": "确认传入的是 Asset Forge 仓库根目录，或使用推荐粘贴代码注入 ASSET_FORGE_REPO_ROOT / ASSET_FORGE_BOOTSTRAP_PATH。",
+            "next_action": "确认传入的是 DCC AssetForge 仓库根目录，或使用推荐粘贴代码注入 ASSET_FORGE_REPO_ROOT / ASSET_FORGE_BOOTSTRAP_PATH。",
             "bootstrap": {},
         }
     if write_log:
@@ -340,7 +340,7 @@ def check(repo_root=None, write_log=False):
 
 
 def start_bridge(repo_root=None, host=None, port=None, token=None):
-    """Start the Asset Forge Maya MCP bridge from the same bootstrap entry."""
+    """Start the DCC AssetForge Maya MCP bridge from the same bootstrap entry."""
     active_root = os.path.abspath(repo_root or _repo_root_from_context())
     _prepend_sys_path(_repo_scripts_dir(active_root))
     _prepend_sys_path(active_root)
@@ -358,7 +358,7 @@ def start_bridge(repo_root=None, host=None, port=None, token=None):
 
 
 def install_bridge_shelf_button(repo_root=None):
-    """Install the one-click Asset Forge Maya MCP bridge shelf button."""
+    """Install the one-click DCC AssetForge Maya MCP bridge shelf button."""
     active_root = os.path.abspath(repo_root or _repo_root_from_context())
     _prepend_sys_path(_repo_scripts_dir(active_root))
     _prepend_sys_path(active_root)

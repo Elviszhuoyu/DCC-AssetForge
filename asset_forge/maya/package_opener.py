@@ -1,4 +1,4 @@
-"""Open exported Asset Forge package folders from Maya."""
+"""Open exported DCC AssetForge package folders from Maya."""
 
 from __future__ import absolute_import
 

@@ -1,4 +1,4 @@
-"""Maya module package plan for Asset Forge."""
+"""Maya module package plan for DCC AssetForge."""
 
 from __future__ import absolute_import
 
@@ -30,7 +30,7 @@ def get_maya_module_package_plan():
 
 
 def read_maya_module_descriptor(path=MAYA_MODULE_DESCRIPTOR):
-    """Read the Asset Forge .mod descriptor using UTF-8."""
+    """Read the DCC AssetForge .mod descriptor using UTF-8."""
     with io.open(path, "r", encoding="utf-8") as stream:
         return [line.strip() for line in stream.readlines() if line.strip()]
 

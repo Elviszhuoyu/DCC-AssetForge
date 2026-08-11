@@ -237,15 +237,15 @@ class MayaMcpIntegrationTest(unittest.TestCase):
         self.assertEqual(
             result["portfolio_capture_ready_reasons"],
             [
-                "Asset Forge 尚未在当前 Maya 会话中加载。",
-                "当前没有选择 Maya 节点，Asset Forge UI 中也没有可用的扫描结果。",
+                "DCC AssetForge 尚未在当前 Maya 会话中加载。",
+                "当前没有选择 Maya 节点，DCC AssetForge UI 中也没有可用的扫描结果。",
             ],
         )
         self.assertEqual(result["portfolio_preflight_card"]["can_record"], False)
         self.assertEqual(result["portfolio_preflight_card"]["status_label"], "待补齐")
         self.assertEqual(result["portfolio_preflight_card"]["selected_count"], 0)
         self.assertFalse(result["portfolio_preflight_card"]["has_scan"])
-        self.assertEqual(result["portfolio_preflight_card"]["next_step"], "先加载 Asset Forge Maya 工具，再刷新状态。")
+        self.assertEqual(result["portfolio_preflight_card"]["next_step"], "先加载 DCC AssetForge Maya 工具，再刷新状态。")
         self.assertEqual(result["readonly_preflight_steps"][2]["action"], "maya_scan_static_prop")
         self.assertEqual(result["readonly_preflight_steps"][2]["label"], "扫描当前静态道具")
         self.assertEqual(cmds.mutations, [])

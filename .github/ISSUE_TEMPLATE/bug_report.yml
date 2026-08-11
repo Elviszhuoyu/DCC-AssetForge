@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a reproducible DCC AssetForge defect without sharing private assets or credentials.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not upload proprietary scenes, textures, engine binaries, live credentials, or unredacted local paths.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Release tag or full commit SHA.
+      placeholder: 0.1.0 candidate / abc1234
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Core or package contract
+        - Maya
+        - Blender
+        - Unreal Gate or plugin
+        - MCP bridge
+        - Documentation or installation
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, and exact host version when applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Use a minimal or redacted fixture and state whether a real host was opened.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and redacted evidence
+      description: Redact usernames, absolute paths, tokens, client names, and proprietary asset data.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, private paths, proprietary assets, and restricted binaries.
+          required: true
+        - label: I did not describe a dry run or fixture as real host acceptance.
+          required: true

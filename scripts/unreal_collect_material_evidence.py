@@ -1,4 +1,4 @@
-"""Collect real UE material evidence for an existing Asset Forge import report."""
+"""Collect real UE material evidence for an existing DCC AssetForge import report."""
 
 from __future__ import absolute_import
 

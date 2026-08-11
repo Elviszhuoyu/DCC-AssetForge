@@ -19,7 +19,7 @@ ACTION_PLAN = (
     {
         "id": "scan_export_directory",
         "label": "扫描导出目录",
-        "description": "扫描一个或多个导出根目录，列出可审批的 Asset Forge 包体。",
+        "description": "扫描一个或多个导出根目录，列出可审批的 DCC AssetForge 包体。",
         "callable": "scan_export_directory",
     },
     {
@@ -37,13 +37,13 @@ ACTION_PLAN = (
     {
         "id": "select_manifest",
         "label": "选择 Manifest",
-        "description": "选择一个 Asset Forge manifest 文件作为导入对象。",
+        "description": "选择一个 DCC AssetForge manifest 文件作为导入对象。",
         "callable": "",
     },
     {
         "id": "select_package",
         "label": "选择包体",
-        "description": "选择一个 Asset Forge 导出包目录。",
+        "description": "选择一个 DCC AssetForge 导出包目录。",
         "callable": "",
     },
     {
@@ -61,7 +61,7 @@ ACTION_PLAN = (
     {
         "id": "dry_run_package",
         "label": "仅检查导入计划",
-        "description": "检查一个 Asset Forge 包体的导入计划，不创建 UE 资产。",
+        "description": "检查一个 DCC AssetForge 包体的导入计划，不创建 UE 资产。",
         "callable": "dry_run_selected_package",
     },
     {
@@ -79,19 +79,19 @@ ACTION_PLAN = (
     {
         "id": "preview_cleanup_generated_props",
         "label": "预览清理候选",
-        "description": "列出 /Game/Props 下 Asset Forge 生成的历史测试目录，不执行删除。",
+        "description": "列出 /Game/Props 下 DCC AssetForge 生成的历史测试目录，不执行删除。",
         "callable": "preview_generated_props_cleanup",
     },
     {
         "id": "cleanup_generated_props",
         "label": "清理历史导入",
-        "description": "清理 /Game/Props 下 Asset Forge 生成的历史测试目录，保留 Materials、Textures 和当前规范资产。",
+        "description": "清理 /Game/Props 下 DCC AssetForge 生成的历史测试目录，保留 Materials、Textures 和当前规范资产。",
         "callable": "cleanup_generated_props",
     },
     {
         "id": "import_package",
         "label": "仅导入已放行",
-        "description": "导入当前已经检查放行的 Asset Forge 包体。",
+        "description": "导入当前已经检查放行的 DCC AssetForge 包体。",
         "callable": "import_selected_package",
     },
     {

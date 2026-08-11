@@ -13,6 +13,7 @@ from integrations.blender_mcp.protocol import ALL_ACTIONS, validate_action, vali
 from integrations.blender_mcp.tools import call_tool, tool_definitions
 from integrations.blender_mcp.server import handle_message
 from integrations.blender_mcp_bridge.bridge import BlenderBridge
+from integrations.blender_mcp_runtime import ports as blender_ports
 from integrations.blender_mcp_runtime.ports import allocate_port
 from integrations.blender_mcp_runtime.registry import (
     AmbiguousBlenderInstanceError,
@@ -285,15 +286,14 @@ class BlenderMcpRuntimeTest(unittest.TestCase):
         self.assertEqual(clean, {"selection": ["Cube"]})
 
     def test_allocate_port_skips_busy_preferred_port(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 0))
-        busy_port = sock.getsockname()[1]
-        try:
-            port = allocate_port("127.0.0.1", busy_port, busy_port + 50)
-        finally:
-            sock.close()
+        with mock.patch.object(
+            blender_ports,
+            "is_port_available",
+            side_effect=lambda host, port: port == 8876,
+        ):
+            port = allocate_port("127.0.0.1", 8875, 8876)
 
-        self.assertNotEqual(port, busy_port)
+        self.assertEqual(port, 8876)
 
     def test_tool_definitions_are_whitelisted_and_targetable(self):
         names = [item["name"] for item in tool_definitions()]

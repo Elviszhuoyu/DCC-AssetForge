@@ -1,4 +1,4 @@
-"""Post-import validation for Unreal Asset Forge imports."""
+"""Post-import validation for DCC AssetForge Unreal imports."""
 
 from __future__ import absolute_import
 

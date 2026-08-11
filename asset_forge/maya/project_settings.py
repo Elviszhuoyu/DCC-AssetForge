@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Project-level DCC settings for Asset Forge."""
+"""Project-level DCC settings for DCC AssetForge."""
 
 from __future__ import absolute_import
 

@@ -1,4 +1,4 @@
-"""One-shot acceptance flow for a single Asset Forge package."""
+"""One-shot acceptance flow for a single DCC AssetForge package."""
 
 from __future__ import absolute_import
 

@@ -215,7 +215,7 @@ class UnrealEditorWidgetModelTest(unittest.TestCase):
         section_ids = [item["id"] for item in state["sections"]]
         self.assertEqual(section_ids, ["mesh", "texture", "material", "profile", "gate"])
         self.assertEqual(state["selected_package"]["gate_status"], "pass")
-        self.assertEqual(state["title"], "Asset Forge 导入门禁工作台")
+        self.assertEqual(state["title"], "DCC AssetForge 导入门禁工作台")
         self.assertEqual(state["selected_package"]["risk_status"], "可导入")
 
     def test_gate_panel_state_accepts_export_root_list_as_first_argument(self):

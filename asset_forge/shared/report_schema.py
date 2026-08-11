@@ -1,4 +1,4 @@
-"""End-to-end Asset Forge report schema."""
+"""End-to-end DCC AssetForge report schema."""
 
 from __future__ import absolute_import
 
@@ -27,7 +27,7 @@ NEXT_ACTIONS = {
     "skipped": "步骤已跳过，按需执行下一步",
     "not_in_unreal": "请在真实 UE 5.6 Editor Python 环境中重新执行该步骤",
     "missing_parent_material": "先确认 AssetForge 插件内容已挂载，并执行默认材质 Bootstrap 后重新检查母材质",
-    "missing_manifest": "确认资产包目录内存在 Asset Forge manifest 后重新执行验收",
+    "missing_manifest": "确认资产包目录内存在 DCC AssetForge manifest 后重新执行验收",
 }
 
 

@@ -21,7 +21,7 @@ class UnrealPluginSkeletonTest(unittest.TestCase):
             descriptor = json.load(stream)
         plan = get_default_material_package_plan()
 
-        self.assertEqual(descriptor["FriendlyName"], "Asset Forge")
+        self.assertEqual(descriptor["FriendlyName"], "DCC AssetForge")
         self.assertTrue(descriptor["CanContainContent"])
         self.assertEqual(
             descriptor.get("Modules", []),
@@ -70,7 +70,8 @@ class UnrealPluginSkeletonTest(unittest.TestCase):
             os.environ["ASSET_FORGE_LOG_ROOT"] = temp_dir
             module = self._load_module(init_path)
 
-            self.assertTrue(module.BOOTSTRAP_REPORT["repo_root"].endswith("DCC_Asset_Forge"))
+            self.assertTrue(os.path.isdir(module.BOOTSTRAP_REPORT["repo_root"]))
+            self.assertTrue(os.path.isdir(os.path.join(module.BOOTSTRAP_REPORT["repo_root"], "asset_forge")))
             self.assertIn("Content/Python", module.BOOTSTRAP_REPORT["plugin_python_dir"])
             self.assertIn("added_python_paths", module.BOOTSTRAP_REPORT)
             self.assertIn("import_package", module.BOOTSTRAP_REPORT["actions"])
@@ -237,7 +238,7 @@ class UnrealPluginSkeletonTest(unittest.TestCase):
         self.assertNotIn("真实导入将接入", source)
         self.assertNotIn("最近包体 - HK416D_Round2", source)
         self.assertNotIn("最近包体 - SM_B", source)
-        self.assertNotIn("<WORKSPACE_ROOT>/DCC_Asset_Forge", source)
+        self.assertNotIn("X:/Private/DCCAssetForge", source)
 
     def _load_module(self, path):
         spec = importlib.util.spec_from_file_location("asset_forge_test_init_unreal", path)
@@ -262,11 +263,11 @@ class FakeUnrealWithExternalPlugin(object):
     class Paths(object):
         @classmethod
         def project_plugins_dir(cls):
-            return "<LEGACY_WORK_DRIVE>/UE_Pj/UE5/MyProject/Plugins"
+            return "Y:/Projects/MyProject/Plugins"
 
         @classmethod
         def engine_plugins_dir(cls):
-            return "<LEGACY_WORK_DRIVE>/UE_5.6/Engine/Plugins"
+            return "D:/AssetForgeFixtures/UE_5.6/Engine/Plugins"
 
     class EditorAssetLibrary(object):
         query_count = 0
@@ -285,7 +286,7 @@ class FakeUnrealWithInstalledPlugin(FakeUnrealWithExternalPlugin):
 
         @classmethod
         def engine_plugins_dir(cls):
-            return "<LEGACY_WORK_DRIVE>/UE_5.6/Engine/Plugins"
+            return "D:/AssetForgeFixtures/UE_5.6/Engine/Plugins"
 
 
 if __name__ == "__main__":

@@ -27,6 +27,23 @@ Desktop.ini
 *.autosave
 *.tmp
 
+# DCC, engine, archive, and exchange assets are not source-code fixtures.
+# Propose an explicit Git LFS policy before tracking any of these formats.
+*.fbx
+*.obj
+*.abc
+*.usd
+*.usda
+*.usdc
+*.blend
+*.ma
+*.mb
+*.uasset
+*.umap
+*.zip
+*.7z
+*.rar
+
 # Local generated evidence, scratch spaces, and manual test assets.
 # Keep useful reports/screenshots locally, but do not commit them by default.
 AssetForgeReports/
@@ -45,3 +62,20 @@ Asset_Forge_v0.1项目开发需求文档.md
 # into the reusable plugin runtime or test suite without being parameterized.
 tools/ue55_*.py
 tools/ue56_*.py
+
+# Maintainer-only project state. These files may exist locally but are not part
+# of the public repository contract.
+docs/CURRENT.md
+docs/CURRENT_TASK.md
+docs/HANDOFF.md
+docs/DECISION_LOG.md
+docs/ICEBOX.md
+docs/PROJECT_LOG_ARCHIVE.md
+docs/PRD.md
+docs/BLENDER_MCP_PLAN.md
+docs/BLENDER_MCP_ARCHITECTURE.md
+docs/NORTH_STAR.md
+docs/ARCHITECTURE_CONTRACT.md
+docs/UI_CONTRACT.md
+integrations/maya_mcp_runtime/AGENTS.md
+integrations/maya_mcp_runtime/docs/

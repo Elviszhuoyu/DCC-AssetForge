@@ -2,10 +2,10 @@
   "FileVersion": 3,
   "Version": 1,
   "VersionName": "0.1.0",
-  "FriendlyName": "Asset Forge",
-  "Description": "Asset Forge Unreal bridge plugin for DCC asset import.",
+  "FriendlyName": "DCC AssetForge",
+  "Description": "DCC AssetForge review gate for auditable static-prop packages.",
   "Category": "Pipeline",
-  "CreatedBy": "TA_MyTools",
+  "CreatedBy": "DCC AssetForge Contributors",
   "CanContainContent": true,
   "EnabledByDefault": false,
   "Plugins": [

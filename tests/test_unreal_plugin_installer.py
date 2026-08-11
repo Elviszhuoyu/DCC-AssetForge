@@ -22,7 +22,7 @@ class UnrealPluginInstallerTest(unittest.TestCase):
             os.path.join(self.source_plugin, "AssetForge.uplugin"),
             {
                 "FileVersion": 3,
-                "FriendlyName": "Asset Forge",
+                "FriendlyName": "DCC AssetForge",
                 "CanContainContent": True,
                 "Modules": [],
             },
@@ -148,7 +148,7 @@ class UnrealPluginInstallerTest(unittest.TestCase):
             os.path.join(self.source_plugin, "AssetForge.uplugin"),
             {
                 "FileVersion": 3,
-                "FriendlyName": "Asset Forge",
+                "FriendlyName": "DCC AssetForge",
                 "CanContainContent": True,
                 "Modules": [{"Name": "AssetForge", "Type": "Editor"}],
             },
@@ -186,7 +186,7 @@ class UnrealPluginInstallerTest(unittest.TestCase):
             os.path.join(self.source_plugin, "AssetForge.uplugin"),
             {
                 "FileVersion": 3,
-                "FriendlyName": "Asset Forge",
+                "FriendlyName": "DCC AssetForge",
                 "CanContainContent": True,
                 "Modules": [{"Name": "AssetForge", "Type": "Editor"}],
             },
@@ -232,7 +232,7 @@ class UnrealPluginInstallerTest(unittest.TestCase):
             os.path.join(self.source_plugin, "AssetForge.uplugin"),
             {
                 "FileVersion": 3,
-                "FriendlyName": "Asset Forge",
+                "FriendlyName": "DCC AssetForge",
                 "CanContainContent": True,
                 "Modules": [{"Name": "AssetForge", "Type": "Editor"}],
             },
@@ -359,7 +359,7 @@ class UnrealPluginInstallerTest(unittest.TestCase):
             os.path.join(self.source_plugin, "AssetForge.uplugin"),
             {
                 "FileVersion": 3,
-                "FriendlyName": "Asset Forge",
+                "FriendlyName": "DCC AssetForge",
                 "CanContainContent": True,
                 "Modules": [{"Name": "AssetForge", "Type": "Editor"}],
             },

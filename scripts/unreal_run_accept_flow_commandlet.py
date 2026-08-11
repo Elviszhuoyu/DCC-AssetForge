@@ -1,4 +1,4 @@
-"""Run Asset Forge UE accept-flow through UnrealEditor-Cmd."""
+"""Run DCC AssetForge UE accept-flow through UnrealEditor-Cmd."""
 
 from __future__ import absolute_import
 
@@ -33,7 +33,7 @@ def usage_text():
 
 
 def parse_args(argv):
-    parser = argparse.ArgumentParser(description="Run Asset Forge UE accept-flow through UnrealEditor-Cmd.")
+    parser = argparse.ArgumentParser(description="Run DCC AssetForge UE accept-flow through UnrealEditor-Cmd.")
     parser.add_argument("unreal_editor_cmd")
     parser.add_argument("uproject")
     parser.add_argument("package_dir")

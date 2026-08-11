@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Minimal local TCP bridge for Asset Forge Blender MCP integration."""
+"""Minimal local TCP bridge for DCC AssetForge Blender MCP integration."""
 
 from __future__ import absolute_import
 

@@ -1,4 +1,4 @@
-"""Copy referenced texture files into an Asset Forge export package."""
+"""Copy referenced texture files into a DCC AssetForge export package."""
 
 from __future__ import absolute_import
 

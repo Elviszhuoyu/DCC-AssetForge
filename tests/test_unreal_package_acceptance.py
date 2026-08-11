@@ -148,7 +148,7 @@ class FakePluginContentBootstrap(object):
             "status": "pass",
             "plugin_name": "AssetForge",
             "content_mount": "/AssetForge",
-            "descriptor_path": "<LEGACY_WORK_DRIVE>/UEProject/Plugins/AssetForge/AssetForge.uplugin",
+            "descriptor_path": "D:/AssetForgeFixtures/UEProject/Plugins/AssetForge/AssetForge.uplugin",
             "unreal_available": True,
             "missing_assets": [],
             "checks": [

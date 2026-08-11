@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Blender FBX exporter for Asset Forge Static Prop assets."""
+"""Blender FBX exporter for DCC AssetForge Static Prop assets."""
 
 from __future__ import absolute_import
 

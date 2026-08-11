@@ -1,4 +1,4 @@
-"""Unreal Python helper for bootstrapping Asset Forge material assets."""
+"""Unreal Python helper for bootstrapping DCC AssetForge material assets."""
 
 from __future__ import absolute_import
 

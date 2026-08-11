@@ -1,4 +1,4 @@
-"""Maya module entry points for Asset Forge."""
+"""Maya module entry points for DCC AssetForge."""
 
 from __future__ import absolute_import
 
@@ -15,14 +15,14 @@ RELOAD_PREFIXES = (
 
 
 def reload_asset_forge_modules():
-    """Reload Asset Forge Maya/shared modules inside the same Maya Python process."""
+    """Reload DCC AssetForge Maya/shared modules inside the same Maya Python process."""
     for module_name in sorted(list(sys.modules.keys()), reverse=True):
         if module_name.startswith(RELOAD_PREFIXES):
             importlib.reload(sys.modules[module_name])
 
 
 def reload_and_show():
-    """Reload project modules and open the Asset Forge Maya UI."""
+    """Reload project modules and open the DCC AssetForge Maya UI."""
     reload_asset_forge_modules()
     from asset_forge.maya.ui import show as show_ui
 
@@ -30,7 +30,7 @@ def reload_and_show():
 
 
 def show():
-    """Open the Asset Forge Maya UI, reloading code so repeated tests use the latest build."""
+    """Open the DCC AssetForge Maya UI, reloading code so repeated tests use the latest build."""
     return reload_and_show()
 
 
@@ -51,7 +51,7 @@ def export_selected(
     project_settings_path="",
     asset_name_override="",
 ):
-    """Export the current Maya selection as one Asset Forge package."""
+    """Export the current Maya selection as one DCC AssetForge package."""
     reload_asset_forge_modules()
 
     settings = _export_settings(

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Whitelisted Maya actions exposed to the Asset Forge MCP bridge."""
+"""Whitelisted Maya actions exposed to the DCC AssetForge MCP bridge."""
 
 from __future__ import absolute_import, print_function
 
@@ -126,7 +126,7 @@ def maya_load_asset_forge(params=None):
     output = _result(
         "success",
         can_accept=True,
-        next_action="Asset Forge 已加载当前仓库版本；下一步可执行 maya_open_scene 或 maya_preflight_static_prop。",
+        next_action="DCC AssetForge 已加载当前仓库版本；下一步可执行 maya_open_scene 或 maya_preflight_static_prop。",
         repo_root=normalize_path(info.get("repo_root", repo_root)),
         entry_script=normalize_path(info.get("entry_script", "")),
         module_file=normalize_path(info.get("module_file", "")),
@@ -413,7 +413,7 @@ def maya_get_latest_log(params=None):
     return _result(
         "success" if entries else "warning",
         can_accept=True,
-        next_action="如日志为空，请先在 Maya 中执行一次 Asset Forge 操作。",
+        next_action="如日志为空，请先在 Maya 中执行一次 DCC AssetForge 操作。",
         latest_maya_log=path,
         entries=entries,
         entry_count=len(entries),
@@ -692,7 +692,7 @@ def _get_or_create_static_prop_ui_window():
     try:
         from asset_forge.maya.ui import AssetForgeMayaWindow, WINDOW_NAME
     except Exception as exc:
-        raise RuntimeError("Cannot load Asset Forge Maya UI: {0}".format(exc))
+        raise RuntimeError("Cannot load DCC AssetForge Maya UI: {0}".format(exc))
 
     if _STATIC_PROP_UI_WINDOW is not None and getattr(_STATIC_PROP_UI_WINDOW, "controls", None):
         try:
@@ -1127,9 +1127,9 @@ def _portfolio_capture_readiness(asset_forge_loaded, selected_nodes, ui_state=No
     ui_state = ui_state or {}
     reasons = []
     if not asset_forge_loaded:
-        reasons.append("Asset Forge 尚未在当前 Maya 会话中加载。")
+        reasons.append("DCC AssetForge 尚未在当前 Maya 会话中加载。")
     if not selected_nodes and not ui_state.get("has_scan"):
-        reasons.append("当前没有选择 Maya 节点，Asset Forge UI 中也没有可用的扫描结果。")
+        reasons.append("当前没有选择 Maya 节点，DCC AssetForge UI 中也没有可用的扫描结果。")
     return not reasons, reasons
 
 
@@ -1147,9 +1147,9 @@ def _portfolio_preflight_card(ready, reasons, asset_forge_loaded, selected_nodes
         else:
             next_step = "可以录制：当前已有选择，下一步扫描静态道具。"
     elif not asset_forge_loaded:
-        next_step = "先加载 Asset Forge Maya 工具，再刷新状态。"
+        next_step = "先加载 DCC AssetForge Maya 工具，再刷新状态。"
     else:
-        next_step = "先选择一个静态道具，或在 Asset Forge 面板完成一次扫描。"
+        next_step = "先选择一个静态道具，或在 DCC AssetForge 面板完成一次扫描。"
     return {
         "can_record": bool(ready),
         "status_label": "可录制" if ready else "待补齐",

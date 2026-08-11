@@ -1,4 +1,4 @@
-"""Asset Forge Unreal Python bootstrap.
+"""DCC AssetForge Unreal Python bootstrap.
 
 Unreal loads plugin Content/Python scripts when the Python plugin is enabled.
 This file keeps the development repository importable without manual console
@@ -55,7 +55,7 @@ def bootstrap():
     }
     log_entry = _log_unreal_operation(report)
     report["unreal_log_path"] = log_entry.get("log_path", "")
-    _log_unreal("Asset Forge Python bootstrap loaded")
+    _log_unreal("DCC AssetForge Python bootstrap loaded")
     return report
 
 
@@ -63,7 +63,7 @@ def _safe_load(label, loader, default_value):
     try:
         return loader(), []
     except Exception as exc:
-        message = "Asset Forge Python bootstrap {0} failed: {1}".format(label, exc)
+        message = "DCC AssetForge Python bootstrap {0} failed: {1}".format(label, exc)
         _log_unreal(message, error=True)
         return default_value, [message]
 

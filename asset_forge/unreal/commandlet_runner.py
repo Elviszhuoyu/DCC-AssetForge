@@ -1,4 +1,4 @@
-"""Launch Unreal commandlets with Asset Forge-safe defaults."""
+"""Launch Unreal commandlets with DCC AssetForge-safe defaults."""
 
 from __future__ import absolute_import
 

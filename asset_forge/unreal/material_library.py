@@ -1,4 +1,4 @@
-"""Asset Forge material library rules distilled from the UE shader skill."""
+"""DCC AssetForge material library rules for Unreal."""
 
 from __future__ import absolute_import
 

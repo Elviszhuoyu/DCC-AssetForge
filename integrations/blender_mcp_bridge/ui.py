@@ -72,8 +72,8 @@ class BLENDERMCP_OT_restart_bridge(bpy.types.Operator):
 
 class BLENDERMCP_OT_refresh_asset_forge_modules(bpy.types.Operator):
     bl_idname = "blender_mcp.refresh_asset_forge_modules"
-    bl_label = "刷新 Asset Forge 模块"
-    bl_description = "刷新 Asset Forge Blender 业务模块缓存，不保存 .blend 或用户偏好"
+    bl_label = "刷新 DCC AssetForge 模块"
+    bl_description = "刷新 DCC AssetForge Blender 业务模块缓存，不保存 .blend 或用户偏好"
 
     def execute(self, context):
         settings = context.scene.blender_mcp_settings
@@ -128,7 +128,7 @@ class BLENDERMCP_PT_bridge_panel(bpy.types.Panel):
         stop.operator("blender_mcp.stop_bridge", text="停止", icon="PAUSE")
         refresh_modules = box.row(align=True)
         refresh_modules.enabled = bool(active)
-        refresh_modules.operator("blender_mcp.refresh_asset_forge_modules", text="刷新 Asset Forge 模块", icon="FILE_REFRESH")
+        refresh_modules.operator("blender_mcp.refresh_asset_forge_modules", text="刷新 DCC AssetForge 模块", icon="FILE_REFRESH")
 
         detail = layout.box()
         detail.label(text="Bridge 详情", icon="TEXT")

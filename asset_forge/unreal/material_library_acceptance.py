@@ -1,4 +1,4 @@
-"""Product-level acceptance checks for the Asset Forge UE material library."""
+"""Product-level acceptance checks for the DCC AssetForge material library."""
 
 from __future__ import absolute_import
 

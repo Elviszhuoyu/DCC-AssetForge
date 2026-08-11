@@ -1,4 +1,4 @@
-"""Install the Asset Forge Unreal plugin into a UE project."""
+"""Install the DCC AssetForge Unreal plugin into a UE project."""
 
 from __future__ import absolute_import
 
@@ -19,7 +19,7 @@ RUNTIME_DIRS = ["asset_forge", "config"]
 
 
 class UnrealPluginInstaller(object):
-    """Copy the self-contained Content/Python Asset Forge plugin into a UE project."""
+    """Copy the self-contained DCC AssetForge plugin into a UE project."""
 
     def __init__(self, source_plugin_dir=None):
         self.source_plugin_dir = os.path.abspath(source_plugin_dir or self._default_source_plugin_dir())

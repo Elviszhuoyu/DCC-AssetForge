@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""UE Editor Python runner: clean one Asset Forge target path, then run accept-flow."""
+"""UE Editor Python runner: clean one DCC AssetForge target path, then run accept-flow."""
 
 from __future__ import absolute_import
 

@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a focused improvement within the current DCC-to-Unreal scope.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the production problem before proposing an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Proposed workflow
+      description: Explain the Maya, Blender, Unreal, or offline boundary and the expected user path.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility impact
+      description: Note effects on manifests, JSON presets, package naming, plugin IDs, and supported host versions.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Acceptance evidence
+      description: State what can be automated and what requires a real host or visual review.
+    validations:
+      required: true

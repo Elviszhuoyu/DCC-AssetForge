@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Data model for the Asset Forge Unreal intake/gate panel."""
+"""Data model for the DCC AssetForge Unreal intake/gate panel."""
 
 from __future__ import absolute_import
 
@@ -43,7 +43,7 @@ except NameError:
 
 
 def discover_package_history(export_root="", latest_maya_log_path=None, latest_unreal_log_path=None, limit=20, latest_blender_log_path=None):
-    """Find recent Asset Forge packages from Maya/UE logs and an optional root."""
+    """Find recent DCC AssetForge packages from Maya/UE logs and an optional root."""
     records = []
     maya_log_path = _default_latest_maya_log() if latest_maya_log_path is None else latest_maya_log_path
     unreal_log_path = _default_latest_unreal_log() if latest_unreal_log_path is None else latest_unreal_log_path
@@ -80,7 +80,7 @@ def discover_package_history(export_root="", latest_maya_log_path=None, latest_u
     return {
         "status": "ready" if packages else "empty",
         "status_label": "已发现 {0} 个可审包体".format(len(packages)) if packages else "暂无可审包体",
-        "empty_title": "" if packages else "还没有发现 Asset Forge 导出包",
+        "empty_title": "" if packages else "还没有发现 DCC AssetForge 导出包",
         "empty_message": "" if packages else "请选择导出目录，或先从 DCC 导出一个包含 manifest 的包体。",
         "latest_package_dir": latest,
         "package_count": len(packages),
@@ -103,7 +103,7 @@ def build_gate_panel_state(package_dir="", export_root="", latest_maya_log_path=
     return {
         "status": "ready" if selected_package_dir else history.get("status", "empty"),
         "status_label": "导入门禁已就绪" if selected_package_dir else history.get("status_label", "暂无可审包体"),
-        "title": "Asset Forge 导入门禁工作台",
+        "title": "DCC AssetForge 导入门禁工作台",
         "subtitle": "扫描本地 AF 导出包，选择 Package，检查通过后导入。",
         "export_root": _display_export_roots(export_root),
         "latest_package_dir": history.get("latest_package_dir", ""),
@@ -113,7 +113,7 @@ def build_gate_panel_state(package_dir="", export_root="", latest_maya_log_path=
         "preview": preview,
         "sections": _panel_sections(selected),
         "can_import": bool(selected.get("can_accept")),
-        "next_action": selected.get("next_action", "从 DCC 导出 Asset Forge 包体后刷新门禁工作台。"),
+        "next_action": selected.get("next_action", "从 DCC 导出 DCC AssetForge 包体后刷新门禁工作台。"),
         "approval": _approval_summary(selected),
     }
 
@@ -230,7 +230,7 @@ def format_gate_panel_text(state):
     history = state.get("history", {}) or {}
     packages = history.get("packages", []) or []
     lines = [
-        "Asset Forge 导入门禁工作台",
+        "DCC AssetForge 导入门禁工作台",
         "",
         "扫描目录: {0}".format(state.get("export_root", "") or "最近日志"),
         "包体队列: {0}".format(history.get("package_count", 0)),
@@ -892,7 +892,7 @@ def _approval_summary(summary):
         return {
             "enabled": False,
             "label": "等待选择包体",
-            "message": "请先扫描或选择一个 Asset Forge 导出包。",
+            "message": "请先扫描或选择一个 DCC AssetForge 导出包。",
         }
     if summary.get("can_accept"):
         return {

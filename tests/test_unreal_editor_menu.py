@@ -110,7 +110,7 @@ class UnrealEditorMenuTest(unittest.TestCase):
         self.assertTrue(_confirm_import_package(package_dir, fake_unreal))
 
         title, message, msg_type = fake_unreal.EditorDialog.messages[-1]
-        self.assertEqual(title, "Asset Forge Import")
+        self.assertEqual(title, "DCC AssetForge Import")
         self.assertEqual(msg_type, fake_unreal.AppMsgType.YES_NO)
         self.assertIn("资产：SM_Crate", message)
         self.assertIn("/Game/Props/Crate", message)

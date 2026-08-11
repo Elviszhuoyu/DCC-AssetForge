@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 from integrations.maya.scripts import asset_forge_maya_bridge
+from integrations.maya_mcp_runtime import ports as maya_ports
 from integrations.maya_mcp_runtime import registry as maya_registry
 from integrations.maya_mcp_runtime.ports import allocate_port
 from integrations.maya_mcp.client import MayaBridgeClient
@@ -263,15 +264,14 @@ class MayaMcpRuntimeTest(unittest.TestCase):
         self.assertEqual(clean, {"selection": ["|SM_A"]})
 
     def test_allocate_port_skips_busy_preferred_port(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("127.0.0.1", 0))
-        busy_port = sock.getsockname()[1]
-        try:
-            port = allocate_port("127.0.0.1", busy_port, busy_port + 1)
-        finally:
-            sock.close()
+        with mock.patch.object(
+            maya_ports,
+            "is_port_available",
+            side_effect=lambda host, port: port == 8766,
+        ):
+            port = allocate_port("127.0.0.1", 8765, 8766)
 
-        self.assertEqual(port, busy_port + 1)
+        self.assertEqual(port, 8766)
 
     def test_bridge_status_does_not_register_dead_server_thread(self):
         class DeadServer(object):

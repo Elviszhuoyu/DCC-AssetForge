@@ -113,7 +113,7 @@ class UnrealEditorWidgetSchemaTest(unittest.TestCase):
         self.assertIn("AFG_ApproveMesh", plan["obsolete_widgets"])
         self.assertIn("AFG_ApproveTextures", plan["obsolete_widgets"])
         self.assertIn("AFG_ApproveMaterials", plan["obsolete_widgets"])
-        self.assertIn("Asset Forge 导入门禁工作台", _text_by_widget(plan, "AFG_BrandName"))
+        self.assertIn("DCC AssetForge 导入门禁工作台", _text_by_widget(plan, "AFG_BrandName"))
         self.assertEqual(
             [item["title"] for item in plan["section_layout"]],
             ["1 包体来源", "2 导入控制", "3 包体内容", "4 导入策略"],

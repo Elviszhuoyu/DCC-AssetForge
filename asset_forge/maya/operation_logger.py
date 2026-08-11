@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Local operation logging for Maya-side Asset Forge actions."""
+"""Local operation logging for Maya-side DCC AssetForge actions."""
 
 from __future__ import absolute_import
 

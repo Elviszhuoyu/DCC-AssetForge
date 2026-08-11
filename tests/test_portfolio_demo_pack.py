@@ -54,7 +54,8 @@ class PortfolioDemoPackTest(unittest.TestCase):
             report = json.loads(result.stdout)
             self.assertEqual(report["stage"], "portfolio_demo_pack")
             self.assertTrue(os.path.exists(report_path))
-            self.assertEqual(json.load(open(report_path, encoding="utf-8"))["stage"], "portfolio_demo_pack")
+            with open(report_path, encoding="utf-8") as stream:
+                self.assertEqual(json.load(stream)["stage"], "portfolio_demo_pack")
 
     def test_file_evidence_keeps_comment_box_persistence_boundary_in_material_result(self):
         with tempfile.TemporaryDirectory() as temp_dir:

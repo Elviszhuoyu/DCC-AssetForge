@@ -21,14 +21,14 @@ def tool_definitions():
             "列出本机已注册的 Blender MCP bridge 实例，用于多 Blender 窗口定向控制。",
             {"include_stale": {"type": "boolean", "default": False}},
         ),
-        _tool("blender_status", "检查 Blender bridge、当前 .blend 和 Asset Forge 扩展状态。", {}),
+        _tool("blender_status", "检查 Blender bridge、当前 .blend 和 DCC AssetForge 扩展状态。", {}),
         _tool("blender_get_selection", "读取当前 Blender 选择集，用于后续扫描和导出。", {}),
         _tool("blender_get_scene_summary", "读取当前 Blender 场景概要，不修改场景。", {}),
         _tool("blender_get_latest_log", "读取 Blender MCP bridge 最新日志。", {"tail": {"type": "integer", "default": 200}}),
         _tool("blender_get_bridge_event_log", "读取当前 Blender MCP bridge 会话事件日志。", {"tail": {"type": "integer", "default": 50}}),
         _tool(
             "blender_reload_asset_forge_addons",
-            "安全重载固定白名单内的 Blender 插件，用于迭代 Asset Forge UI。",
+            "安全重载固定白名单内的 Blender 插件，用于迭代 DCC AssetForge UI。",
             {
                 "addons": {"type": "array", "items": {"type": "string"}},
                 "save_userpref": {"type": "boolean", "default": False},
@@ -36,10 +36,10 @@ def tool_definitions():
         ),
         _tool(
             "blender_refresh_asset_forge_modules",
-            "刷新 Asset Forge Blender 业务模块缓存并清空 provider 单例，不保存 .blend 或用户偏好。",
+            "刷新 DCC AssetForge Blender 业务模块缓存并清空 provider 单例，不保存 .blend 或用户偏好。",
             {},
         ),
-        _static_prop_tool("blender_scan_static_prop", "扫描当前 Blender selection，返回 Asset Forge Static Prop 分析结果。"),
+        _static_prop_tool("blender_scan_static_prop", "扫描当前 Blender selection，返回 DCC AssetForge Static Prop 分析结果。"),
         _static_prop_tool("blender_preflight_static_prop", "执行 Blender Static Prop 共享规则预检，但不导出 FBX。"),
         _static_prop_tool(
             "blender_build_static_prop_package_contract",
@@ -53,7 +53,7 @@ def tool_definitions():
         ),
         _static_prop_tool(
             "blender_export_static_prop_package",
-            "导出 Blender Static Prop FBX，并写出 UE accept-flow 可消费的 Asset Forge package。",
+            "导出 Blender Static Prop FBX，并写出 UE accept-flow 可消费的 DCC AssetForge package。",
             extra={
                 "export_root": {"type": "string"},
                 "target_path": {"type": "string", "default": "/Game/Props"},

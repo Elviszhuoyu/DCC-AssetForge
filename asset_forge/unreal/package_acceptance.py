@@ -1,4 +1,4 @@
-"""Unified acceptance report for one Asset Forge export package."""
+"""Unified acceptance report for one DCC AssetForge export package."""
 
 from __future__ import absolute_import
 
@@ -191,7 +191,7 @@ class UnrealPackageAcceptanceValidator(object):
         return ""
 
     def _missing_manifest_report(self, path):
-        check = self._check("manifest", "error", "Manifest", ["未找到 Asset Forge manifest：{0}".format(path)])
+        check = self._check("manifest", "error", "Manifest", ["未找到 DCC AssetForge manifest：{0}".format(path)])
         report = {
             "status": "error",
             "version": "0.1",
@@ -369,7 +369,7 @@ class UnrealPackageAcceptanceValidator(object):
     def _summary_next_action(self, errors, warnings):
         error_ids = [item.get("id", "") for item in errors]
         if "manifest" in error_ids:
-            return "确认资产包目录内存在 Asset Forge manifest 后重新执行验收"
+            return "确认资产包目录内存在 DCC AssetForge manifest 后重新执行验收"
         if "parent_materials" in error_ids:
             return "先确认 AssetForge 插件内容已挂载，并执行默认材质 Bootstrap 后重新检查母材质"
         if errors:

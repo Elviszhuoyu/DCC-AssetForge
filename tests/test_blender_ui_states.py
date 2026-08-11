@@ -231,7 +231,7 @@ class BlenderUiStateTest(unittest.TestCase):
         self.assertIn(bridge_ui.BLENDERMCP_OT_restart_bridge, bridge_ui.CLASSES)
         self.assertIn(bridge_ui.BLENDERMCP_OT_refresh_asset_forge_modules, bridge_ui.CLASSES)
         self.assertEqual(bridge_ui.BLENDERMCP_OT_restart_bridge.bl_idname, "blender_mcp.restart_bridge")
-        self.assertEqual(bridge_ui.BLENDERMCP_OT_refresh_asset_forge_modules.bl_label, "刷新 Asset Forge 模块")
+        self.assertEqual(bridge_ui.BLENDERMCP_OT_refresh_asset_forge_modules.bl_label, "刷新 DCC AssetForge 模块")
         self.assertIn("健康：离线", bridge_ui._status_line())
 
     def test_independent_bridge_ui_refresh_modules_uses_whitelisted_action(self):

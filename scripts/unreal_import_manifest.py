@@ -1,4 +1,4 @@
-"""Unreal Python entry point for importing one Asset Forge manifest."""
+"""Unreal Python entry point for importing one DCC AssetForge manifest."""
 
 from __future__ import absolute_import
 
@@ -86,7 +86,7 @@ def import_asset_forge_package(package_dir, dry_run=False, report_path=None, aut
 
     manifest_path = find_latest_manifest(package_dir)
     if not manifest_path:
-        raise RuntimeError("资产包内未找到 Asset Forge manifest：{0}".format(package_dir))
+        raise RuntimeError("资产包内未找到 DCC AssetForge manifest：{0}".format(package_dir))
     pipeline = UnrealStaticMeshImportPipeline(auto_bootstrap_material_assets=auto_bootstrap_material_assets, import_options=import_options)
     if dry_run:
         return pipeline.dry_run_manifest(manifest_path, report_path)
@@ -584,7 +584,7 @@ def _print_cli_report_guidance(report, mode_flags):
 
     lines = [
         "",
-        "Asset Forge guidance:",
+        "DCC AssetForge guidance:",
         "  decision_label: {0}".format(guidance.get("decision_label", "")),
         "  decision: {0}".format(guidance.get("decision", "")),
         "  can_import: {0}".format("true" if guidance.get("can_import") else "false"),

@@ -19,7 +19,7 @@ class ReportSchemaNextActionTest(unittest.TestCase):
         )
 
         self.assertFalse(summary["can_accept"])
-        self.assertEqual(summary["next_action"], "确认资产包目录内存在 Asset Forge manifest 后重新执行验收")
+        self.assertEqual(summary["next_action"], "确认资产包目录内存在 DCC AssetForge manifest 后重新执行验收")
 
     def test_acceptance_summary_exposes_user_guidance_fields(self):
         summary = create_acceptance_summary(

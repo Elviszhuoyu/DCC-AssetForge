@@ -61,7 +61,7 @@ class BlenderBridgeClient(object):
             sock = socket.create_connection((self.host, self.port), self.timeout)
         except OSError as exc:
             raise RuntimeError(
-                "Cannot connect to Blender bridge {0}:{1}. Start the Asset Forge Blender bridge in the target Blender window first. Original error: {2}".format(
+                "Cannot connect to Blender bridge {0}:{1}. Start the DCC AssetForge Blender bridge in the target Blender window first. Original error: {2}".format(
                     self.host,
                     self.port,
                     exc,

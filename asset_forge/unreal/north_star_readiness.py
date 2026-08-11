@@ -1,4 +1,4 @@
-"""North Star readiness scoring for Asset Forge offline validation."""
+"""North Star readiness scoring for DCC AssetForge offline validation."""
 
 from __future__ import absolute_import
 

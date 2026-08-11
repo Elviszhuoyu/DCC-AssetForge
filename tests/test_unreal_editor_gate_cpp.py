@@ -25,7 +25,7 @@ class UnrealEditorGateCppTest(unittest.TestCase):
         self.assertIn("RegisterConsoleCommand", source)
         self.assertIn("UnregisterConsoleObject", source)
         self.assertIn('UnregisterConsoleObject(TEXT("AssetForge.OpenGate"), false)', source)
-        self.assertIn("Asset Forge 导入门禁", source)
+        self.assertIn("DCC AssetForge 导入门禁", source)
 
     def test_gate_uses_semantic_editor_controls(self):
         source = self.source
@@ -116,7 +116,7 @@ class UnrealEditorGateCppTest(unittest.TestCase):
 
         for text in ["来源记录", "包体时间", "报告时间", "Manifest", "备注"]:
             self.assertIn(text, source)
-        self.assertIn("Asset Forge Gate v0.1.5", source)
+        self.assertIn("DCC AssetForge Gate 0.1.0", source)
         self.assertIn("Build 2026-06-03-R7", source)
         self.assertIn("PackageRiskColor", source)
         self.assertIn("ModifiedTimeLabel", source)

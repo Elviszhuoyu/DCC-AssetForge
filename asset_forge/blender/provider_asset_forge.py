@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Asset Forge provider actions for Blender MCP bridge."""
+"""DCC AssetForge provider actions for the Blender MCP bridge."""
 
 from __future__ import absolute_import
 

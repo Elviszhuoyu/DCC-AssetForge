@@ -1,4 +1,4 @@
-"""Official host integration boundaries for Asset Forge."""
+"""Official host integration boundaries for DCC AssetForge."""
 
 from __future__ import absolute_import
 

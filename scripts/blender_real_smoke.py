@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Run a real Blender background smoke for Asset Forge Blender export."""
+"""Run a real Blender background smoke for DCC AssetForge export."""
 
 from __future__ import absolute_import
 

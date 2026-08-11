@@ -1,4 +1,4 @@
-"""Asset Forge offline environment doctor."""
+"""DCC AssetForge offline environment doctor."""
 
 from __future__ import absolute_import
 
@@ -41,7 +41,7 @@ MOJIBAKE_MARKERS = [
 
 
 class AssetForgeDoctor(object):
-    """Check offline files and Python imports needed by Asset Forge."""
+    """Check offline files and Python imports needed by DCC AssetForge."""
 
     def __init__(self, repo_root=None):
         self.repo_root = os.path.abspath(repo_root or self._default_repo_root())
@@ -178,9 +178,10 @@ class AssetForgeDoctor(object):
     def _document_checks(self):
         checks = []
         for rel_path, label in [
-            ("Dev_doc/LOG.md", "执行日志"),
-            ("Dev_doc/CURRENT.md", "当前状态"),
-            ("Dev_doc/PRD.md", "需求文档"),
+            ("README.md", "英文使用说明"),
+            ("README.zh-CN.md", "中文使用说明"),
+            ("LICENSE", "开源许可证"),
+            ("THIRD_PARTY_NOTICES.md", "第三方许可说明"),
         ]:
             path = os.path.join(self.repo_root, rel_path)
             try:
@@ -224,7 +225,7 @@ class AssetForgeDoctor(object):
 
     def _encoding_checks(self):
         checks = []
-        roots = ["asset_forge", "config", "Dev_doc"]
+        roots = ["asset_forge", "config", "scripts", "tests", "Plugins"]
         for root_name in roots:
             root = os.path.join(self.repo_root, root_name)
             if not os.path.isdir(root):

@@ -1,4 +1,4 @@
-"""Offline release dependency audit for Unreal Asset Forge reports."""
+"""Offline release dependency audit for DCC AssetForge Unreal reports."""
 
 from __future__ import absolute_import
 

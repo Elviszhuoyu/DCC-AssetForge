@@ -54,7 +54,7 @@ class UnrealImportScriptArgsTest(unittest.TestCase):
             unreal_import_manifest._print_cli_report_guidance(report, unreal_import_manifest._mode_flags([]))
 
         text = stderr.getvalue()
-        self.assertIn("Asset Forge guidance:", text)
+        self.assertIn("DCC AssetForge guidance:", text)
         self.assertIn("decision_label: 可以导入/验收", text)
         self.assertIn("decision: ready", text)
         self.assertIn("can_import: true", text)
@@ -291,7 +291,7 @@ class UnrealImportScriptArgsTest(unittest.TestCase):
             report = json.loads(result.stdout)
             self.assertEqual(report["status"], "skipped")
             self.assertEqual(report["asset_name"], "SM_Crate_01")
-            self.assertIn("Asset Forge guidance:", result.stderr)
+            self.assertIn("DCC AssetForge guidance:", result.stderr)
             self.assertIn("decision_label:", result.stderr)
             self.assertIn("can_import:", result.stderr)
             self.assertIn("next_action:", result.stderr)
@@ -437,7 +437,7 @@ class UnrealImportScriptArgsTest(unittest.TestCase):
             self.assertEqual(report["import"]["stage"], "import")
             self.assertTrue(os.path.exists(report_path))
             self.assertIn("next_action", report)
-            self.assertIn("Asset Forge guidance:", result.stderr)
+            self.assertIn("DCC AssetForge guidance:", result.stderr)
             self.assertIn("decision:", result.stderr)
             self.assertIn("next_steps:", result.stderr)
         finally:
@@ -468,7 +468,7 @@ class UnrealImportScriptArgsTest(unittest.TestCase):
             self.assertEqual(report["total"], 1)
             self.assertIn("warning_packages", report["summary"])
             self.assertTrue(os.path.exists(report_path))
-            self.assertIn("Asset Forge guidance:", result.stderr)
+            self.assertIn("DCC AssetForge guidance:", result.stderr)
             self.assertIn("decision_label:", result.stderr)
         finally:
             self._remove_tree(temp_dir)

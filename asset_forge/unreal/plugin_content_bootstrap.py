@@ -1,4 +1,4 @@
-"""Validate Asset Forge Unreal plugin content without creating project assets."""
+"""Validate DCC AssetForge Unreal plugin content without creating project assets."""
 
 from __future__ import absolute_import
 

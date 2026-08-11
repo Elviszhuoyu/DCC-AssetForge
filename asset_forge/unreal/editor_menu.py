@@ -1,4 +1,4 @@
-"""Register Asset Forge Unreal editor menu and toolbar actions."""
+"""Register DCC AssetForge Unreal editor menu and toolbar actions."""
 
 from __future__ import absolute_import
 
@@ -11,8 +11,8 @@ from asset_forge.unreal.unreal_bridge import get_unreal
 
 
 MENU_ENTRY_NAME = "AssetForge.ImportPackage"
-MENU_LABEL = "Asset Forge 导入门禁工作台"
-MENU_TOOLTIP = "打开 Asset Forge 导出包扫描、预检、审批和导入历史工作台。"
+MENU_LABEL = "DCC AssetForge 导入门禁工作台"
+MENU_TOOLTIP = "打开 DCC AssetForge 导出包扫描、预检、审批和导入历史工作台。"
 MENU_COMMAND = (
     "from asset_forge.unreal.editor_widget_launcher import launch_asset_forge_widget; "
     "launch_asset_forge_widget()"
@@ -67,17 +67,17 @@ def run_accept_flow_from_directory_dialog(default_path="", unreal_module=None):
     default_path = default_path or latest_maya_package_dir()
     package_dir = choose_package_directory(default_path, unreal_module)
     if not package_dir:
-        message = "没有找到 Asset Forge 导出包。请先从 Maya 导出一次，再打开 Asset Forge 门禁。"
+        message = "没有找到 DCC AssetForge 导出包。请先从 DCC 导出一次，再打开 DCC AssetForge 门禁。"
         report = {"status": "error", "message": message, "default_path": default_path}
-        _notify_user("Asset Forge Import", message, unreal_module)
+        _notify_user("DCC AssetForge Import", message, unreal_module)
         _log_operation("unreal_menu_accept_flow", "error", outputs=report, errors=[message])
         return report
     if not _confirm_import_package(package_dir, unreal_module):
         report = {"status": "cancelled", "message": "用户取消导入。", "package_dir": package_dir}
         _log_operation("unreal_menu_accept_flow", "cancelled", inputs={"package_dir": package_dir}, outputs=report)
-        _notify_user("Asset Forge Import", "已取消导入：\n{0}".format(package_dir), unreal_module)
+        _notify_user("DCC AssetForge Import", "已取消导入：\n{0}".format(package_dir), unreal_module)
         return report
-    _notify_user("Asset Forge Import", "开始导入：\n{0}".format(package_dir), unreal_module)
+    _notify_user("DCC AssetForge Import", "开始导入：\n{0}".format(package_dir), unreal_module)
     return run_accept_flow_for_package_dir(package_dir, unreal_module=unreal_module, confirmed=True)
 
 
@@ -86,7 +86,7 @@ def run_accept_flow_for_package_dir(package_dir, report_path=None, unreal_module
 
     if not confirmed:
         report = {"status": "cancelled", "message": "导入需要用户明确确认。", "package_dir": package_dir}
-        _notify_user("Asset Forge Import", "导入需要用户明确确认：\n{0}".format(package_dir), unreal_module)
+        _notify_user("DCC AssetForge Import", "导入需要用户明确确认：\n{0}".format(package_dir), unreal_module)
         _log_operation("unreal_menu_accept_flow", "cancelled", inputs={"package_dir": package_dir}, outputs=report)
         return report
 
@@ -112,9 +112,9 @@ def run_accept_flow_for_package_dir(package_dir, report_path=None, unreal_module
         errors=report.get("errors", []),
         report_path=report.get("report_path", ""),
     )
-    _log_unreal("Asset Forge accept-flow finished: {0}".format(report.get("status", "")), unreal_module)
+    _log_unreal("DCC AssetForge accept-flow finished: {0}".format(report.get("status", "")), unreal_module)
     _notify_user(
-        "Asset Forge Import",
+        "DCC AssetForge Import",
         "导入完成：{0}\n报告：{1}".format(report.get("status", ""), report.get("report_path", "")),
         unreal_module,
     )
@@ -149,7 +149,7 @@ def preview_gate_for_package_dir(package_dir, report_path=None, unreal_module=No
         report_path=report.get("report_path", ""),
     )
     _notify_user(
-        "Asset Forge Gate",
+        "DCC AssetForge Gate",
         "检查报告完成：{0}\n报告：{1}".format(report.get("status", ""), report.get("report_path", "")),
         unreal_module,
     )
@@ -184,7 +184,7 @@ def dry_run_gate_for_package_dir(package_dir, report_path=None, unreal_module=No
         report_path=report.get("report_path", ""),
     )
     _notify_user(
-        "Asset Forge Gate",
+        "DCC AssetForge Gate",
         "导入计划检查完成：{0}\n报告：{1}".format(report.get("status", ""), report.get("report_path", "")),
         unreal_module,
     )
@@ -196,7 +196,7 @@ def import_approved_package_dir(package_dir, report_path=None, unreal_module=Non
     if not _confirm_import_package(package_dir, unreal_module):
         report = {"status": "cancelled", "message": "用户取消导入。", "package_dir": package_dir}
         _log_operation("unreal_gate_import", "cancelled", inputs={"package_dir": package_dir}, outputs=report)
-        _notify_user("Asset Forge Import", "已取消导入：\n{0}".format(package_dir), unreal_module)
+        _notify_user("DCC AssetForge Import", "已取消导入：\n{0}".format(package_dir), unreal_module)
         return report
     return run_accept_flow_for_package_dir(
         package_dir,
@@ -208,13 +208,13 @@ def import_approved_package_dir(package_dir, report_path=None, unreal_module=Non
 
 
 def cleanup_asset_forge_generated_props(package_dir="", report_path=None, unreal_module=None, import_options=None):
-    """Clean old Asset Forge test-import folders under a UE target path."""
+    """Clean old DCC AssetForge test-import folders under a UE target path."""
     options = import_options or {}
     unreal = unreal_module or get_unreal()
     target_path = _cleanup_target_path(package_dir, options)
     plan = _generated_props_cleanup_plan(target_path, unreal)
     if not plan["candidates"]:
-        _notify_user("Asset Forge Cleanup", "没有发现可清理的历史测试目录：{0}".format(target_path), unreal)
+        _notify_user("DCC AssetForge Cleanup", "没有发现可清理的历史测试目录：{0}".format(target_path), unreal)
         _log_operation("unreal_cleanup_generated_props", "skipped", inputs={"target_path": target_path}, outputs=plan)
         return plan
     if not options.get("confirmed_cleanup") and not _confirm_cleanup(plan, unreal):
@@ -237,7 +237,7 @@ def cleanup_asset_forge_generated_props(package_dir="", report_path=None, unreal
     plan.update({"status": "success" if not failed else "warning", "deleted": deleted, "failed": failed})
     _log_operation("unreal_cleanup_generated_props", plan["status"], inputs={"target_path": target_path}, outputs=plan)
     _notify_user(
-        "Asset Forge Cleanup",
+        "DCC AssetForge Cleanup",
         "清理完成：删除 {0} 个，失败 {1} 个。\n目标：{2}".format(len(deleted), len(failed), target_path),
         unreal,
     )
@@ -264,7 +264,7 @@ def choose_package_directory(default_path="", unreal_module=None):
     if desktop is None or not hasattr(desktop, "open_directory_dialog"):
         return _normalize_path(default_path) if _is_asset_forge_package_dir(default_path) else ""
 
-    title = "选择 Asset Forge 导出包目录"
+    title = "选择 DCC AssetForge 导出包目录"
     attempts = [
         (None, title, default_path or ""),
         (title, default_path or ""),
@@ -462,7 +462,7 @@ def _confirm_cleanup(plan, unreal=None):
         return False
     names = ", ".join(item["name"] for item in plan.get("candidates", [])[:20])
     message = (
-        "Asset Forge 历史导入清理\n\n"
+        "DCC AssetForge 历史导入清理\n\n"
         "目标路径：{0}\n"
         "候选目录：{1}\n\n"
         "{2}\n\n"
@@ -470,9 +470,9 @@ def _confirm_cleanup(plan, unreal=None):
     ).format(plan.get("target_path", ""), names, plan.get("rule", ""))
     msg_type = getattr(getattr(unreal, "AppMsgType", None), "YES_NO", None)
     try:
-        result = dialog.show_message("Asset Forge Cleanup", message, msg_type)
+        result = dialog.show_message("DCC AssetForge Cleanup", message, msg_type)
     except TypeError:
-        result = dialog.show_message("Asset Forge Cleanup", message)
+        result = dialog.show_message("DCC AssetForge Cleanup", message)
     return _dialog_result_is_yes(result, unreal)
 
 
@@ -508,7 +508,7 @@ def _confirm_import_package(package_dir, unreal_module=None):
     unreal = unreal_module or get_unreal()
     summary = _package_import_summary(package_dir, unreal)
     message = (
-        "Asset Forge 导入门禁\n\n"
+        "DCC AssetForge 导入门禁\n\n"
         "包体目录：\n{package_dir}\n\n"
         "Manifest：\n{manifest_path}\n\n"
         "资产：{asset_name}\n"
@@ -528,13 +528,13 @@ def _confirm_import_package(package_dir, unreal_module=None):
     ).format(**summary)
     dialog = getattr(unreal, "EditorDialog", None) if unreal is not None else None
     if dialog is None or not hasattr(dialog, "show_message"):
-        _log_unreal("Asset Forge Import blocked because EditorDialog is unavailable.", unreal)
+        _log_unreal("DCC AssetForge Import blocked because EditorDialog is unavailable.", unreal)
         return False
     msg_type = getattr(getattr(unreal, "AppMsgType", None), "YES_NO", None)
     try:
-        result = dialog.show_message("Asset Forge Import", message, msg_type)
+        result = dialog.show_message("DCC AssetForge Import", message, msg_type)
     except TypeError:
-        result = dialog.show_message("Asset Forge Import", message)
+        result = dialog.show_message("DCC AssetForge Import", message)
     return _dialog_result_is_yes(result, unreal)
 
 

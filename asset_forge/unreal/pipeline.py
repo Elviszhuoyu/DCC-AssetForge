@@ -557,7 +557,7 @@ class UnrealStaticMeshImportPipeline(object):
                 material["parent_material_reason"] = "真实 UE 导入后检测到绑定贴图为 Virtual Texture，切换到 VT 采样母材质变体。"
             if requires_vt and not uses_vt:
                 material["material_sampler_variant"] = "virtual_texture_required_unavailable"
-                material["parent_material_reason"] = "Detected VT texture input, but Asset Forge has no verified VT-capable parent material yet."
+                material["parent_material_reason"] = "Detected VT texture input, but DCC AssetForge has no verified VT-capable parent material yet."
             decisions.append(
                 {
                     "material_instance_path": material.get("target_asset_path", ""),
@@ -975,7 +975,7 @@ def import_latest_manifest(export_root, log_path=None, dry_run=False):
     """Find and import the newest manifest under an export root."""
     manifest_path = find_latest_manifest(export_root)
     if not manifest_path:
-        raise RuntimeError("未找到 Asset Forge manifest：{0}".format(export_root))
+        raise RuntimeError("未找到 DCC AssetForge manifest：{0}".format(export_root))
     pipeline = UnrealStaticMeshImportPipeline()
     if dry_run:
         return pipeline.dry_run_manifest(manifest_path, log_path)
@@ -983,10 +983,10 @@ def import_latest_manifest(export_root, log_path=None, dry_run=False):
 
 
 def import_asset_forge_package(package_dir, dry_run=False, report_path=None, import_options=None):
-    """Import or dry-run the newest manifest in one Asset Forge package folder."""
+    """Import or dry-run the newest manifest in one DCC AssetForge package folder."""
     manifest_path = find_latest_manifest(package_dir)
     if not manifest_path:
-        raise RuntimeError("资产包内未找到 Asset Forge manifest：{0}".format(package_dir))
+        raise RuntimeError("资产包内未找到 DCC AssetForge manifest：{0}".format(package_dir))
 
     active_report_path = report_path or os.path.join(os.path.abspath(package_dir), "package_import_report.json")
     pipeline = UnrealStaticMeshImportPipeline(import_options=import_options)

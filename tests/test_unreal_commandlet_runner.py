@@ -30,8 +30,8 @@ class UnrealCommandletRunnerTest(unittest.TestCase):
 
     def test_build_accept_flow_command_uses_forward_slashes_and_ddc_fallback(self):
         command = build_accept_flow_command(
-            r"<UNREAL_ENGINE_DRIVE>/UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe",
-            r"<LOCAL_WORK_DRIVE>/UE_Pj\UE5\AssetForgeAutomation\AssetForgeAutomation.uproject",
+            r"X:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe",
+            r"Y:\Projects\AssetForgeAutomation\AssetForgeAutomation.uproject",
             r"E:\Repo\scripts\ue_cleanup_accept_flow.py",
             r"E:\Repo\Package\SM_B",
             r"E:\Repo\Reports\flow.json",
@@ -48,8 +48,8 @@ class UnrealCommandletRunnerTest(unittest.TestCase):
 
     def test_build_material_evidence_command_uses_cold_start_readback(self):
         command = build_material_evidence_command(
-            r"<UNREAL_ENGINE_DRIVE>/UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe",
-            r"<LOCAL_WORK_DRIVE>/UE_Pj\UE5\AssetForgeAutomation\AssetForgeAutomation.uproject",
+            r"X:\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe",
+            r"Y:\Projects\AssetForgeAutomation\AssetForgeAutomation.uproject",
             r"E:\Repo\scripts\unreal_collect_material_evidence.py",
             r"E:\Repo\Reports\flow.json",
             r"E:\Repo\Reports\flow_material.json",
@@ -65,12 +65,12 @@ class UnrealCommandletRunnerTest(unittest.TestCase):
 
     def test_build_editor_launch_command_uses_ddc_fallback(self):
         command = build_editor_launch_command(
-            r"<UNREAL_ENGINE_DRIVE>/UE_5.6\Engine\Binaries\Win64\UnrealEditor.exe",
-            r"<LOCAL_WORK_DRIVE>/UE_Pj\UE5\AssetForgeAutomation\AssetForgeAutomation.uproject",
+            r"X:\UE_5.6\Engine\Binaries\Win64\UnrealEditor.exe",
+            r"Y:\Projects\AssetForgeAutomation\AssetForgeAutomation.uproject",
         )
 
-        self.assertEqual(command[0], r"<UNREAL_ENGINE_DRIVE>/UE_5.6\Engine\Binaries\Win64\UnrealEditor.exe")
-        self.assertEqual(command[1], "<LOCAL_WORK_DRIVE>/UE_Pj/UE5/AssetForgeAutomation/AssetForgeAutomation.uproject")
+        self.assertEqual(command[0], r"X:\UE_5.6\Engine\Binaries\Win64\UnrealEditor.exe")
+        self.assertEqual(command[1], "Y:/Projects/AssetForgeAutomation/AssetForgeAutomation.uproject")
         self.assertIn("-ddc=InstalledNoZenLocalFallback", command)
         self.assertIn("-nop4", command)
         self.assertIn("-nosplash", command)
@@ -96,7 +96,7 @@ class UnrealCommandletRunnerTest(unittest.TestCase):
 
         report = launch_unreal_editor_safe(
             "UE.exe",
-            r"<LOCAL_WORK_DRIVE>/Project\Project.uproject",
+            r"D:\AssetForgeFixtures\Project\Project.uproject",
             wait_seconds=0,
             popen=lambda command: FakePopen(command, pid=42, returncode=None),
             crash_reporter_runner=fake_runner,
@@ -113,7 +113,7 @@ class UnrealCommandletRunnerTest(unittest.TestCase):
     def test_launch_unreal_editor_safe_reuses_existing_editor_by_default(self):
         report = launch_unreal_editor_safe(
             "UE.exe",
-            r"<LOCAL_WORK_DRIVE>/Project\Project.uproject",
+            r"D:\AssetForgeFixtures\Project\Project.uproject",
             wait_seconds=0,
             popen=lambda command: (_ for _ in ()).throw(AssertionError("should not launch a second editor")),
             crash_reporter_runner=lambda command, **kwargs: FakeCompleted(returncode=0, stdout="SUCCESS", stderr=""),

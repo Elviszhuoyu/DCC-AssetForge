@@ -1,4 +1,4 @@
-"""Launch facade for the Asset Forge Unreal Gate UI."""
+"""Launch facade for the DCC AssetForge Unreal Gate UI."""
 
 from __future__ import absolute_import
 
@@ -89,7 +89,7 @@ class UnrealEditorWidgetLauncher(object):
         export_root = _default_export_root()
         state = self.gate_state_builder(export_root=export_root, report_path=False)
         selected_package = state.get("selected_package_dir", "")
-        self._show_message("Asset Forge Gate", format_gate_panel_text(state))
+        self._show_message("DCC AssetForge Gate", format_gate_panel_text(state))
 
         selected_package = self._choose_package_directory(selected_package or export_root)
         if not selected_package:
@@ -97,7 +97,7 @@ class UnrealEditorWidgetLauncher(object):
                 {
                     "status": "empty",
                     "ui_mode": "python_dialog_gate",
-                    "message": "未选择 Asset Forge 导出包。",
+                    "message": "未选择 DCC AssetForge 导出包。",
                     "history": state.get("history", {}),
                 }
             )
@@ -119,7 +119,7 @@ class UnrealEditorWidgetLauncher(object):
         )
 
         if not selected.get("can_accept"):
-            self._show_message("Asset Forge Gate", format_gate_panel_text(preview_state))
+            self._show_message("DCC AssetForge Gate", format_gate_panel_text(preview_state))
             plan["status"] = "gate_blocked"
             plan["message"] = selected.get("next_action", "请先修复门禁阻断项，然后重新预检。")
             return plan
@@ -133,7 +133,7 @@ class UnrealEditorWidgetLauncher(object):
         plan["status"] = "imported" if import_report.get("status") in ("success", "warning", "skipped") else import_report.get("status", "import_finished")
         plan["import_report"] = import_report
         self._show_message(
-            "Asset Forge Gate",
+            "DCC AssetForge Gate",
             "导入完成：{0}\n报告：{1}".format(import_report.get("status", ""), import_report.get("report_path", selected.get("report_path", ""))),
         )
         return plan
@@ -157,16 +157,16 @@ class UnrealEditorWidgetLauncher(object):
             return False
         msg_type = getattr(getattr(self.unreal, "AppMsgType", None), "YES_NO", None)
         try:
-            result = dialog.show_message("Asset Forge Gate", message, msg_type)
+            result = dialog.show_message("DCC AssetForge Gate", message, msg_type)
         except TypeError:
-            result = dialog.show_message("Asset Forge Gate", message)
+            result = dialog.show_message("DCC AssetForge Gate", message)
         return _dialog_result_is_yes(result, self.unreal)
 
     def _choose_package_directory(self, default_path=""):
         desktop = getattr(self.unreal, "DesktopPlatform", None) if self.unreal is not None else None
         if desktop is None or not hasattr(desktop, "open_directory_dialog"):
             return _normalize_path(default_path) if _is_package_dir(default_path) else ""
-        title = "选择 Asset Forge 导出包目录"
+        title = "选择 DCC AssetForge 导出包目录"
         for args in [(None, title, default_path or ""), (title, default_path or ""), (default_path or "")]:
             try:
                 result = desktop.open_directory_dialog(*args)

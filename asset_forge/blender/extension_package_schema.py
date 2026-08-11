@@ -1,4 +1,4 @@
-"""Blender extension package plan for Asset Forge."""
+"""Blender extension package plan for DCC AssetForge."""
 
 from __future__ import absolute_import
 

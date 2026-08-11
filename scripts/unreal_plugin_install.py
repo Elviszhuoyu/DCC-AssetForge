@@ -1,4 +1,4 @@
-"""Command line helper for installing the Asset Forge UE plugin package."""
+"""Command line helper for installing the DCC AssetForge UE plugin package."""
 
 from __future__ import absolute_import
 

@@ -12,9 +12,9 @@ class ASSETFORGEEDITOR_API UAssetForgeEditorMaterialCommentLibrary : public UBlu
 	GENERATED_BODY()
 
 public:
-	UFUNCTION(BlueprintCallable, Category = "Asset Forge|Material")
+	UFUNCTION(BlueprintCallable, Category = "DCC AssetForge|Material")
 	static int32 RepairAssetForgeCommentBlocks(UMaterial* Material);
 
-	UFUNCTION(BlueprintCallable, Category = "Asset Forge|Material")
+	UFUNCTION(BlueprintCallable, Category = "DCC AssetForge|Material")
 	static FString DescribeAssetForgeCommentBlocks(UMaterial* Material);
 };

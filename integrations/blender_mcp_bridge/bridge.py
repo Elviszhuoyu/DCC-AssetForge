@@ -292,7 +292,7 @@ class BlenderBridge(object):
             "can_accept": True,
             "reloaded": results,
             "refreshed_modules": refresh_result["refreshed_modules"],
-            "next_action": "Asset Forge Blender add-on 已安全重载，可继续刷新 UI 或运行扫描。",
+            "next_action": "DCC AssetForge Blender add-on 已安全重载，可继续刷新 UI 或运行扫描。",
         }
 
     def _refresh_asset_forge_modules(self):
@@ -303,7 +303,7 @@ class BlenderBridge(object):
             "can_accept": True,
             "bridge_version": BRIDGE_VERSION,
             "refreshed_modules": refresh,
-            "next_action": "Asset Forge Blender 业务模块已刷新，可重新扫描、预检或导出。",
+            "next_action": "DCC AssetForge Blender 业务模块已刷新，可重新扫描、预检或导出。",
         }
 
     def _asset_forge_provider(self):

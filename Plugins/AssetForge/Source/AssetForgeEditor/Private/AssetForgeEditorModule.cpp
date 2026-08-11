@@ -49,7 +49,7 @@ static const FName StyleSetName(TEXT("AssetForgeEditorStyle"));
 static const FName ToolbarIconName(TEXT("AssetForge.ToolbarIcon"));
 static const FName TabIconName(TEXT("AssetForge.TabIcon"));
 static const FName HeaderIconName(TEXT("AssetForge.HeaderIcon"));
-static const TCHAR* GateVersionLabel = TEXT("Asset Forge Gate v0.1.5");
+static const TCHAR* GateVersionLabel = TEXT("DCC AssetForge Gate 0.1.0");
 static const TCHAR* GateBuildLabel = TEXT("Build 2026-06-03-R7");
 static const TCHAR* DccPackageRootName = TEXT("dcc_packages");
 
@@ -1233,7 +1233,7 @@ private:
                     + SVerticalBox::Slot().AutoHeight()
                     [
                         SNew(STextBlock)
-                        .Text(LOCTEXT("Title", "Asset Forge 导入门禁工作台"))
+                        .Text(LOCTEXT("Title", "DCC AssetForge 导入门禁工作台"))
                         .Font(FAppStyle::GetFontStyle("DetailsView.CategoryFontStyle"))
                     ]
                     + SVerticalBox::Slot().AutoHeight()
@@ -1615,7 +1615,7 @@ private:
             : (ScanRoots.Num() > 0 ? ScanRoots[0] : FPaths::ProjectDir());
         const bool bPicked = DesktopPlatform->OpenDirectoryDialog(
             nullptr,
-            TEXT("选择 Asset Forge Package 导出目录"),
+            TEXT("选择 DCC AssetForge Package 导出目录"),
             DefaultPath,
             SelectedDirectory
         );
@@ -2334,7 +2334,7 @@ private:
         return SNew(SBox)
             .MinDesiredWidth(520.0f)
             [
-                TextBlock(LOCTEXT("GateBasicImportSummary", "默认导入 Static Mesh；FBX 自动材质/贴图保持关闭，由 Asset Forge 统一创建材质实例、导入贴图并绑定 slot。"), FSlateColor::UseSubduedForeground())
+                TextBlock(LOCTEXT("GateBasicImportSummary", "默认导入 Static Mesh；FBX 自动材质/贴图保持关闭，由 DCC AssetForge 统一创建材质实例、导入贴图并绑定 slot。"), FSlateColor::UseSubduedForeground())
             ];
     }
 
@@ -2827,20 +2827,20 @@ void FAssetForgeEditorModule::StartupModule()
         : FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Import");
 
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(AssetForgeEditor::GateTabName, FOnSpawnTab::CreateRaw(this, &FAssetForgeEditorModule::SpawnGateTab))
-        .SetDisplayName(LOCTEXT("GateTabDisplayName", "Asset Forge 导入门禁"))
-        .SetTooltipText(LOCTEXT("GateTabTooltip", "打开 Asset Forge 导出包扫描、检查和导入历史工作台。"))
+        .SetDisplayName(LOCTEXT("GateTabDisplayName", "DCC AssetForge 导入门禁"))
+        .SetTooltipText(LOCTEXT("GateTabTooltip", "打开 DCC AssetForge 导出包扫描、检查和导入历史工作台。"))
         .SetIcon(GateIcon);
 
     IConsoleManager::Get().UnregisterConsoleObject(TEXT("AssetForge.OpenGate"), false);
     GateConsoleCommand = IConsoleManager::Get().RegisterConsoleCommand(
         TEXT("AssetForge.OpenGate"),
-        TEXT("Open the Asset Forge import gate workbench."),
+        TEXT("Open the DCC AssetForge import gate workbench."),
         FConsoleCommandDelegate::CreateRaw(this, &FAssetForgeEditorModule::OpenGateWorkbench),
         ECVF_Default
     );
 
     UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FAssetForgeEditorModule::RegisterMenus));
-    UE_LOG(LogAssetForgeEditor, Display, TEXT("Asset Forge editor module ready. Gate tab: %s"), *AssetForgeEditor::GateTabName.ToString());
+    UE_LOG(LogAssetForgeEditor, Display, TEXT("DCC AssetForge editor module ready. Gate tab: %s"), *AssetForgeEditor::GateTabName.ToString());
 }
 
 void FAssetForgeEditorModule::ShutdownModule()
@@ -2865,7 +2865,7 @@ void FAssetForgeEditorModule::RegisterStyle()
     const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("AssetForge"));
     if (!Plugin.IsValid())
     {
-        UE_LOG(LogAssetForgeEditor, Warning, TEXT("Asset Forge plugin descriptor was not found; falling back to default editor icons."));
+        UE_LOG(LogAssetForgeEditor, Warning, TEXT("DCC AssetForge plugin descriptor was not found; falling back to default editor icons."));
         return;
     }
 
@@ -2899,8 +2899,8 @@ void FAssetForgeEditorModule::RegisterMenus()
     FToolMenuSection& MenuSection = ToolsMenu->FindOrAddSection("AssetForge");
     MenuSection.AddMenuEntry(
         "AssetForge.OpenGateWorkbench.Tools",
-        LOCTEXT("OpenGateMenu", "Asset Forge 导入门禁工作台"),
-        LOCTEXT("OpenGateMenuTooltip", "打开 Asset Forge 导出包扫描、检查和导入历史工作台。"),
+        LOCTEXT("OpenGateMenu", "DCC AssetForge 导入门禁工作台"),
+        LOCTEXT("OpenGateMenuTooltip", "打开 DCC AssetForge 导出包扫描、检查和导入历史工作台。"),
         GateIcon,
         FUIAction(FExecuteAction::CreateRaw(this, &FAssetForgeEditorModule::OpenGateWorkbench))
     );
@@ -2909,8 +2909,8 @@ void FAssetForgeEditorModule::RegisterMenus()
     FToolMenuSection& WindowSection = WindowMenu->FindOrAddSection("AssetForge");
     WindowSection.AddMenuEntry(
         "AssetForge.OpenGateWorkbench.Window",
-        LOCTEXT("OpenGateWindowMenu", "Asset Forge 导入门禁工作台"),
-        LOCTEXT("OpenGateWindowMenuTooltip", "打开 Asset Forge 导出包扫描、检查和导入历史工作台。"),
+        LOCTEXT("OpenGateWindowMenu", "DCC AssetForge 导入门禁工作台"),
+        LOCTEXT("OpenGateWindowMenuTooltip", "打开 DCC AssetForge 导出包扫描、检查和导入历史工作台。"),
         GateIcon,
         FUIAction(FExecuteAction::CreateRaw(this, &FAssetForgeEditorModule::OpenGateWorkbench))
     );
@@ -2921,7 +2921,7 @@ void FAssetForgeEditorModule::RegisterMenus()
         "AssetForge.OpenGateWorkbench.Toolbar",
         FUIAction(FExecuteAction::CreateRaw(this, &FAssetForgeEditorModule::OpenGateWorkbench)),
         LOCTEXT("OpenGateToolbar", "AF 门禁"),
-        LOCTEXT("OpenGateToolbarTooltip", "打开 Asset Forge 导入门禁工作台。"),
+        LOCTEXT("OpenGateToolbarTooltip", "打开 DCC AssetForge 导入门禁工作台。"),
         GateIcon
     ));
 }
@@ -2939,11 +2939,11 @@ void FAssetForgeEditorModule::OpenGateWorkbench()
     const TSharedPtr<SDockTab> GateTab = FGlobalTabmanager::Get()->TryInvokeTab(AssetForgeEditor::GateTabName);
     if (GateTab.IsValid())
     {
-        UE_LOG(LogAssetForgeEditor, Display, TEXT("Asset Forge gate workbench opened."));
+        UE_LOG(LogAssetForgeEditor, Display, TEXT("DCC AssetForge gate workbench opened."));
         return;
     }
 
-    UE_LOG(LogAssetForgeEditor, Error, TEXT("Failed to open Asset Forge gate workbench tab: %s"), *AssetForgeEditor::GateTabName.ToString());
+    UE_LOG(LogAssetForgeEditor, Error, TEXT("Failed to open DCC AssetForge gate workbench tab: %s"), *AssetForgeEditor::GateTabName.ToString());
 }
 
 TSharedRef<SDockTab> FAssetForgeEditorModule::SpawnGateTab(const FSpawnTabArgs& Args)

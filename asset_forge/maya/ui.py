@@ -23,12 +23,12 @@ from asset_forge.shared.unreal_path import sanitize_unreal_package_path
 
 
 WINDOW_NAME = "assetForgePhase1Window"
-BUILD_LABEL = "Asset Forge v0.1.8 - Maya 发布工作台 / Build 2026-06-03-R10"
+BUILD_LABEL = "DCC AssetForge 0.1.0 - Maya 发布工作台"
 INITIAL_NEXT_ACTION = "下一步 | 选中资产根节点 -> 扫描资产"
 EMPTY_SELECTION_GUIDANCE = (
     "没有选中资产。\n"
     "下一步：在 Maya 里选择一个资产根节点或共同父组后重试；"
-    "如果场景唯一可导出资产，Asset Forge 会在扫描时自动兜底；"
+    "如果场景唯一可导出资产，DCC AssetForge 会在扫描时自动兜底；"
     "如果有多个候选资产，它不会猜测。"
 )
 PREFLIGHT_REPAIR_REPORT_HINT = "检查阶段不写报告；导出被阻断时会写调试报告。"
@@ -121,12 +121,12 @@ class AssetForgeMayaWindow(object):
         if icon_path and hasattr(self.cmds, "image"):
             self.controls["brand_badge"] = self.cmds.image(image=icon_path, width=48, height=48)
         else:
-            self.controls["brand_badge"] = self.cmds.text(label="Asset Forge", align="center", width=48, height=28)
+            self.controls["brand_badge"] = self.cmds.text(label="DCC AssetForge", align="center", width=96, height=28)
             self._style_status_control(self.controls["brand_badge"], "panel", compact=True)
         self.cmds.columnLayout(adjustableColumn=True, rowSpacing=2)
-        self.cmds.text(label="Asset Forge Maya 发布工作台", align="left")
+        self.cmds.text(label="DCC AssetForge Maya 发布工作台", align="left")
         self.cmds.text(label="v0.1.8 / Build 2026-06-03-R10", align="left")
-        self.cmds.text(label="Maya 负责检查当前选择并导出 Asset Forge Package。", align="left")
+        self.cmds.text(label="Maya 负责检查当前选择并导出 DCC AssetForge Package。", align="left")
         self.cmds.text(label="UE Gate 接收 Package，检查通过后导入到项目目录。", align="left")
         self.cmds.setParent("..")
         self._build_mcp_header_controls()
@@ -573,7 +573,7 @@ class AssetForgeMayaWindow(object):
         return rules
 
     def _choose_output_dir(self, *args):
-        paths = self.cmds.fileDialog2(fileMode=3, caption="选择 Asset Forge 导出根目录") or []
+        paths = self.cmds.fileDialog2(fileMode=3, caption="选择 DCC AssetForge 导出根目录") or []
         if paths:
             self.cmds.textFieldButtonGrp(self.controls["output_dir"], edit=True, text=paths[0])
 
@@ -769,7 +769,7 @@ class AssetForgeMayaWindow(object):
                     self._log_operation("fix_asset_name_prefix", "cancelled", inputs={"mesh_prefix": self._name_prefix()}, outputs={"asset_name": scan.get("asset_name", "")})
                     return
             if hasattr(self.cmds, "undoInfo"):
-                self.cmds.undoInfo(openChunk=True, chunkName="Asset Forge 修复资产名前缀")
+                self.cmds.undoInfo(openChunk=True, chunkName="DCC AssetForge 修复资产名前缀")
                 undo_open = True
             if hasattr(self.pipeline, "rename_asset_root_with_prefix"):
                 renamed = self.pipeline.rename_asset_root_with_prefix(self._name_prefix())
@@ -817,7 +817,7 @@ class AssetForgeMayaWindow(object):
             if not hasattr(self.cmds, "makeIdentity"):
                 raise RuntimeError("当前 Maya cmds 环境不支持 makeIdentity，无法应用 Transform。")
             if hasattr(self.cmds, "undoInfo"):
-                self.cmds.undoInfo(openChunk=True, chunkName="Asset Forge 应用 Transform")
+                self.cmds.undoInfo(openChunk=True, chunkName="DCC AssetForge 应用 Transform")
                 undo_open = True
             self.cmds.makeIdentity(targets, apply=True, translate=True, rotate=True, scale=True, normal=False)
             if hasattr(self.cmds, "select"):
@@ -1025,7 +1025,7 @@ class AssetForgeMayaWindow(object):
 
     def _load_project_settings(self, *args):
         try:
-            paths = self.cmds.fileDialog2(fileMode=1, caption="加载 Asset Forge 项目预设 JSON") or []
+            paths = self.cmds.fileDialog2(fileMode=1, caption="加载 DCC AssetForge 项目预设 JSON") or []
             if not paths:
                 return
             settings = load_project_settings(paths[0])
@@ -1041,7 +1041,7 @@ class AssetForgeMayaWindow(object):
 
     def _save_project_settings(self, *args):
         try:
-            paths = self.cmds.fileDialog2(fileMode=0, caption="保存 Asset Forge 项目预设 JSON") or []
+            paths = self.cmds.fileDialog2(fileMode=0, caption="保存 DCC AssetForge 项目预设 JSON") or []
             if not paths:
                 return
             settings = self._settings_from_ui()
@@ -1272,7 +1272,7 @@ class AssetForgeMayaWindow(object):
 
 
 def show():
-    """Show the Asset Forge Maya window."""
+    """Show the DCC AssetForge Maya window."""
     return AssetForgeMayaWindow().show()
 
 
@@ -1692,7 +1692,7 @@ def format_asset_identity(scan):
         if scan.get("asset_name_source") == "common_parent":
             lines.append("命名说明：多个选择共享同一父节点，资产名来自共同父节点。")
         elif scan.get("asset_name_source") == "first_selection":
-            lines.append("命名说明：当前选择没有共同父节点，Asset Forge 只用第一个选择对象命名；下一步请选择共同父组，或在项目设置里填写资产名覆盖。")
+            lines.append("命名说明：当前选择没有共同父节点，DCC AssetForge 只用第一个选择对象命名；下一步请选择共同父组，或在项目设置里填写资产名覆盖。")
     return "\n".join(lines)
 
 
@@ -1772,7 +1772,7 @@ def _format_asset_prefix_preview(scan, prefix):
     expected = asset_name if asset_name.startswith(prefix) else prefix + asset_name
     mesh_count = scan.get("mesh_count", 0)
     lines = [
-        "Asset Forge 将修改当前 Maya 场景中的命名。",
+        "DCC AssetForge 将修改当前 Maya 场景中的命名。",
         "",
         "当前资产名：{0}".format(asset_name or "未扫描"),
         "建议资产名：{0}".format(expected or prefix),
@@ -2046,7 +2046,7 @@ def _transform_fix_targets(scan):
 
 def _format_transform_fix_preview(scan, targets):
     lines = [
-        "Asset Forge 将在一个 Maya Undo Chunk 中执行 makeIdentity。",
+        "DCC AssetForge 将在一个 Maya Undo Chunk 中执行 makeIdentity。",
         "范围：当前资产根节点和 Mesh Transform。",
         "资产：{0}".format((scan or {}).get("asset_name", "未命名")),
         "节点数：{0}".format(len(targets or [])),

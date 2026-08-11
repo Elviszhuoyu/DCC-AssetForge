@@ -1,4 +1,4 @@
-"""Unreal texture importer for packaged Asset Forge textures."""
+"""Unreal texture importer for packaged DCC AssetForge textures."""
 
 from __future__ import absolute_import
 
@@ -109,7 +109,7 @@ def _preview_virtual_texture_policy(report):
         return
     if vt_policy == "project_default":
         report["resolved_virtual_texture_policy"] = "project_default_resolved_force_off"
-        report["resolution_reason"] = "Asset Forge Static Prop defaults keep imported textures non-VT unless force_on is requested."
+        report["resolution_reason"] = "DCC AssetForge Static Prop defaults keep imported textures non-VT unless force_on is requested."
         report["applied"].append({"property": "virtual_texture_streaming", "value": False})
         report["actual"]["virtual_texture"] = False
         report["effective_virtual_texture"] = False
@@ -322,7 +322,7 @@ class UnrealTextureImporter(object):
         if vt_policy == "project_default":
             expected = False
             report["resolved_virtual_texture_policy"] = "project_default_resolved_force_off"
-            report["resolution_reason"] = "Asset Forge Static Prop 默认关闭导入贴图 VT；只有显式 force_on 才启用 VT 材质采样链路。"
+            report["resolution_reason"] = "DCC AssetForge Static Prop 默认关闭导入贴图 VT；只有显式 force_on 才启用 VT 材质采样链路。"
             result = self._apply_property(texture_asset, ["VirtualTextureStreaming", "virtual_texture_streaming", "virtual_texture_streaming_enabled"], expected, "virtual_texture_streaming")
             self._record_property_result(report, "virtual_texture", result, expected, "Virtual Texture")
             return

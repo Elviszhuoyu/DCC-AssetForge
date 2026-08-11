@@ -15,7 +15,7 @@ from asset_forge.shared.texture_metadata import apply_texture_metadata
 
 
 def create_offline_static_prop_package(root_dir, asset_name="SM_AF_Offline_Crate"):
-    """Create a tiny Asset Forge package without Maya or Unreal."""
+    """Create a tiny DCC AssetForge package without Maya or Unreal."""
     package = build_export_package(root_dir, asset_name)
     _write_static_cube_fbx(package["fbx_path"], asset_name)
 
@@ -154,7 +154,7 @@ def _fbx_template(asset_name, material_name, vertices, polygon_indices, normals,
 FBXHeaderExtension:  {{
 	FBXHeaderVersion: 1003
 	FBXVersion: 7400
-	Creator: "Asset Forge offline sample"
+	Creator: "DCC AssetForge offline sample"
 }}
 GlobalSettings:  {{
 	Version: 1000

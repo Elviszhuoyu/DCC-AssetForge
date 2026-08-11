@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""UE Editor Python runner: clean generated Asset Forge test folders under /Game/Props."""
+"""UE Editor Python runner: clean generated DCC AssetForge test folders under /Game/Props."""
 
 from __future__ import absolute_import
 

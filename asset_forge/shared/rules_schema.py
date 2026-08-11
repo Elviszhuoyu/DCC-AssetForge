@@ -1,4 +1,4 @@
-"""Default executable rule schema for Asset Forge v0.1."""
+"""Default executable rule schema for DCC AssetForge 0.1."""
 
 from __future__ import absolute_import
 

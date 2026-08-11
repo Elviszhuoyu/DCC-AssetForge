@@ -152,7 +152,7 @@ class UnrealMaterialEvidenceCollector(object):
         library = _material_comment_library(self.unreal)
         describe = getattr(library, "describe_asset_forge_comment_blocks", None) if library else None
         if describe is None:
-            return {"status": "not_provided", "message": "Asset Forge material comment library is unavailable."}
+            return {"status": "not_provided", "message": "DCC AssetForge material comment library is unavailable."}
         try:
             description = str(describe(material_asset) or "")
         except Exception as exc:

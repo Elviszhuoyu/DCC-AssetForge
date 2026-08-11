@@ -93,7 +93,7 @@ class UnrealTextureImportPlanner(object):
         if virtual_texture_policy == "force_on":
             return self._vt_decision(True, "virtual_texture_policy force_on requires a VT-capable material sampler.", [])
         if virtual_texture_policy in ("force_off", "project_default"):
-            return self._vt_decision(False, "{0} keeps Asset Forge imports on ordinary Texture2D sampling.".format(virtual_texture_policy), [])
+            return self._vt_decision(False, "{0} keeps DCC AssetForge imports on ordinary Texture2D sampling.".format(virtual_texture_policy), [])
         if virtual_texture_policy == "auto":
             width = self._int_or_none(texture.get("width"))
             height = self._int_or_none(texture.get("height"))

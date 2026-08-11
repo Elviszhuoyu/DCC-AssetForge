@@ -230,7 +230,7 @@ class MayaBootstrapLauncherTest(unittest.TestCase):
         button = fake_cmds.buttons[launcher.UI_SHELF_BUTTON]
         self.assertIn("IconMayaShelf.png", button["image"])
         self.assertEqual(button["image"], button["image1"])
-        self.assertEqual(button["label"], "Asset Forge")
+        self.assertEqual(button["label"], "DCC AssetForge")
         self.assertEqual(button["imageOverlayLabel"], "")
         self.assertIn("maya_launch_asset_forge.py", button["command"])
         self.assertIn("bootstrap(repo_root=ASSET_FORGE_REPO_ROOT, open_ui=True)", button["command"])

@@ -1,4 +1,4 @@
-"""Bootstrap default Asset Forge material assets inside the UE plugin mount."""
+"""Bootstrap default DCC AssetForge material assets inside the UE plugin mount."""
 
 from __future__ import absolute_import
 
@@ -1748,7 +1748,7 @@ class UnrealMaterialAssetBootstrap(object):
             report["deleted_expression_count"] = len(existing_expressions)
             self._delete_stale_material_expressions(material_asset, editing_library, existing_expressions, report)
             return
-        report["issues"].append("当前 UE Python API 缺少 delete_all_material_expressions，旧的 Asset Forge 材质节点可能仍需手动清理。")
+        report["issues"].append("当前 UE Python API 缺少 delete_all_material_expressions，旧的 DCC AssetForge 材质节点可能仍需手动清理。")
 
     def _material_expressions(self, material_asset):
         if not material_asset:
@@ -1871,7 +1871,7 @@ class UnrealMaterialAssetBootstrap(object):
         return PARAMETER_DESCRIPTIONS.get(parameter, fallback)
 
     def _parameter_description(self, name):
-        return PARAMETER_DESCRIPTIONS.get(name, "Asset Forge 暴露材质参数：{0}。".format(name))
+        return PARAMETER_DESCRIPTIONS.get(name, "DCC AssetForge 暴露材质参数：{0}。".format(name))
 
     def _default_texture_asset_path(self, usage, sampler_type):
         by_usage = {

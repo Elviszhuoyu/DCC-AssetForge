@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Read-only Blender scene scanning for Asset Forge Static Prop provider."""
+"""Read-only Blender scene scanning for DCC AssetForge Static Prop provider."""
 
 from __future__ import absolute_import
 

@@ -1,4 +1,4 @@
-"""Create Unreal Material Instances from Asset Forge binding plans."""
+"""Create Unreal Material Instances from DCC AssetForge binding plans."""
 
 from __future__ import absolute_import
 

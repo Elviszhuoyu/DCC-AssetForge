@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Localhost JSON bridge for driving Asset Forge inside Maya."""
+"""Localhost JSON bridge for driving DCC AssetForge inside Maya."""
 
 from __future__ import absolute_import, print_function
 
@@ -116,7 +116,7 @@ def start_bridge(host=None, port=None, token=None, repo_root=None):
     _THREAD = threading.Thread(target=_SERVER.serve_forever)
     _THREAD.daemon = True
     _THREAD.start()
-    print("[AssetForgeMayaBridge] listening on {0}:{1}".format(active_host, active_port))
+    print("[DCC AssetForge Maya Bridge] listening on {0}:{1}".format(active_host, active_port))
     status = bridge_status()
     _log_bridge_event("mcp_bridge_start", "success", active_root, outputs=status)
     _safe_show_status_window(status)
@@ -193,7 +193,7 @@ def show_bridge_status_window():
 
 
 def register_status_listener(callback):
-    """Let the main Asset Forge UI mirror Stop Bridge / Refresh state changes."""
+    """Let the main DCC AssetForge UI mirror Stop Bridge / Refresh state changes."""
     if callback not in _STATUS_LISTENERS:
         _STATUS_LISTENERS.append(callback)
     return callback
@@ -318,7 +318,7 @@ def _unregister_bridge_instance(instance_id=None, port=None):
 
         return unregister_instance(instance_id=instance_id, pid=os.getpid(), port=port)
     except Exception as exc:
-        print("[AssetForgeMayaBridge] registry unregister failed: {0}".format(exc))
+        print("[DCC AssetForge Maya Bridge] registry unregister failed: {0}".format(exc))
         return []
 
 
@@ -365,11 +365,11 @@ def _close_server_without_blocking_ui(server, thread=None, action=""):
             if thread is not None and thread.is_alive():
                 server.shutdown()
         except Exception as exc:
-            print("[AssetForgeMayaBridge] server shutdown failed during {0}: {1}".format(action, exc))
+            print("[DCC AssetForge Maya Bridge] server shutdown failed during {0}: {1}".format(action, exc))
         try:
             server.server_close()
         except Exception as exc:
-            print("[AssetForgeMayaBridge] server close failed during {0}: {1}".format(action, exc))
+            print("[DCC AssetForge Maya Bridge] server close failed during {0}: {1}".format(action, exc))
 
     if thread is not None and thread.is_alive():
         closer = threading.Thread(target=_close)
@@ -426,7 +426,7 @@ def _require_maya_process():
     try:
         import maya.cmds  # noqa: F401
     except ImportError:
-        raise RuntimeError("Asset Forge Maya bridge 必须在 Maya 进程内启动；请在 Maya 2026 Script Editor 中执行 --bridge 启动入口。")
+        raise RuntimeError("DCC AssetForge Maya bridge 必须在 Maya 进程内启动；请在 Maya 2026 Script Editor 中执行 --bridge 启动入口。")
 
 
 def _maya_cmds():
@@ -516,7 +516,7 @@ def _mark_request_start(action, request_id, client):
         _BRIDGE_METRICS["last_error"] = ""
         _BRIDGE_METRICS["last_client"] = client or ""
         _BRIDGE_METRICS["last_request_id"] = request_id or ""
-    print("[AssetForgeMayaBridge] request start: {0} ({1})".format(label, request_id or "no-id"))
+    print("[DCC AssetForge Maya Bridge] request start: {0} ({1})".format(label, request_id or "no-id"))
     _safe_refresh_status_window()
 
 
@@ -533,7 +533,7 @@ def _mark_request_finish(action, request_id, status, error):
         _BRIDGE_METRICS["last_status"] = status
         _BRIDGE_METRICS["last_error"] = error or ""
         _BRIDGE_METRICS["last_request_id"] = request_id or _BRIDGE_METRICS.get("last_request_id", "")
-    print("[AssetForgeMayaBridge] request {0}: {1} ({2})".format(status, label, request_id or "no-id"))
+    print("[DCC AssetForge Maya Bridge] request {0}: {1} ({2})".format(status, label, request_id or "no-id"))
     _safe_refresh_status_window()
 
 
@@ -568,7 +568,7 @@ def _safe_show_status_window(status):
     try:
         _show_status_window(status)
     except Exception as exc:
-        print("[AssetForgeMayaBridge] status window failed: {0}".format(exc))
+        print("[DCC AssetForge Maya Bridge] status window failed: {0}".format(exc))
 
 
 def _notify_status_listeners(status):
@@ -576,7 +576,7 @@ def _notify_status_listeners(status):
         try:
             callback(status)
         except Exception as exc:
-            print("[AssetForgeMayaBridge] status listener failed: {0}".format(exc))
+            print("[DCC AssetForge Maya Bridge] status listener failed: {0}".format(exc))
 
 
 def _safe_refresh_status_window():
@@ -751,7 +751,7 @@ def _log_bridge_event(operation, status, repo_root, outputs=None, errors=None):
 
         return MayaOperationLogger(root=repo_root).log(operation, status, outputs=outputs or {}, errors=errors or [])
     except Exception as exc:
-        print("[AssetForgeMayaBridge] log failed: {0}".format(exc))
+        print("[DCC AssetForge Maya Bridge] log failed: {0}".format(exc))
         return {}
 
 

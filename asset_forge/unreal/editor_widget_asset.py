@@ -1,4 +1,4 @@
-"""Create and inspect the Asset Forge Editor Utility Widget asset."""
+"""Create and inspect the DCC AssetForge Editor Utility Widget asset."""
 
 from __future__ import absolute_import
 

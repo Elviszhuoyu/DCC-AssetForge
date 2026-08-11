@@ -47,7 +47,7 @@ class MayaOperationLoggerTest(unittest.TestCase):
 
     def test_unicode_path_remains_utf8_in_latest_log(self):
         logger = MayaOperationLogger(root=self.temp_dir)
-        path = "<WORKSPACE_ROOT>/DCC_Asset_Forge/测试/Test01"
+        path = "X:/Examples/DCCAssetForge/测试/Test01"
 
         logger.log("scan_model", "success", inputs={"export_root": path}, outputs={"note": "正式 Maya 日志路径生成验证"})
 

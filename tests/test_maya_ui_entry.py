@@ -50,8 +50,7 @@ class MayaUiEntryTest(unittest.TestCase):
         shutil.rmtree(self.temp_dir)
 
     def test_build_label_is_visible_for_user_verification(self):
-        self.assertIn("v0.1.8", BUILD_LABEL)
-        self.assertIn("Build 2026-06-03-R10", BUILD_LABEL)
+        self.assertEqual(BUILD_LABEL, "DCC AssetForge 0.1.0 - Maya 发布工作台")
 
     def test_maya_icon_assets_are_pre_scaled_for_maya_controls(self):
         resource_dir = Path(__file__).resolve().parents[1] / "Plugins" / "AssetForge" / "Resources"
@@ -324,7 +323,7 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertTrue(os.path.exists(debug_path))
         with open(debug_path, "r", encoding="utf-8") as stream:
             text = stream.read()
-        self.assertIn("Asset Forge v0.1.8", text)
+        self.assertIn("DCC AssetForge 0.1.0", text)
         self.assertIn("[settings]", text)
         self.assertIn("[scan]", text)
 
@@ -619,7 +618,7 @@ class MayaUiEntryTest(unittest.TestCase):
 
         self.assertEqual(pipeline.rename_root_calls, 1)
         self.assertEqual(pipeline.rename_mesh_calls, 1)
-        self.assertEqual(cmds.undo_calls, [("open", "Asset Forge 修复资产名前缀"), ("close", "")])
+        self.assertEqual(cmds.undo_calls, [("open", "DCC AssetForge 修复资产名前缀"), ("close", "")])
         self.assertIn("建议资产名：SM_zuti", cmds.confirm_messages[0])
         self.assertIn("修复资产名前缀", cmds.scroll_values["last_maya_log"])
         self.assertNotIn("fix_asset_name_prefix", cmds.scroll_values["last_maya_log"])
@@ -646,7 +645,7 @@ class MayaUiEntryTest(unittest.TestCase):
         window._apply_transform_fix()
 
         self.assertEqual(cmds.identity_targets, ["|zuti", "|zuti|SM_B_a"])
-        self.assertEqual(cmds.undo_calls, [("open", "Asset Forge 应用 Transform"), ("close", "")])
+        self.assertEqual(cmds.undo_calls, [("open", "DCC AssetForge 应用 Transform"), ("close", "")])
         self.assertIn("makeIdentity", cmds.confirm_messages[0])
         self.assertIn("Transform 已应用", cmds.summary)
 
@@ -729,7 +728,7 @@ class MayaUiEntryTest(unittest.TestCase):
         window.show()
 
         labels = "\n".join(cmds.labels)
-        self.assertIn("Asset Forge Maya 发布工作台", labels)
+        self.assertIn("DCC AssetForge Maya 发布工作台", labels)
         self.assertIn("MCP：未检查", labels)
         self.assertIn("启动", labels)
         self.assertIn("状态", labels)

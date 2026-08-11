@@ -1,4 +1,4 @@
-"""Portfolio-oriented readiness review for Asset Forge.
+"""Portfolio-oriented readiness review for DCC AssetForge.
 
 This report is intentionally product-facing: it answers whether the tool is
 good enough to show as a TA pipeline work, not only whether tests pass.

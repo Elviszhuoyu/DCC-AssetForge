@@ -1,9 +1,9 @@
 schema_version = "1.0.0"
 id = "asset_forge"
 version = "0.1.0"
-name = "Asset Forge"
-tagline = "DCC asset pipeline bridge for Unreal."
-maintainer = "TA_MyTools"
+name = "DCC AssetForge"
+tagline = "Auditable static-prop workflow from DCC tools to Unreal."
+maintainer = "DCC AssetForge Contributors"
 type = "add-on"
 blender_version_min = "4.2.0"
 license = ["SPDX:MIT"]

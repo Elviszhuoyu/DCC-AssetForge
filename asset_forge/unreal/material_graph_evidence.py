@@ -450,7 +450,7 @@ def _material_comment_block_checks(real_ue_material_graph):
                     "Material comment block evidence is not provided for {0}.".format(material.get("material_path", "")),
                     parent_material=material.get("material_path", ""),
                     evidence_status="not_provided",
-                    manual_validation_required=["read back Asset Forge material comment blocks in real UE"],
+                    manual_validation_required=["read back DCC AssetForge material comment blocks in real UE"],
                 )
             )
             continue
@@ -501,7 +501,7 @@ def _material_comment_block_checks(real_ue_material_graph):
                 _check(
                     "material_comment_blocks",
                     "pass",
-                    "Asset Forge material comment blocks are linked to visible graph comments.",
+                    "DCC AssetForge material comment blocks are linked to visible graph comments.",
                     parent_material=material.get("material_path", ""),
                     expected_af_comments=expected,
                     expression_comments=expressions,
@@ -552,7 +552,7 @@ def _ta_visual_review_summary(checks, real_ue_material_graph):
     if blocking_comments or blocking_persistence:
         status = "blocked"
         decision_label = "材质图注释结构需修复"
-        next_steps.append("repair Asset Forge material comment blocks before TA visual review")
+        next_steps.append("repair DCC AssetForge material comment blocks before TA visual review")
     elif risky_comments or risky_persistence:
         status = "manual_validation_required"
         decision_label = "材质图可读性需要人工复核"
@@ -565,7 +565,7 @@ def _ta_visual_review_summary(checks, real_ue_material_graph):
     elif not comment_checks:
         status = "manual_validation_required"
         decision_label = "缺少材质图可读性证据"
-        next_steps.append("read back Asset Forge material comment blocks in real UE")
+        next_steps.append("read back DCC AssetForge material comment blocks in real UE")
     else:
         status = "ready_for_visual_review" if screenshot_ready else "manual_validation_required"
         decision_label = "材质图结构证据可读，等待截图复核"
@@ -721,16 +721,16 @@ def _comment_block_visual_risk(expected, expressions, linked, orphan, duplicate,
 
 def _comment_block_message(expected, expressions, linked, orphan, duplicate, invalid_dimensions=0, visible_with_size=0):
     if invalid_dimensions:
-        return "Asset Forge graph comment nodes are linked but have zero-size bounds; visible TA comment boxes are not actually readable."
+        return "DCC AssetForge graph comment nodes are linked but have zero-size bounds; visible TA comment boxes are not actually readable."
     if linked == 0 and expected > 0:
-        return "Asset Forge expression comments exist, but none are linked to visible graph comment nodes; TA graph readability is not proven."
+        return "DCC AssetForge expression comments exist, but none are linked to visible graph comment nodes; TA graph readability is not proven."
     if orphan or duplicate:
-        return "Asset Forge material comment nodes contain orphan or duplicate graph comments."
+        return "DCC AssetForge material comment nodes contain orphan or duplicate graph comments."
     if expressions < expected:
-        return "Asset Forge material is missing expected expression comment markers."
+        return "DCC AssetForge material is missing expected expression comment markers."
     if visible_with_size < expected:
-        return "Asset Forge material comments are linked, but not all graph comment boxes have visible dimensions."
-    return "Asset Forge material comments are not fully linked to graph comment nodes."
+        return "DCC AssetForge material comments are linked, but not all graph comment boxes have visible dimensions."
+    return "DCC AssetForge material comments are not fully linked to graph comment nodes."
 
 
 def _comment_block_next_action(linked, orphan, duplicate, invalid_dimensions=0):
