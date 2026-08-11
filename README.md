@@ -2,9 +2,11 @@
 
 [简体中文](README.zh-CN.md)
 
+[![Offline CI](https://github.com/Elviszhuoyu/DCC-AssetForge/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Elviszhuoyu/DCC-AssetForge/actions/workflows/ci.yml)
+
 DCC AssetForge is an open-source, DCC-to-Unreal workflow for technical artists and art teams. It turns a Maya or Blender static prop into an auditable package, then lets an Unreal Editor gate review the package before importing it.
 
-The repository is preparing its first public release. The code manifests currently identify the project as `0.1.0`; there is no tagged public release yet. Screenshots and GIFs are intentionally omitted until real host captures are available.
+The repository is public and preparing its first tagged GitHub release. The code manifests currently identify the project as `0.1.0`; there is no tagged release yet. Screenshots and GIFs are intentionally omitted until real host captures are available.
 
 > DCC AssetForge is an independent project. It is not affiliated with, endorsed by, or sponsored by Autodesk, Blender Foundation, or Epic Games. Maya, Blender, and Unreal Engine are trademarks of their respective owners.
 

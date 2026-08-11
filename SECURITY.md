@@ -6,7 +6,7 @@ There is no tagged public release yet. Security fixes currently target the lates
 
 ## Reporting a vulnerability
 
-Prefer GitHub Private Vulnerability Reporting from the repository **Security** tab once it is enabled.
+Use GitHub Private Vulnerability Reporting from the repository **Security** tab.
 
 If private reporting is unavailable:
 
