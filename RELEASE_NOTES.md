@@ -37,7 +37,7 @@ Blender 4.2 is the manifest minimum, not a claim that every Blender version from
 - Unreal material evidence does not replace final TA visual inspection.
 - Automatic uninstall is not included; the README documents explicit per-host removal paths.
 - No official screenshots or GIFs are included in this candidate.
-- AF icon provenance requires maintainer confirmation before switching the repository to Public.
+- The DCC AssetForge name and six original AF icons are governed by `BRAND_ASSET_POLICY.md`, not the MIT License; modified public forks must follow that policy.
 - The Blender add-on is prepared for direct/manual installation, not submission to the official Blender Extensions Platform; that platform has a separate GPL-3.0-or-later requirement.
 
 ## Upgrade and compatibility

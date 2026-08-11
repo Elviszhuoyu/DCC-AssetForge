@@ -28,10 +28,10 @@ Official references:
 - actions/checkout license: <https://github.com/actions/checkout/blob/main/LICENSE>
 - actions/setup-python license: <https://github.com/actions/setup-python/blob/main/LICENSE>
 
-Maintainer checks required before Public:
+Current-candidate provenance checks:
 
-1. Confirm that no copied marketplace, studio, client, tutorial, or engine sample code is present.
-2. Re-run dependency and provenance review whenever a vendored library, binary, model, texture, scene, archive, or generated source file is added.
+1. Full-history path/content review found no obvious copied marketplace, studio, client, tutorial, engine-sample, or vendored-library source in the candidate. This is an evidence statement, not a legal guarantee.
+2. Re-run dependency and provenance review whenever a vendored library, binary, model, texture, scene, archive, generated source file, or new runtime dependency is added.
 
 The original DCC AssetForge icons are first-party works, not third-party material. They are excluded from MIT and governed by `BRAND_ASSET_POLICY.md`.
 
