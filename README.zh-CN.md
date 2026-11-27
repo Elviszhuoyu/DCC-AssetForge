@@ -1,6 +1,6 @@
-# DCC AssetForge
+# DCC AssetForge 中文使用手册
 
-**[English](README.md)** · [v0.2.0 发行页](https://github.com/Elviszhuoyu/DCC-AssetForge/releases/tag/v0.2.0)
+**[中文首页](README.md)** · [English](README.en.md) · [v0.2.0 发行页](https://github.com/Elviszhuoyu/DCC-AssetForge/releases/tag/v0.2.0)
 
 [![Offline CI](https://github.com/Elviszhuoyu/DCC-AssetForge/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Elviszhuoyu/DCC-AssetForge/actions/workflows/ci.yml)
 
