@@ -62,6 +62,17 @@ For the exact Unreal folder locations, source builds, updates and removal, see t
 
 ![SG552 static prop rendered in Unreal Editor 5.8.4](docs/images/unreal-sg552.png)
 
+<details>
+<summary>Unreal package import receipt and batch review</summary>
+
+![Unreal package import completed with one mesh, 21 textures and seven material instances](docs/images/unreal-import.png)
+
+![Unreal batch review with 117 checks passed and no issues after setting this batch's material slot limit to eight](docs/images/unreal-review.png)
+
+The SG552 sample's batch review uses a limit of eight material slots. The imported mesh uses seven.
+
+</details>
+
 ### Windows installer and Blender Beta
 
 <details>

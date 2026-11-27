@@ -62,6 +62,17 @@ UE 的具体目录、源码编译、升级与卸载步骤见 [安装指南](安�
 
 ![SG552 静态道具在 Unreal Editor 5.8.4 的材质渲染](docs/images/unreal-sg552.png)
 
+<details>
+<summary>展开 UE 导入成功回执与入库批审</summary>
+
+![UE 包体导入回执，1 个网格、21 张贴图、7 个材质实例](docs/images/unreal-import.png)
+
+![UE 入库批审，117 项通过、0 项问题](docs/images/unreal-review.png)
+
+SG552 实际使用 7 个材质槽。图中将本批次预算设为 8 个槽后复验通过。
+
+</details>
+
 ### Windows 安装助手与 Blender Beta
 
 <details>
