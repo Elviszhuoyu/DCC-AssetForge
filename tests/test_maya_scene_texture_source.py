@@ -51,7 +51,7 @@ class MayaSceneTextureSourceTest(unittest.TestCase):
 
     def test_scene_only_infers_unique_same_set_from_real_linked_maps(self):
         with tempfile.TemporaryDirectory() as temporary:
-            self.root = Path(temporary)
+            self.root = Path(temporary).resolve()
             base = self._touch("T_Asset_A_Base_Color", "base_color")
             normal = self._touch("T_Asset_A_Normal", "normal")
             packed = self._touch("T_Asset_A_Occlusion_Roughness_Metallic", "packed_arm")

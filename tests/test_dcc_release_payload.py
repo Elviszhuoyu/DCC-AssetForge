@@ -30,7 +30,7 @@ class DccReleasePayloadTest(unittest.TestCase):
 
     def test_stage_contains_portable_runtime_and_licenses_for_both_hosts(self):
         with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory)
+            output = Path(directory).resolve()
             package = stage(output)
             self.assertEqual(package["version"], "0.2.0")
             self.assertTrue(Path(package["maya"]).is_file())

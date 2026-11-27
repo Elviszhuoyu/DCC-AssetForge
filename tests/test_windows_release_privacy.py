@@ -16,7 +16,7 @@ class WindowsReleasePrivacyTest(unittest.TestCase):
         with ZipFile(data, "w", compression=ZIP_DEFLATED) as archive:
             archive.writestr("plugin.uasset", private.encode("utf-16-le"))
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "payload.zip").write_bytes(data.getvalue())
             (root / "manifest.txt").write_text("ReleaseTestUser", encoding="utf-8")
             checksums = [f"{hashlib.sha256(file.read_bytes()).hexdigest()}  {file.name}\n"
