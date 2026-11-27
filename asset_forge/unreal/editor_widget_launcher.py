@@ -19,7 +19,14 @@ class UnrealEditorWidgetLauncher(object):
         self.actions = actions or UnrealEditorWidgetActions()
         self.gate_state_builder = gate_state_builder or build_gate_panel_state
 
-    def launch_plan(self):
+    def launch_plan(self, native_declared=False):
+        native_loaded = getattr(self.unreal, "AssetForgeEditorMaterialCommentLibrary", None) is not None
+        if native_loaded or (native_declared and self.unreal is not None):
+            # Python startup can run before UE has exposed every reflected class.
+            # A project declaring the native tab never needs a generated legacy EUW.
+            return {"status": "ready" if native_loaded else "awaiting_native", "ui_mode": "native_slate",
+                    "tab_id": "AssetForge.GateWorkbench", "asset_path": "", "unreal_available": True,
+                    "actions": [item["id"] for item in self.widget_plan.get("actions", [])], "issues": []}
         issues = validate_editor_widget_plan(self.widget_plan)
         asset_path = self.widget_plan.get("asset_path", "")
         asset_exists = self._asset_exists(asset_path)
@@ -60,6 +67,14 @@ class UnrealEditorWidgetLauncher(object):
 
     def launch(self):
         plan = self.launch_plan()
+        if plan.get("ui_mode") == "native_slate":
+            self.unreal.SystemLibrary.execute_console_command(None, "AssetForge.OpenGate")
+            subsystem = self._editor_utility_subsystem()
+            opened = subsystem is not None and subsystem.does_tab_exist(plan["tab_id"])
+            plan["status"] = "launched" if opened else "error"
+            if not opened:
+                plan["issues"].append("未能打开 DCC AssetForge 原生工作台。")
+            return plan
         if plan["status"] != "ready":
             if self.unreal is None:
                 return plan
@@ -207,8 +222,8 @@ class UnrealEditorWidgetLauncher(object):
             return {"status": "error", "issues": ["widget asset generation failed: {0}".format(exc)]}
 
 
-def get_widget_launch_plan(unreal_module=None):
-    return UnrealEditorWidgetLauncher(unreal_module).launch_plan()
+def get_widget_launch_plan(unreal_module=None, native_declared=False):
+    return UnrealEditorWidgetLauncher(unreal_module).launch_plan(native_declared=native_declared)
 
 
 def launch_asset_forge_widget(unreal_module=None):

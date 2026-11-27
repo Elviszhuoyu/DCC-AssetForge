@@ -3,9 +3,82 @@ from __future__ import absolute_import
 import unittest
 
 from asset_forge.unreal.material_evidence_collector import UnrealMaterialEvidenceCollector
+from asset_forge.unreal.material_graph_evidence import build_material_graph_evidence_report
 
 
 class UnrealMaterialEvidenceCollectorTest(unittest.TestCase):
+    def test_compile_evidence_uses_cached_results_and_reports_actual_errors(self):
+        parent = "/AssetForge/Materials/M_Parent"
+        engine = FakeUnreal("")
+        engine.load_asset = lambda path: FakeMaterial()
+        collector = UnrealMaterialEvidenceCollector(engine)
+        library = engine.AssetForgeMaterialCommentLibrary
+
+        evidence = collector._collect_compile_log([parent])
+        self.assertEqual(evidence["status"], "pass")
+        self.assertEqual(evidence["readback_materials"], [parent])
+        self.assertEqual(evidence["recompiled_materials"], [])
+
+        library.compile_errors = ["shader failed"]
+        evidence = collector._collect_compile_log([parent])
+        self.assertEqual(evidence["status"], "error")
+        self.assertEqual(evidence["messages"], [{"severity": "error", "text": parent + ": shader failed"}])
+
+        library.compile_errors = None
+        evidence = collector._collect_compile_log([parent])
+        self.assertEqual(evidence["status"], "skipped")
+        self.assertEqual(evidence["unavailable_materials"], [parent])
+
+    def test_legacy_native_bridge_is_not_used_for_mutating_parent_readback(self):
+        engine = FakeUnreal("")
+        engine.AssetForgeMaterialCommentLibrary = LegacyMutatingCommentLibrary()
+        engine.load_asset = lambda path: FakeMaterial()
+        collector = UnrealMaterialEvidenceCollector(engine)
+
+        self.assertEqual(collector._comment_blocks_summary(FakeMaterial())["status"], "not_provided")
+        evidence = collector._collect_compile_log(["/AssetForge/Materials/M_Parent"])
+        self.assertEqual(evidence["status"], "skipped")
+        self.assertEqual(evidence["readback_materials"], [])
+
+    def test_closed_material_graph_reports_unavailable_visual_readback(self):
+        engine = FakeUnreal(
+            "SUMMARY expected_af_comments=7|expression_comments=7|linked_graph_comments=0"
+            "|orphan_graph_comments=0|duplicate_comments=0|graph_readback_available=0"
+        )
+        summary = UnrealMaterialEvidenceCollector(engine)._comment_blocks_summary(FakeMaterial())
+
+        self.assertEqual(summary["status"], "not_provided")
+        self.assertEqual(summary["expression_comments"], 7)
+        self.assertEqual(summary["visual_review_risk"], "unknown")
+        self.assertEqual(summary["next_action"], "open the material graph and rerun comment readback")
+
+    def test_project_parent_uses_planned_parameters_and_leaves_visual_review_open(self):
+        parent = "/Game/Studio/M_Custom"
+        plan = {"master_material": "/Game/Studio/M_Unused", "materials": [{
+            "parent_material": parent, "texture_parameters": {"surface": "T_Color", "Detail": "T_Normal"},
+        }]}
+        engine = FakeUnreal(RuntimeError("project graph comments must not be read"))
+        engine.load_asset = lambda path: FakeMaterial() if path == parent else None
+        class Parameters(object):
+            @staticmethod
+            def get_texture_parameter_names(asset):
+                return ["Surface", "Detail"]
+        engine.MaterialEditingLibrary = Parameters
+        collector = UnrealMaterialEvidenceCollector(engine)
+        graph = collector.collect({"material_binding_plan": plan})["real_ue_material_graph"]
+        self.assertEqual(graph["status"], "pass", graph["issues"])
+        self.assertEqual([m["material_path"] for m in graph["materials"]], [parent])
+        evidence = build_material_graph_evidence_report(plan, real_ue_material_graph=graph)
+        self.assertEqual(evidence["required_texture_parameters"], ["Detail", "surface"])
+        visual = evidence["ta_visual_review"]
+        self.assertEqual(visual["status"], "manual_validation_required")
+        self.assertEqual(visual["comment_box_persistence_status"], "not_applicable")
+        self.assertEqual(visual["comment_block_checks"], 0)
+        plan["materials"][0]["texture_parameters"]["Missing"] = "T_Absent"
+        graph = collector.collect({"material_binding_plan": plan})["real_ue_material_graph"]
+        self.assertEqual(graph["status"], "error")
+        self.assertEqual(graph["materials"][0]["missing_texture_parameters"], ["Missing"])
+
     def test_comment_block_summary_passes_when_all_graph_comments_are_linked(self):
         collector = UnrealMaterialEvidenceCollector(
             FakeUnreal(
@@ -95,16 +168,29 @@ class FakeMaterial(object):
 class FakeUnreal(object):
     def __init__(self, description):
         self.AssetForgeMaterialCommentLibrary = FakeCommentLibrary(description)
+        self.MaterialEditingLibrary = LegacyMutatingCommentLibrary()
 
 
-class FakeCommentLibrary(object):
+class LegacyMutatingCommentLibrary(object):
+    def describe_asset_forge_comment_blocks(self, material_asset):
+        raise AssertionError("Evidence collection must not rebuild the shared parent graph")
+
+    def recompile_material(self, material_asset):
+        raise AssertionError("Evidence collection must not recompile the shared parent")
+
+
+class FakeCommentLibrary(LegacyMutatingCommentLibrary):
     def __init__(self, description):
         self.description = description
+        self.compile_errors = []
 
-    def describe_asset_forge_comment_blocks(self, material_asset):
+    def read_asset_forge_comment_blocks(self, material_asset):
         if isinstance(self.description, Exception):
             raise self.description
         return self.description
+
+    def try_read_asset_forge_material_compile_errors(self, material_asset):
+        return self.compile_errors
 
 
 if __name__ == "__main__":

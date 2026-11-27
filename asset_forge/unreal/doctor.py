@@ -196,7 +196,7 @@ class AssetForgeDoctor(object):
 
     def _manifest_schema_smoke_check(self):
         try:
-            manifest = create_manifest("SM_DoctorSmoke", "D:/AssetForge/SM_DoctorSmoke.fbx", "/Game/Props")
+            manifest = create_manifest("SM_DoctorSmoke", "SM_DoctorSmoke.fbx", "/Game/Props")
             issues = validate_manifest(manifest)
             return self._check(
                 "manifest_schema_smoke",

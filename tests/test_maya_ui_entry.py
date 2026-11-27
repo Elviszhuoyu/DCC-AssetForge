@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -50,7 +51,7 @@ class MayaUiEntryTest(unittest.TestCase):
         shutil.rmtree(self.temp_dir)
 
     def test_build_label_is_visible_for_user_verification(self):
-        self.assertEqual(BUILD_LABEL, "DCC AssetForge 0.1.0 - Maya 发布工作台")
+        self.assertEqual(BUILD_LABEL, "DCC AssetForge v0.2 - Maya 发布工作台")
 
     def test_maya_icon_assets_are_pre_scaled_for_maya_controls(self):
         resource_dir = Path(__file__).resolve().parents[1] / "Plugins" / "AssetForge" / "Resources"
@@ -82,6 +83,133 @@ class MayaUiEntryTest(unittest.TestCase):
             for x in range(x0, x1)
             if min(image.getpixel((x, y))[:3]) >= 190
         )
+
+    def test_tool_groups_read_live_fields_and_forget_previous_folder_counts(self):
+        cmds = FakeEditableUiCmds(self.temp_dir)
+        window = AssetForgeMayaWindow(cmds_module=cmds, pipeline=FakePipeline(), log_root=self.temp_dir)
+        fields = ("texture_folder", "target_path", "platform", "material_profile", "output_dir")
+        window.controls.update({name: name for name in fields})
+        window.last_scan = {"texture_folder_scan": {"texture_folder": "D:/Textures", "matched_count": 6},
+                            "textures": ["texture1"]}
+        self.assertEqual(window._tool_state()["textureSummary"], "6 张 / 问题 0")
+        cmds.button_values["texture_folder"] = "D:/Other"
+        cmds.text_values["target_path"] = "/Game/Partially\nEdited"
+        state = window._tool_state()
+        self.assertEqual(state["textureSummary"], "未扫描")
+        self.assertEqual(state["targetPath"], cmds.text_values["target_path"])
+
+    def test_check_card_follows_validation_and_clears_when_scan_invalidates_it(self):
+        window = AssetForgeMayaWindow(cmds_module=FakeEditableUiCmds(self.temp_dir),
+                                     pipeline=FakeExportSuccessPipeline(), log_root=self.temp_dir)
+        window.controls = _fake_full_controls()
+        window._validate()
+        self.assertEqual(window.check_notice["badge"], "已通过")
+        result = maya_ui.workbench_feedback.check_result({"can_export": True, "checks": [{"status": "warning"}]})
+        self.assertIn("查看下方原因", result["text"])
+        self.assertNotIn("定位", result["text"])
+        window.pipeline = FakePipeline()
+        window._validate()
+        self.assertEqual(window.check_notice["badge"], "1 项阻断")
+        window._invalidate_review()
+        self.assertFalse(window.check_notice)
+        window._reset_review()
+        window.pipeline.selection = []
+        window._validate()
+        self.assertEqual(window.review_status, ("idle", "待检查"))
+        self.assertFalse(window.check_notice)
+        self.assertIsNone(window.review_gate)
+
+        def fail_check(*args, **kwargs):
+            raise RuntimeError("无法读取网格")
+
+        window.pipeline.selection = ["|SM_B"]
+        window.pipeline.preflight_assets = fail_check
+        window._validate()
+        self.assertEqual(window.review_status, ("error", "检查失败"))
+        self.assertIn("无法读取网格", window.check_notice["text"])
+        self.assertFalse(window.export_receipt)
+
+    def test_checked_asset_stays_pinned_through_empty_components_other_selection_and_recheck(self):
+        pipeline = FakeExportSuccessPipeline()
+
+        def warning(selection, **kwargs):
+            return {"scan": dict(_successful_scan(), asset_name=selection[0].rsplit("|", 1)[-1]),
+                    "validation": {"can_export": True, "status": "warning",
+                                   "checks": [{"id": "lightmap_uv", "status": "warning", "value": False, "limit": True}]}}
+        pipeline.preflight_assets = warning
+        window = AssetForgeMayaWindow(cmds_module=FakeEditableUiCmds(self.temp_dir),
+                                     pipeline=pipeline, log_root=self.temp_dir)
+        window.controls = _fake_full_controls()
+        window._validate()
+        rules = list(window.issue_rows)
+        stored = window.last_validation
+        self.assertEqual(window._review_selection(), ["|SM_B"])
+        self.assertEqual(window.review_status, ("warning", "1 个警告"))
+        pipeline.selection = []
+        window._selection_label()
+        self.assertTrue(window.selection_note["canSelect"])
+        self.assertIs(window.last_validation, stored)
+        self.assertEqual(window.issue_rows, rules)
+        pipeline.selection = ["|SM_B|shape.f[2]"]
+        window._selection_label()
+        self.assertEqual(window.selection_note, {})
+        pipeline.selection = ["|SM_Other"]
+        window._selection_label()
+        self.assertEqual(window.selection_note["switchTo"], "SM_Other")
+        self.assertEqual(window._review_selection(), ["|SM_B"])
+        window._recheck_mesh()
+        self.assertEqual(window.last_scan["asset_name"], "SM_B")
+        self.assertEqual(window.review_status, ("warning", "1 个警告"))
+        window._export()
+        self.assertEqual(pipeline.export_args["selection"], ["|SM_B"])
+        window._switch_and_check()
+        self.assertEqual(window._review_selection(), ["|SM_Other"])
+        self.assertEqual(window.last_scan["asset_name"], "SM_Other")
+
+    def test_component_switch_uses_the_mesh_transform_as_asset_root(self):
+        from unittest.mock import Mock
+        window = AssetForgeMayaWindow(cmds_module=FakeEditableUiCmds(self.temp_dir),
+                                     pipeline=FakeExportSuccessPipeline(), log_root=self.temp_dir)
+        window.cmds.nodeType = Mock(return_value="mesh")
+        window.cmds.listRelatives = Mock(return_value=["|SM_B"])
+        self.assertEqual(window._asset_roots(["|SM_B|MeshShape.f[4]", "|SM_B|MeshShape.f[5]"]), ["|SM_B"])
+
+    def test_pending_publish_cannot_run_after_selection_change_or_workspace_replacement(self):
+        from unittest.mock import Mock, patch
+        window = AssetForgeMayaWindow(cmds_module=FakeFullUiCmds(self.temp_dir), pipeline=FakePipeline(), log_root=self.temp_dir)
+        callbacks = []
+        window.skin = Mock()
+        window.skin.core.QTimer.singleShot.side_effect = lambda delay, callback: callbacks.append(callback)
+        publish = Mock(return_value="导出完成")
+        with patch.object(maya_ui, "_WORKSPACE_INSTANCE", window):
+            window._run_action("publish", publish)
+            window._run_action("publish", publish)
+            self.assertEqual(len(callbacks), 1)
+            self.assertEqual(window.action_button["label"], "导出中…")
+            window.pipeline.selection = ["|different"]
+            callbacks.pop()()
+            self.assertFalse(window.action_button)
+            publish.assert_not_called()
+            window._run_action("publish", publish)
+            window._end_feedback()
+            callbacks.pop()()
+            publish.assert_not_called()
+            self.assertTrue(window.feedback_closed)
+            window.feedback_closed = False
+            window.action_button = {}
+            window._run_action("publish", publish)
+        callbacks.pop()()
+        publish.assert_not_called()
+
+    def test_toast_stays_centered_or_fits_beside_the_floating_workbench(self):
+        place = maya_ui.workbench_feedback.toast_geometry
+        measure = lambda width: 32 if width >= 300 else 64
+        self.assertEqual(place(1000, 500, 400, measure, None, 8), (300, 16, 400, 32))
+        self.assertEqual(place(1000, 500, 400, measure, (220, 90, 400, 250), 8), (300, 16, 400, 32))
+        self.assertEqual(place(1000, 500, 400, measure, (590, 0, 450, 250), 8), (182, 16, 400, 32))
+        self.assertEqual(place(650, 400, 430, measure, (-10, 0, 400, 320), 8), (398, 16, 244, 64))
+        self.assertEqual(place(265, 360, 400, measure, (0, -5, 260, 120), 8), (8, 123, 249, 64))
+        self.assertIsNone(place(265, 200, 400, measure, (0, 0, 265, 200), 8))
 
     def test_target_path_strips_trailing_newline(self):
         window = AssetForgeMayaWindow(cmds_module=FakeUiCmds("/Game/Props/Test01\n"), pipeline=FakePipeline(), log_root=self.temp_dir)
@@ -179,9 +307,9 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertTrue(by_id["fix_asset_name_prefix"]["can_run_from_ui_flow"])
         self.assertEqual(by_id["review_texture_set_issues"]["label"], "检查贴图集问题")
         self.assertEqual(by_id["review_texture_set_issues"]["problem"], "texture_set_auto_selected")
-        self.assertEqual(by_id["review_texture_set_issues"]["field_label"], "贴图集关键词")
+        self.assertEqual(by_id["review_texture_set_issues"]["field_label"], "贴图名筛选词")
         self.assertEqual(by_id["review_texture_set_issues"]["field"], "texture_set_token")
-        self.assertEqual(by_id["review_texture_set_issues"]["example"], "a1,d1")
+        self.assertNotIn("example", by_id["review_texture_set_issues"])
         self.assertEqual(by_id["fix_texture_prefix"]["label"], "修复贴图前缀")
         self.assertEqual(by_id["fix_texture_prefix"]["button_label"], "修复贴图前缀")
         self.assertEqual(by_id["fix_texture_prefix"]["ui_callback"], "_rename_texture_prefix")
@@ -243,8 +371,9 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertIn("当前选择：", text)
         self.assertIn("已选贴图集：HK416_D_B_a1, HK416_D_B_d1", text)
         self.assertIn("将导出贴图数量：", text)
-        self.assertIn("将导出用途：", text)
-        self.assertIn("已按当前关键词选择贴图集", text)
+        self.assertIn("将导出用途：基础色 ×2、法线 ×2、ARM/ORM ×2", text)
+        self.assertNotIn("a1,d1", text)
+        self.assertIn("已按当前筛选词选择贴图集", text)
         self.assertIn("下一步建议：", text)
         self.assertNotIn("贴图集 " + "Token", text)
 
@@ -300,11 +429,27 @@ class MayaUiEntryTest(unittest.TestCase):
         window = AssetForgeMayaWindow(cmds_module=cmds, pipeline=FakePipeline(), log_root=self.temp_dir)
         window.controls = _fake_full_controls()
 
+        window._log_operation("scan_model", "success", outputs={"asset_name": "SM_Old"})
         window._log_operation("scan_model", "success", outputs={"asset_name": "SM_Test"})
 
-        self.assertIn("扫描资产", cmds.scroll_values["last_maya_log"])
+        history = cmds.scroll_values["last_maya_log"]
+        self.assertLess(history.index("SM_Test"), history.index("SM_Old"))
+        self.assertLess(history.index("SM_Old"), history.index("日志路径："))
+        self.assertIn("扫描资产", history)
         self.assertNotIn("scan_model", cmds.scroll_values["last_maya_log"])
         self.assertIn("日志路径：", cmds.scroll_values["last_maya_log"])
+
+    def test_log_result_block_only_appears_for_real_feedback(self):
+        cmds = FakeFullUiCmds(os.path.join(self.temp_dir, "settings.json"))
+        window = AssetForgeMayaWindow(cmds_module=cmds, pipeline=FakePipeline(), log_root=self.temp_dir)
+        window.controls = {"results": "results", "result_block": "result_block"}
+        visibility = {}
+        window._manage = lambda key, visible: visibility.update({key: visible})
+        window._set_results("  ")
+        self.assertFalse(visibility["result_block"])
+        window._show_error(ValueError("目标路径无效"), "preflight")
+        self.assertTrue(visibility["result_block"])
+        self.assertEqual(cmds.results, "目标路径无效")
 
     def test_export_debug_bundle_writes_ai_readable_snapshot(self):
         cmds = FakeFullUiCmds(os.path.join(self.temp_dir, "settings.json"))
@@ -315,6 +460,7 @@ class MayaUiEntryTest(unittest.TestCase):
         window.last_texture_scan = _successful_scan()["texture_folder_scan"]
         window.last_package_dir = "D:/Exports/SM_B"
         window.last_selection = ["|SM_B"]
+        window._log_operation("scan_model", "success", outputs={"asset_name": "真实日志"})
 
         window._export_debug_bundle()
 
@@ -323,9 +469,11 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertTrue(os.path.exists(debug_path))
         with open(debug_path, "r", encoding="utf-8") as stream:
             text = stream.read()
-        self.assertIn("DCC AssetForge 0.1.0", text)
+        self.assertIn("DCC AssetForge v0.2", text)
         self.assertIn("[settings]", text)
         self.assertIn("[scan]", text)
+        entries = [json.loads(line) for line in text.split("[maya_log_tail]\n", 1)[1].splitlines()]
+        self.assertEqual(entries[-1]["outputs"]["asset_name"], "真实日志")
 
     def test_export_log_outputs_include_debuggable_package_summary(self):
         outputs = _export_log_outputs(
@@ -412,7 +560,7 @@ class MayaUiEntryTest(unittest.TestCase):
 
         window._save_project_settings()
 
-        saved = target + ".json"
+        saved = target + ".assetforge.json"
         self.assertTrue(os.path.exists(saved))
         with open(saved, "r", encoding="utf-8") as stream:
             data = json.load(stream)
@@ -431,7 +579,7 @@ class MayaUiEntryTest(unittest.TestCase):
 
         window._save_project_settings()
 
-        saved = os.path.join(self.temp_dir, "test01_config.json")
+        saved = os.path.join(self.temp_dir, "test01_config.assetforge.json")
         self.assertTrue(os.path.exists(saved))
         self.assertFalse(os.path.exists(target))
 
@@ -487,6 +635,8 @@ class MayaUiEntryTest(unittest.TestCase):
 
         self.assertFalse(pipeline.export_called)
         self.assertTrue(pipeline.blocked_report_written)
+        self.assertIs(window.review_gate, False)
+        self.assertEqual(window.export_receipt, {})
         self.assertIn("导出阻断 | Package 未生成", cmds.results)
         self.assertIn("报告", cmds.results)
         self.assertIn("状态：可导出=false | UE Gate=false | 注意/阻断=0/1", cmds.results)
@@ -502,6 +652,25 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertIn("报告=D:/Reports/zuti_export_blocked_report.json", cmds.scroll_values["last_maya_log"])
         self.assertIn("导出资产名缺少 SM_ 前缀", cmds.scroll_values["preflight"])
 
+    def test_scan_only_invalidates_rows_gate_and_current_package_receipt(self):
+        cmds = FakeFullUiCmds(os.path.join(self.temp_dir, "settings.json"))
+        pipeline = FakeExportSuccessPipeline()
+        pipeline.scan_selection = _successful_scan
+        window = AssetForgeMayaWindow(cmds_module=cmds, pipeline=pipeline, log_root=self.temp_dir)
+        window.controls = _fake_full_controls()
+        window._export()
+        window.active_issue = {"rule": "old"}
+        window.issue_rows = [window.active_issue]
+        window.locator_selection = ["old.vtx[0]"]
+        window._scan()
+        self.assertIsNone(window.review_gate)
+        self.assertIsNone(window.last_validation)
+        self.assertEqual(window.issue_rows, [])
+        self.assertIsNone(window.active_issue)
+        self.assertEqual(window.locator_selection, [])
+        self.assertEqual(window.export_receipt, {})
+        self.assertEqual(window.last_package_dir, "D:/Exports/SM_B")
+
     def test_export_auto_rescans_when_selection_changed(self):
         cmds = FakeFullUiCmds(os.path.join(self.temp_dir, "settings.json"))
         pipeline = FakePipeline()
@@ -515,6 +684,47 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertFalse(pipeline.export_called)
         self.assertIn("选择已变化", cmds.scroll_values["preflight"])
         self.assertEqual(pipeline.preflight_selection, ["|zuti|SM_B_new"])
+
+    def test_material_choice_from_workbench_survives_export_and_is_scoped_to_selection(self):
+        class BindingPipeline(FakeExportSuccessPipeline):
+            def match_texture_source(self, scan, folder, profile, token, overrides=None):
+                return dict(scan, texture_folder_scan={"selected_texture_sets": ["Prop_Body", "Prop_Trim"]},
+                            material_texture_sets=[{"material_name": "M_Body_Trim", "candidates": ["Prop_Body", "Prop_Trim"]}])
+
+            def preflight_assets(self, selection, **kwargs):
+                result = super(BindingPipeline, self).preflight_assets(selection, **kwargs)
+                self.last_overrides = dict(kwargs["material_texture_set_overrides"])
+                result["scan"]["material_texture_sets"] = [
+                    {"material_name": "M_Body_Trim", "candidates": ["Prop_Body", "Prop_Trim"]}
+                ]
+                result["texture_folder_scan"] = {"selected_texture_sets": ["Prop_Body", "Prop_Trim"]}
+                result["validation"]["can_export"] = bool(self.last_overrides)
+                return result
+
+            def export_assets(self, selection, output_dir, target_platform, target_path, **kwargs):
+                self.export_overrides = dict(kwargs["material_texture_set_overrides"])
+                return super(BindingPipeline, self).export_assets(selection, output_dir, target_platform, target_path, **kwargs)
+
+        cmds = FakeEditableUiCmds(os.path.join(self.temp_dir, "settings.json"))
+        pipeline = BindingPipeline()
+        window = AssetForgeMayaWindow(cmds_module=cmds, pipeline=pipeline, log_root=self.temp_dir)
+        window.controls = _fake_full_controls()
+
+        def choose(choices, overrides):
+            self.assertEqual(choices, [("M_Body_Trim", ["Prop_Body", "Prop_Trim"])])
+            self.assertEqual(overrides, {})
+            return {"M_Body_Trim": "Prop_Trim"}
+
+        window._material_set_dialog = choose
+        window._resolve_material_texture_sets()
+        window._export()
+        self.assertEqual(pipeline.export_overrides, {"M_Body_Trim": "Prop_Trim"})
+        pipeline.selection = ["|SM_Other"]
+        self.assertTrue(window._run_preflight()["validation"]["can_export"])
+        self.assertEqual(pipeline.last_overrides, {"M_Body_Trim": "Prop_Trim"})
+        window._switch_and_check()
+        self.assertFalse(window.last_validation["can_export"])
+        self.assertEqual(pipeline.last_overrides, {})
 
     def test_real_window_export_success_passes_frontend_settings_to_pipeline(self):
         cmds = FakeEditableUiCmds(os.path.join(self.temp_dir, "settings.json"))
@@ -534,7 +744,8 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertEqual(pipeline.export_args["texture_set_token"], "a1,d1")
         self.assertEqual(
             pipeline.export_args["texture_import_policy"],
-            {"virtual_texture_policy": "force_off", "texture_streaming_policy": "streaming", "texture_group": "project_default"},
+            {"virtual_texture_policy": "force_off", "texture_streaming_policy": "streaming", "texture_group": "project_default",
+             "normal_format": "directx"},
         )
         self.assertEqual(
             pipeline.export_args["static_mesh_import_policy"],
@@ -548,13 +759,16 @@ class MayaUiEntryTest(unittest.TestCase):
             },
         )
         self.assertEqual(window.last_package_dir, "D:/Exports/SM_B")
+        self.assertIs(window.review_gate, True)
+        self.assertEqual(window.export_receipt, {"path": "D:/Exports/SM_B", "display": "Exports/SM_B"})
         self.assertIn("清单：", cmds.results)
         self.assertIn("发布包：D:/Exports/SM_B", cmds.results)
         self.assertIn("报告：D:/Exports/SM_B/SM_B_export_report.json", cmds.results)
         self.assertIn("状态：可导出=true | UE Gate=待导入检查 | 注意/阻断=0/0", cmds.results)
         self.assertIn("UE Gate: 选择该 Package -> 检查并导入", cmds.results)
         self.assertIn("下一步：在 UE Gate 里选择该 Package，确认检查结果后导入", cmds.results)
-        self.assertIn("日志路径：", cmds.results)
+        self.assertNotIn("日志路径：", cmds.results)
+        self.assertIn("日志路径：", cmds.scroll_values["last_maya_log"])
         self.assertIn("导出成功", cmds.scroll_values["last_maya_log"])
         self.assertNotIn("export_success", cmds.scroll_values["last_maya_log"])
         self.assertIn("发布包=D:/Exports/SM_B", cmds.scroll_values["last_maya_log"])
@@ -672,6 +886,61 @@ class MayaUiEntryTest(unittest.TestCase):
         self.assertEqual(cmds.button_values["output_dir"], "D:/Picked/Export")
         self.assertEqual(cmds.button_values["texture_folder"], "D:/Picked/Textures")
         self.assertEqual(cmds.dialog_captions, ["选择导出", "选择贴图"])
+        self.assertIn("将导出贴图数量：3", cmds.scroll_values["texture_summary"])
+        self.assertEqual(window.last_texture_scan["texture_folder"], "D:/Picked/Textures")
+        self.assertIsNone(window.last_validation)
+
+    def test_texture_folder_change_expires_previous_results_only_for_a_different_directory(self):
+        cmds = FakeEditableUiCmds(self.temp_dir)
+        window = AssetForgeMayaWindow(cmds_module=cmds, pipeline=FakeExportSuccessPipeline(), log_root=self.temp_dir)
+        window.controls = _fake_full_controls()
+        window._export()
+        window.issue_rows = [{"candidates": ["old"]}]
+        for reply in ([], ["D:/Textures/./"]):
+            cmds.fileDialog2 = lambda **kwargs: reply
+            window._choose_texture_folder()
+            self.assertTrue(window.review_gate and window.export_receipt and window.check_notice)
+            self.assertTrue(window.issue_rows)
+        cmds.fileDialog2 = lambda **kwargs: ["D:/Different"]
+        window._choose_texture_folder()
+        self.assertIsNone(window.review_gate)
+        self.assertIsNone(window.last_validation)
+        self.assertFalse(window.issue_rows or window.export_receipt or window.check_notice)
+        self.assertIn("重新检查", cmds.scroll_values["preflight"])
+
+    def test_cancel_manual_binding_preserves_active_export_receipt(self):
+        cmds = FakeEditableUiCmds(self.temp_dir)
+        pipeline = FakeExportSuccessPipeline()
+        window = AssetForgeMayaWindow(cmds_module=cmds, pipeline=pipeline, log_root=self.temp_dir)
+        window.controls = _fake_full_controls()
+        window._export()
+        snapshot = (window.last_scan, window.last_validation, window.export_receipt,
+                    window.review_gate, window.material_binding_context)
+        rows = [{"material_name": "M_Body", "candidates": ["Body", "Trim"]}]
+        preview = {"texture_folder_scan": {"selected_texture_sets": ["Body", "Trim"]},
+                   "material_texture_sets": rows}
+        with patch.object(pipeline, "match_texture_source", return_value=preview), \
+                patch.object(window, "_material_set_dialog", return_value=None) as dialog:
+            window._resolve_material_texture_sets()
+        dialog.assert_called_once_with([("M_Body", ["Body", "Trim"])], {})
+        self.assertEqual((window.last_scan, window.last_validation, window.export_receipt,
+                          window.review_gate, window.material_binding_context), snapshot)
+
+    def test_preset_metadata_preserves_review_but_a_different_check_rule_expires_it(self):
+        path = os.path.join(self.temp_dir, "preset.json")
+        cmds = FakeEditableUiCmds(path)
+        window = AssetForgeMayaWindow(cmds_module=cmds, pipeline=FakeExportSuccessPipeline(), log_root=self.temp_dir)
+        window.controls = _fake_full_controls()
+        window._export()
+        settings = window._settings_from_ui()
+        maya_ui.save_project_settings(path, dict(settings, preset_name="Renamed", export_root="D:/OtherOutput"))
+        window._load_project_settings()
+        self.assertTrue(window.review_gate and window.export_receipt and window.check_notice)
+        maya_ui.save_project_settings(path, dict(settings, texture_set_token="new_matching_rule"))
+        window._load_project_settings()
+        self.assertIsNone(window.review_gate)
+        self.assertFalse(window.export_receipt or window.check_notice)
+        self.assertIn("重新检查", cmds.scroll_values["preflight"])
 
     def test_open_last_package_button_uses_latest_export_directory(self):
         cmds = FakeEditableUiCmds(os.path.join(self.temp_dir, "settings.json"))
@@ -728,59 +997,92 @@ class MayaUiEntryTest(unittest.TestCase):
         window.show()
 
         labels = "\n".join(cmds.labels)
-        self.assertIn("DCC AssetForge Maya 发布工作台", labels)
-        self.assertIn("MCP：未检查", labels)
-        self.assertIn("启动", labels)
-        self.assertIn("状态", labels)
-        self.assertIn("发布状态", labels)
-        self.assertIn("导出控制", labels)
-        self.assertIn("未扫描 | 选择资产根节点，然后扫描", labels)
-        self.assertIn("资产 未扫描    贴图 未扫描    风险 未检查    发布 等待扫描", labels)
-        self.assertIn("资产 | 未扫描 · 选择后扫描", labels)
-        self.assertIn("贴图 | 未扫描 · 选择目录", labels)
-        self.assertIn("风险 | 未检查 · 扫描后检查", labels)
-        self.assertIn("发布 | 等待扫描 · 资产和检查", labels)
-        self.assertIn("1 发布目标", labels)
-        self.assertIn("2 资产概览", labels)
-        self.assertIn("3 贴图匹配", labels)
-        self.assertIn("4 检查详情", labels)
-        self.assertIn("资产详情", labels)
-        self.assertIn("贴图匹配", labels)
-        self.assertIn("贴图详情", labels)
-        self.assertIn("检查详情", labels)
-        self.assertIn("结果 / 日志", labels)
-        self.assertIn("导入建议（写入 Package，UE Gate 可复核）", labels)
-        self.assertIn("基础导入", labels)
-        self.assertIn("网格构建", labels)
-        self.assertIn("材质贴图", labels)
-        self.assertIn("高级设置", labels)
-        self.assertIn("Maya 只生成 Package 和导入建议", labels)
-        self.assertIn("这些值会写入 Package；UE Gate 导入前仍可复核和覆盖。", labels)
-        self.assertIn("Virtual Texture 策略建议", labels)
-        self.assertIn("Texture Streaming 策略建议", labels)
-        self.assertIn("保持 Mesh / 独立 Mesh 关系清晰", labels)
-        self.assertIn("Nanite 策略建议", labels)
-        self.assertIn("Mesh LOD 导入策略建议", labels)
-        self.assertIn("Maya 操作日志", labels)
+        self.assertIn("选择要检查的资产", labels)
+        self.assertEqual(cmds.labels.count("检查资产"), 1)
+        self.assertIn("待检查", labels)
+        self.assertIn("发布设置", labels)
+        self.assertIn("技术日志", labels)
+        self.assertNotIn("组件定位", labels)
+        self.assertNotIn("扩选一圈", labels)
+        self.assertNotIn("复检当前网格", labels)
         self.assertIn("检查并导出 Package", labels)
-        self.assertIn("只扫描", labels)
-        self.assertIn("只检查", labels)
-        self.assertIn("导出调试信息", labels)
+        self.assertNotIn("资产 | 未扫描 · 选择后扫描", labels)
+        self.assertEqual(window.issue_rows, [])
+        self.assertIn("MCP：未检查", labels)
+        self.assertIn("加载预设", labels)
         self.assertIn("修复资产名前缀", labels)
-        self.assertIn("贴图集关键词", labels)
-        self.assertIn("下一步", labels)
-        self.assertTrue(any("IconMayaHeader.png" in image for image in cmds.images))
+        self.assertIn("手动绑定材质槽贴图", labels)
+        self.assertIn("贴图名筛选词（可选）", labels)
+        self.assertIn("覆盖现有包体", labels)
+        self.assertIn("AssetForge v0.2", labels)
+        self.assertEqual(cmds.images, [])
         scroll_text = "\n".join(cmds.scroll_values.values())
         self.assertIn(format_asset_identity({}), scroll_text)
         self.assertIn(format_empty_texture_details(), scroll_text)
         self.assertIn(format_empty_preflight_details(), scroll_text)
         self.assertEqual(cmds.scroll_layout_count, 1)
-        self.assertIn(16, cmds.scroll_layout_thicknesses)
+        self.assertIn(12, cmds.scroll_layout_thicknesses)
         self.assertIn(96, cmds.scroll_field_heights)
         self.assertIn(132, cmds.scroll_field_heights)
-        self.assertIn(150, cmds.scroll_field_heights)
-        self.assertIn(64, cmds.scroll_field_heights)
-        self.assertIn(76, cmds.scroll_field_heights)
+        self.assertIn("Maya 操作日志", labels)
+        self.assertEqual(cmds.labels.count("检查详情"), 1)
+        self.assertIn("只扫描", labels)
+        self.assertIn("导出调试信息", labels)
+
+    def test_summary_pill_counts_visible_issue_rows(self):
+        class Skin(object):
+            def pill(self, control, text, tone):
+                self.display = (text, tone)
+        cmds = FakeFullUiCmds(os.path.join(self.temp_dir, "settings.json"))
+        window = AssetForgeMayaWindow(cmds_module=cmds, pipeline=FakePipeline(), log_root=self.temp_dir)
+        window.controls["summary"] = "summary"
+        window.skin = Skin()
+        window.last_validation = {"summary": {"errors": 0, "warnings": 1}}
+        window.issue_rows = [{"severity": "warning"}, {"severity": "warning"}]
+        # A single check can report two separate mesh rows.
+        cmds.text = lambda *args, **kwargs: None
+        window._set_summary("检查完成", "warning")
+        self.assertEqual(window.skin.display, ("2 个警告", "warning"))
+
+    def test_located_component_selection_keeps_original_publish_roots(self):
+        pipeline = FakePipeline()
+        window = AssetForgeMayaWindow(cmds_module=FakeUiCmds(""), pipeline=pipeline, log_root=self.temp_dir)
+        window.last_selection = ["|SM_Crate"]
+        window.locator_selection = ["|SM_Crate|Mesh.vtx[1:3]"]
+        pipeline.selection = list(window.locator_selection)
+        self.assertEqual(window._review_selection(), ["|SM_Crate"])
+        pipeline.selection = ["|SM_ChangingProp"]
+        self.assertEqual(window._review_selection(), ["|SM_ChangingProp"])
+        window.active_issue = {"mesh": "|SM_Crate|Mesh"}
+        pipeline.selection = ["|SM_Crate.vtx[8]"]
+        self.assertEqual(window._review_selection(), ["|SM_Crate"])
+        pipeline.selection = []
+        self.assertFalse(window._inspecting_selection([]))
+        self.assertEqual(window._review_selection(), [])
+
+
+    def test_per_face_shading_membership_is_not_modeling_history(self):
+        from asset_forge.maya.scanner import MayaAssetScanner
+        class History(object):
+            def listHistory(self, root, **kwargs):
+                return ["groupId3", "polyExtrudeFace2", "groupParts7"]
+            def nodeType(self, node):
+                return node.rstrip("0123456789")
+        scanner = MayaAssetScanner(cmds_module=History())
+        self.assertEqual(scanner._history_nodes("SM_Camera"), ["polyExtrudeFace2", "groupParts7"])
+
+    def test_degenerate_rows_keep_their_mesh_and_native_face_or_edge_indices(self):
+        mesh = "|SM_Crate|Panel"
+        data = {"zero_area_count": 1, "faces": [{"face_index": 7, "polygon_size": 4, "triangle_indices": [1]}],
+                "zero_length_edges": [3, 11]}
+        scan = _successful_scan()
+        scan["mesh_geometry"] = {mesh: data}
+        validation = MayaStaticPropPipeline().validate_scan(scan)
+        rows = {row["rule"]: row for row in maya_ui.workbench_locator.issue_rows(scan, validation)}
+        self.assertEqual(rows["zero_area_triangles"]["components"], [7])
+        self.assertEqual(rows["zero_length_edges"]["components"], [3, 11])
+        self.assertEqual(rows["zero_length_edges"]["severity"], "warning")
+        self.assertEqual(rows["zero_length_edges"]["mesh"], mesh)
 
     def test_mcp_status_running_shows_port(self):
         cmds = FakeFullUiCmds(os.path.join(self.temp_dir, "settings.json"))
@@ -967,7 +1269,7 @@ class FakeEditableUiCmds(FakeFullUiCmds):
 
     def optionMenu(self, control, query=False, value=False, edit=False, **kwargs):
         if edit:
-            self.option_values[control] = kwargs.get("value", "")
+            self.option_values[control] = value
             return control
         return self.option_values.get(control, "")
 
@@ -1147,7 +1449,15 @@ class FakeBuildCmds(FakeFullUiCmds):
         pass
 
 
-class FakePipeline(object):
+class FakeTextureMatching:
+    def scan_assets(self, selection):
+        return dict(_successful_scan(), asset_roots=list(selection))
+
+    def match_texture_source(self, scan, folder, profile, token):
+        return dict(scan, texture_folder_scan=dict(_successful_scan()["texture_folder_scan"], texture_folder=folder))
+
+
+class FakePipeline(FakeTextureMatching):
     rules = {}
 
     def __init__(self):
@@ -1173,7 +1483,7 @@ class FakePipeline(object):
         return "D:/Reports/zuti_export_blocked_report.json"
 
 
-class FakeExportSuccessPipeline(object):
+class FakeExportSuccessPipeline(FakeTextureMatching):
     rules = {}
 
     def __init__(self):
@@ -1186,7 +1496,7 @@ class FakeExportSuccessPipeline(object):
     def get_current_selection(self):
         return list(self.selection)
 
-    def preflight_assets(self, selection, target_platform=None, material_profile=None, texture_folder=None, texture_set_token=None, target_path=None, asset_name_override="", rules=None, texture_import_policy=None, static_mesh_import_policy=None, source_name_suffix=""):
+    def preflight_assets(self, selection, target_platform=None, material_profile=None, texture_folder=None, texture_set_token=None, target_path=None, asset_name_override="", rules=None, texture_import_policy=None, static_mesh_import_policy=None, source_name_suffix="", material_texture_set_overrides=None):
         self.preflight_calls += 1
         return {"scan": _successful_scan(), "validation": _successful_validation(), "texture_folder_scan": _successful_scan()["texture_folder_scan"]}
 
@@ -1217,7 +1527,7 @@ class FakeExportSuccessPipeline(object):
         }
 
 
-class FakeTexturePrefixPipeline(object):
+class FakeTexturePrefixPipeline(FakeTextureMatching):
     rules = {}
 
     def __init__(self):
@@ -1259,7 +1569,7 @@ class FakeTexturePrefixPipeline(object):
         }
 
 
-class FakeSelectionChangedTexturePipeline(object):
+class FakeSelectionChangedTexturePipeline(FakeTextureMatching):
     rules = {}
 
     def __init__(self):
@@ -1271,13 +1581,13 @@ class FakeSelectionChangedTexturePipeline(object):
     def get_current_selection(self):
         return list(self.selection)
 
-    def scan_selection(self):
+    def scan_assets(self, selection):
         self.scan_calls += 1
         return dict(_successful_scan(), asset_name="SM_New", asset_roots=["|SM_New"])
 
-    def scan_texture_folder(self, folder, asset_name, material_profile, token):
-        self.texture_scan_asset_name = asset_name
-        return _successful_scan()["texture_folder_scan"]
+    def match_texture_source(self, scan, folder, material_profile, token):
+        self.texture_scan_asset_name = scan["asset_name"]
+        return super().match_texture_source(scan, folder, material_profile, token)
 
 
 class FakePrefixFixPipeline(object):

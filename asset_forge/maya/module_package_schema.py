@@ -7,7 +7,7 @@ import os
 
 
 MAYA_MODULE_NAME = "AssetForge"
-MAYA_MODULE_VERSION = "0.1"
+MAYA_MODULE_VERSION = "0.2.0"
 MAYA_MODULE_DESCRIPTOR = os.path.join("integrations", "maya", "AssetForge.mod")
 
 

@@ -318,4 +318,6 @@ def _guess_repo_root():
 
 
 def _default_log_path(repo_root):
-    return os.path.join(repo_root or _guess_repo_root(), "AssetForgeReports", "logs", "latest_blender.log")
+    from . import user_report_root
+
+    return os.path.join(user_report_root(repo_root or _guess_repo_root()), "logs", "latest_blender.log")

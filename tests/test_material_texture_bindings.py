@@ -3,9 +3,39 @@ from __future__ import absolute_import
 import unittest
 
 from asset_forge.shared.material_texture_bindings import create_material_texture_bindings
+from asset_forge.shared.material_texture_set_mapping import build_material_texture_set_mapping
 
 
 class MaterialTextureBindingsTest(unittest.TestCase):
+    def test_single_generic_material_needs_a_choice_between_competing_sets(self):
+        slots = [{"name": "M_Generic"}]
+        textures = [{"selected_texture_set": name, "usage": usage}
+                    for name in ("Prop_Trim", "Prop_Body") for usage in ("base_color", "normal", "packed_arm")]
+        for ordered in (textures, list(reversed(textures))):
+            result = build_material_texture_set_mapping(slots, ordered)
+            row = result["material_texture_sets"][0]
+            self.assertEqual(row["status"], "ambiguous_material_texture_set")
+            self.assertEqual(row["candidates"], ["Prop_Body", "Prop_Trim"])
+            self.assertEqual(result["materials"][0]["textures"], [])
+            chosen = build_material_texture_set_mapping(
+                slots, ordered, material_texture_set_overrides={"M_Generic": "Prop_Trim"})
+            self.assertEqual(chosen["material_texture_sets"][0]["binding_source"], "manual_override")
+            self.assertEqual(chosen["materials"][0]["textures"],
+                             [texture for texture in ordered if texture["selected_texture_set"] == "Prop_Trim"])
+
+    def test_generic_slot_preserves_legacy_single_and_complementary_inputs(self):
+        inputs = [
+            [{"usage": "base_color"}, {"usage": "normal"}],
+            [{"selected_texture_set": "Prop_Body", "usage": usage} for usage in ("base_color", "normal")],
+            [{"selected_texture_set": "Albedo", "usage": "base_color"},
+             {"selected_texture_set": "Details", "usage": "normal"}],
+        ]
+        for textures in inputs:
+            with self.subTest(textures=textures):
+                mapping = build_material_texture_set_mapping([{"name": "M_Generic"}], textures)
+                self.assertEqual(mapping["material_texture_sets"][0]["status"], "bound")
+                self.assertEqual(mapping["materials"][0]["textures"], textures)
+
     def test_empty_target_path_keeps_material_instance_name_without_path(self):
         report = create_material_texture_bindings(
             {

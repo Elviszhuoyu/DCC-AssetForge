@@ -4,7 +4,7 @@ from __future__ import absolute_import
 
 import os
 
-from asset_forge.shared.material_profile_schema import resolve_material_profile
+from asset_forge.shared.material_profile_schema import NORMAL_TEXTURE_FORMATS, resolve_material_profile
 from asset_forge.shared.path_utils import normalize_path
 from asset_forge.shared.unreal_path import sanitize_unreal_package_path
 from asset_forge.unreal.name_utils import sanitize_unreal_asset_name
@@ -14,7 +14,7 @@ class UnrealTextureImportPlanner(object):
     """Build a deterministic texture import plan without importing yet."""
 
     def plan(self, manifest, material_profile=None):
-        profile = resolve_material_profile(material_profile or manifest.get("material_profile"))
+        profile = resolve_material_profile(material_profile or manifest.get("resolved_material_profile") or manifest.get("material_profile"))
         target_dir = self._target_texture_dir(manifest, profile)
         rule_lookup = self._rule_lookup(profile)
         existing_strategy = manifest.get("existing_texture_strategy", profile.get("existing_texture_strategy", "overwrite"))
@@ -49,7 +49,7 @@ class UnrealTextureImportPlanner(object):
         virtual_texture_policy = texture.get("virtual_texture_policy", texture_policy.get("virtual_texture_policy", "project_default"))
         texture_streaming_policy = texture.get("texture_streaming_policy", texture_policy.get("texture_streaming_policy", "project_default"))
         vt_decision = self._virtual_texture_decision(texture, virtual_texture_policy, texture_streaming_policy)
-        return {
+        plan = {
             "source_path": package_path,
             "package_path": package_path,
             "target_dir": target_dir,
@@ -75,6 +75,17 @@ class UnrealTextureImportPlanner(object):
             "source_type": texture.get("source_type", ""),
             "source_label": texture.get("source_label", ""),
         }
+        if plan["usage"] == "normal":
+            marked_format = (
+                texture.get("normal_format") or texture_policy.get("normal_format")
+                or rule.get("normal_format") or "directx"
+            )
+            marked_format = str(marked_format).strip().lower()
+            if marked_format not in NORMAL_TEXTURE_FORMATS:
+                plan["normal_format_warning"] = "法线坐标格式无法识别，按 DirectX 导入，请核对来源贴图。"
+                marked_format = "directx"
+            plan.update(normal_format=marked_format, flip_green_channel=marked_format == "opengl")
+        return plan
 
     def _format_contract(self, usage, rule, srgb, compression):
         channels = dict(rule.get("channels", {}) or {})
@@ -143,6 +154,7 @@ class UnrealTextureImportPlanner(object):
             "virtual_texture_policy": result.get("virtual_texture_policy", "project_default"),
             "texture_streaming_policy": result.get("texture_streaming_policy", "project_default"),
             "texture_group": result.get("texture_group", "project_default"),
+            "normal_format": manifest.get("normal_format") or result.get("normal_format", ""),
         }
 
     def _dedupe_asset_names(self, textures):

@@ -27,8 +27,10 @@ class UnrealMaterialPackageSchemaTest(unittest.TestCase):
             material_paths,
             [
                 "/AssetForge/Materials/M_AF_Props_Master",
+                "/AssetForge/Materials/M_AF_Props_Opaque_Master",
                 "/AssetForge/Materials/M_AF_Environment_Master",
                 "/AssetForge/Materials/M_AF_Character_Master",
+                "/AssetForge/Materials/M_AF_Opaque_PBR",
             ],
         )
 
@@ -40,27 +42,41 @@ class UnrealMaterialPackageSchemaTest(unittest.TestCase):
 
         self.assertEqual(issues, [])
 
-    def test_props_opaque_uses_minimal_static_prop_pbr_parameters(self):
+    def test_legacy_props_master_preserves_masked_parameters(self):
         plan = get_default_material_package_plan()
-        opaque = self._find_material(plan, "M_AF_Props_Master")
+        masked = self._find_material(plan, "M_AF_Props_Master")
 
-        self.assertEqual(opaque["render_mode"], "masked")
-        self.assertEqual(opaque["texture_parameters"], ["BaseColor", "Normal", "ARM", "OpacityMask", "Emissive", "ImperfectionMask"])
-        self.assertIn("Emissive", opaque["texture_parameters"])
-        self.assertIn("NormalStrength", opaque["scalar_parameters"])
-        self.assertIn("UVTiling", opaque["scalar_parameters"])
-        self.assertIn("Specular", opaque["scalar_parameters"])
-        self.assertNotIn("RoughnessMin", opaque["scalar_parameters"])
-        self.assertNotIn("RoughnessMax", opaque["scalar_parameters"])
-        self.assertIn("BaseColorTint", opaque["vector_parameters"])
-        self.assertEqual(opaque["master_family"], "MM_Surface_PBR")
-        self.assertEqual(opaque["parameter_api_mapping"]["ARM"], "Pack Map")
+        self.assertEqual(masked["render_mode"], "masked")
+        self.assertEqual(masked["texture_parameters"], ["BaseColor", "Normal", "ARM", "OpacityMask", "Emissive", "ImperfectionMask"])
+        self.assertIn("Emissive", masked["texture_parameters"])
+        self.assertIn("NormalStrength", masked["scalar_parameters"])
+        self.assertIn("UVTiling", masked["scalar_parameters"])
+        self.assertIn("Specular", masked["scalar_parameters"])
+        self.assertNotIn("RoughnessMin", masked["scalar_parameters"])
+        self.assertNotIn("RoughnessMax", masked["scalar_parameters"])
+        self.assertIn("BaseColorTint", masked["vector_parameters"])
+        self.assertEqual(masked["master_family"], "MM_Surface_PBR")
+        self.assertEqual(masked["parameter_api_mapping"]["ARM"], "Pack Map")
+        self.assertIn("EmissiveIntensity", masked["scalar_parameters"])
+        self.assertIn("EmissiveTint", masked["vector_parameters"])
+        self.assertIn("OpacityMask", masked["texture_parameters"])
+        self.assertFalse(masked["static_switches"]["UseEmissive"])
+        self.assertFalse(masked["static_switches"]["UseOpacityMask"])
+        self.assertFalse(masked["static_switches"]["UseSeparateOpacityMask"])
+
+    def test_stock_painter_parent_is_opaque_and_retains_optional_pbr_inputs(self):
+        plan = get_default_material_package_plan()
+        opaque = self._find_material(plan, "M_AF_Props_Opaque_Master")
+        self.assertEqual(opaque["render_mode"], "opaque")
+        self.assertEqual(opaque["texture_parameters"], ["BaseColor", "Normal", "ARM", "Emissive", "ImperfectionMask"])
         self.assertIn("EmissiveIntensity", opaque["scalar_parameters"])
-        self.assertIn("EmissiveTint", opaque["vector_parameters"])
-        self.assertIn("OpacityMask", opaque["texture_parameters"])
-        self.assertFalse(opaque["static_switches"]["UseEmissive"])
-        self.assertFalse(opaque["static_switches"]["UseOpacityMask"])
-        self.assertFalse(opaque["static_switches"]["UseSeparateOpacityMask"])
+        self.assertIn("ImperfectionIntensity", opaque["scalar_parameters"])
+        self.assertIn("UseEmissive", opaque["static_switches"])
+        self.assertNotIn("UseOpacityMask", opaque["static_switches"])
+
+        opaque["render_mode"] = "masked"
+        report = validate_material_library_product_readiness(plan)
+        self.assertIn("M_AF_Props_Opaque_Master must use opaque blending", report["issues"])
 
     def test_virtual_texture_variants_are_not_generated_until_verified(self):
         plan = get_default_material_package_plan()
@@ -184,7 +200,7 @@ class UnrealMaterialPackageSchemaTest(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["issue_count"], 0)
-        self.assertEqual(report["master_count"], 3)
+        self.assertEqual(report["master_count"], 5)
         self.assertGreaterEqual(report["preset_count"], 15)
         self.assertGreaterEqual(report["preview_texture_count"], 10)
         self.assertEqual(report["showcase_level_path"], "/AssetForge/Showcase/LV_AF_Material_Showcase")

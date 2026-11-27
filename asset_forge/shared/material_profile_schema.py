@@ -1,9 +1,13 @@
+# -*- coding: utf-8 -*-
 """Project Material Profile schema for texture and material standards."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import io
 import json
+import re
+
+from asset_forge.shared.python_compat import text_type, write_utf8_json
 import os
 
 from asset_forge.shared.constants import (
@@ -20,6 +24,9 @@ from asset_forge.shared.constants import (
 
 MATERIAL_PROFILE_VERSION = "0.1"
 DEFAULT_MATERIAL_PROFILE_NAME = "Props_Opaque_PainterUE_ARM"
+PROPS_PAINTER_OPAQUE_MASTER = "/AssetForge/Materials/M_AF_Props_Opaque_Master"
+_LEGACY_PROPS_MASTER = "/AssetForge/Materials/M_AF_Props_Master"
+NORMAL_TEXTURE_FORMATS = ("directx", "opengl")
 
 REQUIRED_PROFILE_FIELDS = [
     "version",
@@ -65,8 +72,12 @@ def create_material_profile(
         "supports": kwargs.get("supports", {}),
         "master_family": kwargs.get("master_family", ""),
         "material_variants": kwargs.get("material_variants", {}),
+        "material_slot_variants": kwargs.get("material_slot_variants", []),
         "enabled_material_variants": kwargs.get("enabled_material_variants", []),
         "default_import_profile": kwargs.get("default_import_profile", True),
+        "require_complete_texture_sets": kwargs.get("require_complete_texture_sets", False),
+        "expose_packed_channel_scalars": kwargs.get("expose_packed_channel_scalars", True),
+        "allow_external_master_material": kwargs.get("allow_external_master_material", False),
         "parameter_api_mapping": kwargs.get("parameter_api_mapping", {}),
         "texture_import_policy": kwargs.get(
             "texture_import_policy",
@@ -85,6 +96,33 @@ def create_material_profile(
     }
 
 
+def material_slot_variant_map(profile):
+    """Read exact source-material routes, rejecting malformed project declarations."""
+    entries = profile.get("material_slot_variants", [])
+    if not isinstance(entries, list):
+        raise ValueError("material_slot_variants must be a list")
+    variants = profile.get("material_variants", {})
+    routes = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("Each material_slot_variants entry needs a material and a variant")
+        material, key = entry.get("material"), entry.get("variant")
+        if not all(isinstance(v, (str, text_type)) and v and v == v.strip() for v in (material, key)):
+            raise ValueError("Material slot routes need exact, non-empty material and variant names")
+        if material in routes:
+            raise ValueError("Duplicate material slot variant route: {0}".format(material))
+        if not isinstance(variants, dict) or key not in variants:
+            raise ValueError("Undeclared material variant {0} for source material {1}".format(key, material))
+        parent = variants[key]
+        # Accept a long package name or its top-level Unreal object path.
+        if not isinstance(parent, (str, text_type)) or not re.match(r"^/(?:[\w-]+/)+([\w-]+)(?:\.\1)?\Z", parent, re.UNICODE):
+            raise ValueError("Invalid parent path for material variant {0}: {1}".format(key, parent))
+        if not parent.startswith("/AssetForge/") and profile.get("allow_external_master_material") is not True:
+            raise ValueError("External parent for material variant {0} requires allow_external_master_material=true".format(key))
+        routes[material] = key
+    return routes
+
+
 def validate_material_profile(profile):
     """Return schema issues for one material profile."""
     issues = []
@@ -100,6 +138,11 @@ def validate_material_profile(profile):
 
     if profile.get("scalar_parameters") is not None and not isinstance(profile.get("scalar_parameters"), dict):
         issues.append("scalar_parameters must be a dict")
+
+    try:
+        material_slot_variant_map(profile)
+    except ValueError as exc:
+        issues.append(str(exc))
 
     for index, rule in enumerate(profile.get("texture_rules", [])):
         issues.extend(_validate_texture_rule(rule, index))
@@ -136,6 +179,7 @@ def get_default_material_profiles():
         "version": MATERIAL_PROFILE_VERSION,
         "profiles": [
             _props_opaque_profile(),
+            _props_opaque_pbr_profile(),
             _props_masked_profile(),
             _props_translucent_profile(),
             _environment_opaque_profile(),
@@ -181,12 +225,35 @@ def material_profile_names(profiles=None):
 def resolve_material_profile(profile=None, profiles=None):
     """Return a profile dict from a dict, name, or default Props Opaque fallback."""
     if isinstance(profile, dict):
-        return profile
+        return _apply_legacy_painter_arm_coverage(profile)
     if profile:
         found = get_material_profile(profile, profiles)
         if found:
-            return found
-    return get_material_profile(DEFAULT_MATERIAL_PROFILE_NAME, profiles) or get_default_material_profile(DEFAULT_MATERIAL_PROFILE_NAME)
+            return _apply_legacy_painter_arm_coverage(found)
+    return _apply_legacy_painter_arm_coverage(
+        get_material_profile(DEFAULT_MATERIAL_PROFILE_NAME, profiles) or get_default_material_profile(DEFAULT_MATERIAL_PROFILE_NAME)
+    )
+
+
+def _apply_legacy_painter_arm_coverage(profile):
+    # Keep historical parents and project settings on published packages.
+    if (
+        profile.get("name") != DEFAULT_MATERIAL_PROFILE_NAME
+        or profile.get("master_material") != _LEGACY_PROPS_MASTER
+        or profile.get("render_mode") != RENDER_MODE_OPAQUE
+    ):
+        return profile
+    legacy_rule = next(rule for rule in _common_props_texture_rules() if rule["usage"] == "packed_arm")
+    rules = profile.get("texture_rules", [])
+    if legacy_rule not in rules:
+        return profile
+    return dict(profile, texture_rules=[
+        _require_packed_arm(rule) if rule == legacy_rule else rule for rule in rules
+    ])
+
+
+def _require_packed_arm(rule):
+    return dict(rule, required=True, missing_severity="warning")
 
 
 def write_material_profiles(path, profiles, pretty=True):
@@ -194,9 +261,7 @@ def write_material_profiles(path, profiles, pretty=True):
     if parent and not os.path.exists(parent):
         os.makedirs(parent)
     indent = 2 if pretty else None
-    with io.open(path, "w", encoding="utf-8") as stream:
-        stream.write(json.dumps(profiles, ensure_ascii=False, indent=indent))
-        stream.write("\n")
+    write_utf8_json(path, profiles, indent=indent)
     return path
 
 
@@ -296,6 +361,11 @@ def _validate_texture_rule(rule, index):
     if channels is not None and not isinstance(channels, dict):
         issues.append("texture_rules[{0}] channels must be a dict".format(index))
 
+    if rule.get("missing_severity", "error") not in ("warning", "error"):
+        issues.append("texture_rules[{0}] missing_severity must be warning or error".format(index))
+    if rule.get("normal_format", "directx") not in NORMAL_TEXTURE_FORMATS:
+        issues.append("texture_rules[{0}] normal_format must be directx or opengl".format(index))
+
     return issues
 
 
@@ -339,6 +409,7 @@ def _common_props_texture_rules():
             "suffixes": ["_Normal", "_NormalMap", "_N"],
             "srgb": False,
             "compression": "normalmap",
+            "normal_format": "directx",
             "required": True,
         },
         {
@@ -379,16 +450,23 @@ def _common_props_texture_rules():
 
 
 def _props_opaque_profile():
+    rules = [
+        _require_packed_arm(rule) if rule["usage"] == "packed_arm" else rule
+        for rule in _common_props_texture_rules()
+    ]
+    variants = _hard_surface_variants()
+    for variant in ("opaque", "opaque_vt", "emissive", "emissive_vt", "dirty_wear", "dirty_wear_vt"):
+        variants[variant] = PROPS_PAINTER_OPAQUE_MASTER
     return create_material_profile(
-        "Props_Opaque_PainterUE_ARM",
+        DEFAULT_MATERIAL_PROFILE_NAME,
         ASSET_TYPE_PROPS,
         RENDER_MODE_OPAQUE,
-        "/AssetForge/Materials/M_AF_Props_Master",
-        _common_props_texture_rules(),
+        PROPS_PAINTER_OPAQUE_MASTER,
+        rules,
         display_name="Props Opaque - Painter UE ARM",
         supports={"emissive": True, "opacity_mask": False, "translucency": False, "imperfection_mask": True, "height": True, "pom": False},
         master_family="MM_Surface_PBR",
-        material_variants=_hard_surface_variants(),
+        material_variants=variants,
         parameter_api_mapping=_hard_surface_parameter_api_mapping(),
         scalar_parameters={
             "UVTiling": 1.0,
@@ -402,6 +480,28 @@ def _props_opaque_profile():
             "NormalStrength": 1.0,
             "ImperfectionIntensity": 0.0,
             "EdgeWearIntensity": 0.0,
+        },
+        vector_parameters={"BaseColorTint": [1.0, 1.0, 1.0, 1.0]},
+    )
+
+
+def _props_opaque_pbr_profile():
+    rules = [rule for rule in _common_props_texture_rules() if rule["usage"] in ("base_color", "normal", "packed_arm")]
+    for rule in rules:
+        rule["required"] = True
+    return create_material_profile(
+        "Props_Opaque_PBR",
+        ASSET_TYPE_PROPS,
+        RENDER_MODE_OPAQUE,
+        "/AssetForge/Materials/M_AF_Opaque_PBR",
+        rules,
+        display_name="Opaque PBR - Base Color, Normal, ORM",
+        require_complete_texture_sets=True,
+        expose_packed_channel_scalars=False,
+        master_family="MM_Surface_PBR",
+        scalar_parameters={
+            "UVTiling": 1.0, "BaseColorIntensity": 1.0, "NormalStrength": 1.0,
+            "AOIntensity": 1.0, "RoughnessIntensity": 1.0, "MetallicIntensity": 1.0, "Specular": 0.5,
         },
         vector_parameters={"BaseColorTint": [1.0, 1.0, 1.0, 1.0]},
     )

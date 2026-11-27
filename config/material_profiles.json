@@ -7,7 +7,7 @@
       "display_name": "Props Opaque - Painter UE ARM",
       "asset_family": "props",
       "render_mode": "opaque",
-      "master_material": "/AssetForge/Materials/M_AF_Props_Master",
+      "master_material": "/AssetForge/Materials/M_AF_Props_Opaque_Master",
       "material_instance_dir": "{target_path}/Materials",
       "texture_dir": "{target_path}/Textures",
       "texture_rules": [
@@ -38,6 +38,7 @@
           ],
           "srgb": false,
           "compression": "normalmap",
+          "normal_format": "directx",
           "required": true
         },
         {
@@ -51,7 +52,8 @@
           ],
           "srgb": false,
           "compression": "masks",
-          "required": false,
+          "required": true,
+          "missing_severity": "warning",
           "channels": {
             "r": "ao",
             "g": "roughness",
@@ -140,14 +142,14 @@
       },
       "master_family": "MM_Surface_PBR",
       "material_variants": {
-        "opaque": "/AssetForge/Materials/M_AF_Props_Master",
-        "opaque_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "opaque": "/AssetForge/Materials/M_AF_Props_Opaque_Master",
+        "opaque_vt": "/AssetForge/Materials/M_AF_Props_Opaque_Master",
         "masked": "/AssetForge/Materials/M_AF_Props_Master",
         "masked_vt": "/AssetForge/Materials/M_AF_Props_Master",
-        "emissive": "/AssetForge/Materials/M_AF_Props_Master",
-        "emissive_vt": "/AssetForge/Materials/M_AF_Props_Master",
-        "dirty_wear": "/AssetForge/Materials/M_AF_Props_Master",
-        "dirty_wear_vt": "/AssetForge/Materials/M_AF_Props_Master",
+        "emissive": "/AssetForge/Materials/M_AF_Props_Opaque_Master",
+        "emissive_vt": "/AssetForge/Materials/M_AF_Props_Opaque_Master",
+        "dirty_wear": "/AssetForge/Materials/M_AF_Props_Opaque_Master",
+        "dirty_wear_vt": "/AssetForge/Materials/M_AF_Props_Opaque_Master",
         "world_aligned": "/AssetForge/Materials/M_AF_Environment_Master",
         "pom": "/AssetForge/Materials/M_AF_Environment_Master",
         "decal": "/AssetForge/Materials/M_AF_Props_Master",
@@ -218,6 +220,107 @@
     },
     {
       "version": "0.1",
+      "name": "Props_Opaque_PBR",
+      "require_complete_texture_sets": true,
+      "expose_packed_channel_scalars": false,
+      "display_name": "Opaque PBR - Base Color, Normal, ORM",
+      "asset_family": "props",
+      "render_mode": "opaque",
+      "master_material": "/AssetForge/Materials/M_AF_Opaque_PBR",
+      "material_instance_dir": "{target_path}/Materials",
+      "texture_dir": "{target_path}/Textures",
+      "texture_rules": [
+        {
+          "usage": "base_color",
+          "parameter": "BaseColor",
+          "suffixes": [
+            "_BaseColor",
+            "_Base Color",
+            "_Base_Color",
+            "_BC",
+            "_B",
+            "_Color",
+            "_Albedo",
+            "_Diffuse"
+          ],
+          "srgb": true,
+          "compression": "default",
+          "required": true
+        },
+        {
+          "usage": "normal",
+          "parameter": "Normal",
+          "suffixes": [
+            "_Normal",
+            "_NormalMap",
+            "_N"
+          ],
+          "srgb": false,
+          "compression": "normalmap",
+          "normal_format": "directx",
+          "required": true
+        },
+        {
+          "usage": "packed_arm",
+          "parameter": "ARM",
+          "suffixes": [
+            "_ARM",
+            "_ORM",
+            "_OcclusionRoughnessMetallic",
+            "_Occlusion_Roughness_Metallic"
+          ],
+          "srgb": false,
+          "compression": "masks",
+          "required": true,
+          "channels": {
+            "r": "ao",
+            "g": "roughness",
+            "b": "metallic"
+          }
+        }
+      ],
+      "scalar_parameters": {
+        "UVTiling": 1.0,
+        "BaseColorIntensity": 1.0,
+        "NormalStrength": 1.0,
+        "AOIntensity": 1.0,
+        "RoughnessIntensity": 1.0,
+        "MetallicIntensity": 1.0,
+        "Specular": 0.5
+      },
+      "vector_parameters": {
+        "BaseColorTint": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "supports": {},
+      "master_family": "MM_Surface_PBR",
+      "material_variants": {},
+      "enabled_material_variants": [],
+      "default_import_profile": true,
+      "parameter_api_mapping": {},
+      "texture_import_policy": {
+        "virtual_texture_policy": "project_default",
+        "texture_streaming_policy": "project_default",
+        "texture_group": "project_default"
+      },
+      "static_mesh_import_policy": {
+        "lod_group": "project_default",
+        "import_lod_policy": "import_existing"
+      },
+      "material_network_status": "generated_pbr",
+      "material_network_message": "UE Python bootstrap 可生成参数化 PBR 母材质网络；真实验收仍需在 UE 现场确认节点连接。",
+      "packed_texture_semantics": {
+        "R": "ambient_occlusion",
+        "G": "roughness",
+        "B": "metallic"
+      }
+    },
+    {
+      "version": "0.1",
       "name": "Props_Masked_PainterUE_ARM",
       "display_name": "Props Masked - Painter UE ARM",
       "asset_family": "props",
@@ -253,6 +356,7 @@
           ],
           "srgb": false,
           "compression": "normalmap",
+          "normal_format": "directx",
           "required": true
         },
         {
@@ -481,6 +585,7 @@
           ],
           "srgb": false,
           "compression": "normalmap",
+          "normal_format": "directx",
           "required": true
         },
         {
@@ -709,6 +814,7 @@
           ],
           "srgb": false,
           "compression": "normalmap",
+          "normal_format": "directx",
           "required": true
         },
         {
@@ -924,6 +1030,7 @@
           ],
           "srgb": false,
           "compression": "normalmap",
+          "normal_format": "directx",
           "required": true
         },
         {
@@ -1153,6 +1260,7 @@
           ],
           "srgb": false,
           "compression": "normalmap",
+          "normal_format": "directx",
           "required": true
         },
         {

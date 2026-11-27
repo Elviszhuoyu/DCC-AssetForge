@@ -11,6 +11,11 @@ def validate_material_profile_contract(material_profile, material_binding_plan=N
     material_binding_plan = material_binding_plan or {}
     checks = []
     checks.append(_master_material_check(profile))
+    if material_binding_plan.get("slot_variant_error"):
+        checks.append(_check("material_slot_variant", "error", profile.get("name", ""), material_binding_plan["slot_variant_error"]))
+    for parent in sorted({item.get("parent_material") for item in material_binding_plan.get("materials", []) if item.get("parent_material")}):
+        if parent != profile.get("master_material"):
+            checks.append(_master_material_check(profile, parent))
     checks.extend(_pbr_parameter_contract_checks(profile))
     checks.append(_material_network_check(profile))
     checks.append(_virtual_texture_sampling_check(profile))
@@ -37,12 +42,12 @@ def validate_material_profile_contract(material_profile, material_binding_plan=N
     return attach_acceptance_summary(report, summary)
 
 
-def _master_material_check(profile):
-    master = profile.get("master_material", "")
+def _master_material_check(profile, master=None):
+    master = profile.get("master_material", "") if master is None else master
     if master.startswith("/AssetForge/"):
         return _check("master_material_path", "pass", master, "母材质路径位于 /AssetForge 插件内容根")
-    if profile.get("allow_external_master_material", False):
-        return _check("master_material_path", "warning", master, "母材质使用外部路径，已由 profile 显式允许")
+    if master.startswith("/") and profile.get("allow_external_master_material", False):
+        return _check("master_material_path", "pass", master, "母材质使用外部路径，已由 profile 显式允许")
     return _check("master_material_path", "error", master, "母材质必须位于 /AssetForge/...，或在 profile 中显式允许外部母材质")
 
 
@@ -52,14 +57,12 @@ def _pbr_parameter_contract_checks(profile):
     checks = []
     for usage, expected in [("base_color", "BaseColor"), ("normal", "Normal")]:
         parameter = by_usage.get(usage, "")
-        checks.append(
-            _check(
-                "pbr_texture_parameter",
-                "pass" if parameter == expected else "warning",
-                usage,
-                "PBR 参数契约通过：{0}->{1}".format(usage, parameter) if parameter == expected else "PBR 参数契约缺失：{0} 必须映射到 {1}".format(usage, expected),
-            )
-        )
+        custom_parameter = profile.get("allow_external_master_material") and bool(parameter)
+        valid = parameter == expected or custom_parameter
+        checks.append(_check(
+            "pbr_texture_parameter", "pass" if valid else "warning", usage,
+            "PBR texture binding: {0} -> {1}".format(usage, parameter) if valid else "Expected {0} for {1}".format(expected, usage),
+        ))
     packed_parameter = by_usage.get("packed_arm") or by_usage.get("packed_orm") or by_usage.get("arm") or by_usage.get("orm")
     checks.append(
         _check(
@@ -122,6 +125,12 @@ def _texture_parameter_checks(profile, material_binding_plan):
             continue
         for material in planned_materials:
             has_usage = usage in material.get("slots", {})
+            if profile.get("require_complete_texture_sets") and rule.get("required") and not has_usage:
+                checks.append(_check(
+                    "required_slot_texture", rule.get("missing_severity", "error"),
+                    material.get("target_asset_path", ""), "材质槽缺少必需贴图：{0}".format(parameter),
+                ))
+                continue
             has_parameter = parameter in material.get("texture_parameters", {})
             status = "pass" if (not has_usage or has_parameter) else "warning"
             message = "贴图参数映射有效：{0}->{1}".format(usage, parameter) if status == "pass" else "材质实例计划缺少贴图参数：{0}->{1}".format(usage, parameter)

@@ -12,7 +12,7 @@ from asset_forge.shared.constants import (
     RENDER_MODE_OPAQUE,
     RENDER_MODE_TRANSLUCENT,
 )
-from asset_forge.shared.material_profile_schema import get_default_material_profiles
+from asset_forge.shared.material_profile_schema import PROPS_PAINTER_OPAQUE_MASTER, get_default_material_profiles
 from asset_forge.unreal.material_library import (
     AF_CHARACTER_BASIC,
     AF_ENVIRONMENT_MASTER,
@@ -25,6 +25,16 @@ from asset_forge.unreal.material_library import (
 MATERIAL_PACKAGE_VERSION = "0.1"
 
 DEFAULT_PACKAGE_ROOT = "/AssetForge"
+
+
+DEFAULT_TEXTURE_PATHS = {
+    "base_color": "/AssetForge/Textures/T_AF_Default_BaseColor",
+    "normal": "/AssetForge/Textures/T_AF_Default_Normal",
+    "packed_arm": "/AssetForge/Textures/T_AF_Default_ARM",
+    "opacity_mask": "/AssetForge/Textures/T_AF_Default_OpacityMask",
+    "imperfection_mask": "/AssetForge/Textures/T_AF_Default_ImperfectionMask",
+    "emissive": "/AssetForge/Textures/T_AF_Default_Emissive",
+}
 
 
 def get_default_material_package_plan():
@@ -43,12 +53,12 @@ def get_default_material_package_plan():
             "/AssetForge/Showcase",
         ],
         "placeholder_textures": [
-            _placeholder_texture("T_AF_Default_BaseColor", "/AssetForge/Textures/T_AF_Default_BaseColor", "base_color", [128, 128, 128, 255], True, "default"),
-            _placeholder_texture("T_AF_Default_Normal", "/AssetForge/Textures/T_AF_Default_Normal", "normal", [128, 128, 255, 255], False, "normal"),
-            _placeholder_texture("T_AF_Default_ARM", "/AssetForge/Textures/T_AF_Default_ARM", "packed_arm", [255, 128, 0, 255], False, "masks"),
-            _placeholder_texture("T_AF_Default_OpacityMask", "/AssetForge/Textures/T_AF_Default_OpacityMask", "opacity_mask", [255, 255, 255, 255], False, "masks"),
-            _placeholder_texture("T_AF_Default_ImperfectionMask", "/AssetForge/Textures/T_AF_Default_ImperfectionMask", "imperfection_mask", [0, 0, 0, 255], False, "masks"),
-            _placeholder_texture("T_AF_Default_Emissive", "/AssetForge/Textures/T_AF_Default_Emissive", "emissive", [0, 0, 0, 255], True, "default"),
+            _placeholder_texture("T_AF_Default_BaseColor", DEFAULT_TEXTURE_PATHS["base_color"], "base_color", [128, 128, 128, 255], True, "default"),
+            _placeholder_texture("T_AF_Default_Normal", DEFAULT_TEXTURE_PATHS["normal"], "normal", [128, 128, 255, 255], False, "normal"),
+            _placeholder_texture("T_AF_Default_ARM", DEFAULT_TEXTURE_PATHS["packed_arm"], "packed_arm", [255, 128, 0, 255], False, "masks"),
+            _placeholder_texture("T_AF_Default_OpacityMask", DEFAULT_TEXTURE_PATHS["opacity_mask"], "opacity_mask", [255, 255, 255, 255], False, "masks"),
+            _placeholder_texture("T_AF_Default_ImperfectionMask", DEFAULT_TEXTURE_PATHS["imperfection_mask"], "imperfection_mask", [0, 0, 0, 255], False, "masks"),
+            _placeholder_texture("T_AF_Default_Emissive", DEFAULT_TEXTURE_PATHS["emissive"], "emissive", [0, 0, 0, 255], True, "default"),
             _placeholder_texture("T_AF_Preview_BaseColor_AlphaGrid", "/AssetForge/Textures/T_AF_Preview_BaseColor_AlphaGrid", "base_color", [148, 162, 178, 255], True, "default", "alpha_grid"),
             _placeholder_texture("T_AF_Preview_OpacityMask_Stripes", "/AssetForge/Textures/T_AF_Preview_OpacityMask_Stripes", "opacity_mask", [255, 255, 255, 255], False, "masks", "mask_stripes"),
             _placeholder_texture("T_AF_Preview_Emissive_Panels", "/AssetForge/Textures/T_AF_Preview_Emissive_Panels", "emissive", [0, 0, 0, 255], True, "default", "emissive_panels"),
@@ -70,6 +80,16 @@ def get_default_material_package_plan():
                 ["OpacityClipValue", "MaskContrast", "EmissiveIntensity", "ImperfectionIntensity"],
                 {"BaseColorTint": [1.0, 1.0, 1.0, 1.0], "EmissiveTint": [1.0, 1.0, 1.0, 1.0]},
                 {"UseOpacityMask": False, "UseSeparateOpacityMask": False, "UseEmissive": False},
+            ),
+            _category_material(
+                "M_AF_Props_Opaque_Master",
+                PROPS_PAINTER_OPAQUE_MASTER,
+                ASSET_TYPE_PROPS,
+                RENDER_MODE_OPAQUE,
+                ["BaseColor", "Normal", "ARM", "Emissive", "ImperfectionMask"],
+                ["EmissiveIntensity", "ImperfectionIntensity"],
+                {"EmissiveTint": [1.0, 1.0, 1.0, 1.0]},
+                {"UseEmissive": False},
             ),
             _category_material(
                 "M_AF_Environment_Master",
@@ -95,6 +115,10 @@ def get_default_material_package_plan():
                 ["SubsurfaceIntensity"],
                 {"BaseColorTint": [1.0, 1.0, 1.0, 1.0], "SubsurfaceTint": [1.0, 0.78, 0.65, 1.0]},
                 {"UseSubsurface": True},
+            ),
+            _category_material(
+                "M_AF_Opaque_PBR", "/AssetForge/Materials/M_AF_Opaque_PBR", ASSET_TYPE_PROPS,
+                RENDER_MODE_OPAQUE, ["BaseColor", "Normal", "ARM"],
             ),
         ],
         "material_instances": [
@@ -335,7 +359,7 @@ def _category_material(
     material["parameter_api_mapping"].update(dict((name, PARAMETER_API_MAPPING.get(name, name)) for name in static_switches or {}))
     material["static_switches"] = dict(static_switches or {})
     material["performance_notes"] = [
-        "State changes are Material Instance parameters on the category master; do not duplicate masters for masked, emissive, dirty or wear looks.",
+        "Blend modes use separate parents. Share material instance parameters for looks using the same blend mode.",
         "Virtual texture inputs are detected at import time; UE sampler-type support must use verified VT sample branches before enabling VT-specific assets.",
     ]
     return material

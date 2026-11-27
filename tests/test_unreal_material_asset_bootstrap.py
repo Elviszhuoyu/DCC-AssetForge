@@ -12,7 +12,7 @@ class UnrealMaterialAssetBootstrapTest(unittest.TestCase):
         plan = UnrealMaterialAssetBootstrap(unreal_module=FakeUnreal()).plan()
 
         self.assertEqual(plan["content_mount"], "/AssetForge")
-        self.assertEqual(plan["asset_count"], 34)
+        self.assertEqual(plan["asset_count"], 36)
         self.assertEqual(plan["material_network_status"], "generated_pbr")
         self.assertIn("/AssetForge/Materials", plan["directories"])
         self.assertIn("/AssetForge/Textures", plan["directories"])
@@ -40,6 +40,7 @@ class UnrealMaterialAssetBootstrapTest(unittest.TestCase):
 
         self.assertEqual(report["status"], "success")
         self.assertIn("/AssetForge/Materials/M_AF_Props_Master", report["created_assets"])
+        self.assertIn("/AssetForge/Materials/M_AF_Props_Opaque_Master", report["created_assets"])
         self.assertIn("/AssetForge/Textures/T_AF_Default_ARM", report["created_assets"])
         self.assertIn("/AssetForge/Textures/T_AF_Default_OpacityMask", report["created_assets"])
         self.assertIn("/AssetForge/Textures/T_AF_Preview_Emissive_Panels", report["created_assets"])
@@ -52,9 +53,11 @@ class UnrealMaterialAssetBootstrapTest(unittest.TestCase):
         self.assertEqual(report["showcase_report"]["status"], "skipped")
         self.assertGreaterEqual(report["showcase_report"]["entry_count"], 0)
         props = fake_unreal.AssetToolsHelpers.asset_tools.assets["/AssetForge/Materials/M_AF_Props_Master"]
+        opaque_props = fake_unreal.AssetToolsHelpers.asset_tools.assets["/AssetForge/Materials/M_AF_Props_Opaque_Master"]
         character = fake_unreal.AssetToolsHelpers.asset_tools.assets["/AssetForge/Materials/M_AF_Character_Master"]
         self.assertEqual(props.blend_mode, "masked")
         self.assertEqual(props.opacity_mask_clip_value, 0.333)
+        self.assertEqual(opaque_props.blend_mode, "opaque")
         self.assertEqual(character.blend_mode, "opaque")
         self.assertEqual(report["material_network_reports"][0]["status"], "success")
         self.assertIn("BaseColor", [item["parameter"] for item in report["material_network_reports"][0]["created_nodes"]])
@@ -338,9 +341,10 @@ class UnrealMaterialAssetBootstrapTest(unittest.TestCase):
         report = UnrealMaterialAssetBootstrap(unreal_module=fake_unreal).inspect_assets()
 
         self.assertEqual(report["status"], "warning")
-        self.assertEqual(report["planned_count"], 34)
+        self.assertEqual(report["planned_count"], 36)
         self.assertEqual(report["existing_count"], 1)
-        self.assertEqual(report["missing_count"], 33)
+        self.assertEqual(report["missing_count"], 35)
+        self.assertIn("/AssetForge/Materials/M_AF_Props_Opaque_Master", report["missing_assets"])
         self.assertIn("/AssetForge/Materials/M_AF_Props_Master", report["existing_assets"])
         self.assertIn("/AssetForge/Materials/M_AF_Environment_Master", report["missing_assets"])
 
@@ -350,7 +354,7 @@ class UnrealMaterialAssetBootstrapTest(unittest.TestCase):
         report = UnrealMaterialAssetBootstrap(unreal_module=fake_unreal).bootstrap(dry_run=True)
 
         self.assertEqual(report["status"], "skipped")
-        self.assertEqual(report["asset_validation"]["missing_count"], 34)
+        self.assertEqual(report["asset_validation"]["missing_count"], 36)
         self.assertTrue(report["material_network_reports"])
         self.assertEqual(report["material_network_reports"][0]["status"], "dry_run")
         self.assertIn("BaseColor", [item["parameter"] for item in report["material_network_reports"][0]["nodes"]])
@@ -579,6 +583,10 @@ class FakeUnreal(object):
     MaterialExpressionStaticSwitchParameter = FakeExpression
     MaterialExpressionLinearInterpolate = FakeExpression
     MaterialExpressionTextureCoordinate = FakeExpression
+    MaterialExpressionComponentMask = FakeExpression
+    MaterialExpressionAppendVector = FakeExpression
+    MaterialExpressionMax = FakeExpression
+    MaterialExpressionNormalize = FakeExpression
     MaterialExpressionComment = FakeCommentExpression
     MaterialExpressionFlattenNormal = FakeExpression
     MaterialExpressionOneMinus = FakeExpression

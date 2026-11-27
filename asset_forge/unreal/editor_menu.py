@@ -55,6 +55,9 @@ def register_asset_forge_menus(unreal_module=None):
     if not toolbar_registered:
         report["issues"].append("Unable to register toolbar entry: LevelEditor.LevelEditorToolBar.User or LevelEditor.LevelEditorToolBar")
 
+    from asset_forge.unreal.review_editor import register_review_menus
+    register_review_menus(unreal, menus)
+
     if hasattr(menus, "refresh_all_widgets"):
         menus.refresh_all_widgets()
 
@@ -189,6 +192,63 @@ def dry_run_gate_for_package_dir(package_dir, report_path=None, unreal_module=No
         unreal_module,
     )
     return report
+
+
+_NATIVE_GATE = None
+
+
+def _run_native_gate(action, package_dir, import_options=None, confirmation_token="", unreal_module=None):
+    from asset_forge.unreal.gate_workbench import GateWorkbench
+
+    global _NATIVE_GATE
+    if _NATIVE_GATE is None:
+        _NATIVE_GATE = GateWorkbench()
+    report = _NATIVE_GATE.execute(action, package_dir, import_options, confirmation_token, unreal_module)
+    _log_operation(
+        "unreal_gate_workbench_" + action, report.get("status", ""),
+        inputs={"package_dir": package_dir, "import_options": dict(import_options or {})},
+        outputs={key: report.get(key) for key in ("gate_passed", "cache_hit", "import_succeeded", "timings_ms")},
+        warnings=report["operator_warnings"], errors=report["operator_errors"], report_path=report.get("report_path", ""),
+    )
+    return report
+
+
+def workbench_check_package(package_dir, import_options=None, unreal_module=None):
+    return _run_native_gate("check", package_dir, import_options, unreal_module=unreal_module)
+
+
+def workbench_dry_run_package(package_dir, import_options=None, unreal_module=None):
+    return _run_native_gate("dry_run", package_dir, import_options, unreal_module=unreal_module)
+
+
+def workbench_prepare_package(package_dir, import_options=None, unreal_module=None):
+    return _run_native_gate("prepare", package_dir, import_options, unreal_module=unreal_module)
+
+
+def workbench_apply_package(package_dir, import_options=None, confirmation_token="", unreal_module=None):
+    return _run_native_gate("apply", package_dir, import_options, confirmation_token, unreal_module)
+
+
+def workbench_read_reports(package_dir, import_options=None, report_path=None, unreal_module=None):
+    from asset_forge.unreal.gate_workbench import GateWorkbench
+
+    return (_NATIVE_GATE or GateWorkbench()).read_reports(package_dir, report_path, unreal_module)
+
+
+def imported_review_paths(report, unreal_module=None):
+    """Resolve only the StaticMeshes produced by this completed gate invocation."""
+    if not report.get("run_import") or not report.get("gate_passed") or report.get("errors"):
+        return []
+    imported = report.get("import", {})
+    if imported.get("status") not in ("success", "warning"):
+        return []
+    unreal = unreal_module or get_unreal()
+    paths = []
+    for path in imported.get("imported_assets", []):
+        mesh = unreal.load_asset(path)
+        if isinstance(mesh, unreal.StaticMesh) and mesh.get_path_name() not in paths:
+            paths.append(mesh.get_path_name())
+    return paths
 
 
 def import_approved_package_dir(package_dir, report_path=None, unreal_module=None, import_options=None):
@@ -516,7 +576,7 @@ def _confirm_import_package(package_dir, unreal_module=None):
         "包内数量：网格 {asset_count} / 贴图 {texture_count} / 材质实例 {material_count}\n"
         "目标路径现有资产：{existing_count}\n\n"
         "门禁：{gate_status_label} / 可导入：{can_accept}\n"
-        "警告：{warning_count}  阻断：{error_count}\n"
+        "包体检查：{warning_count} 项警告 / {error_count} 项阻断\n"
         "覆盖策略：{overwrite_strategy}\n"
         "下一步：{next_action}\n\n"
         "UE 运行版本：{ue_runtime_version}\n"

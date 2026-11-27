@@ -4,7 +4,7 @@ from __future__ import absolute_import
 
 import os
 
-from asset_forge.shared.material_profile_schema import resolve_material_profile
+from asset_forge.shared.material_profile_schema import PROPS_PAINTER_OPAQUE_MASTER, material_slot_variant_map, resolve_material_profile
 from asset_forge.shared.path_utils import normalize_path
 from asset_forge.shared.unreal_path import sanitize_unreal_package_path
 from asset_forge.unreal.material_library import parameter_api_mapping, resolve_material_variant
@@ -15,14 +15,19 @@ class UnrealMaterialBindingPlanner(object):
     """Build a material binding plan without creating UE Material assets."""
 
     def plan(self, manifest, texture_import_plan, material_profile=None):
-        profile = resolve_material_profile(material_profile or manifest.get("material_profile"))
+        profile = resolve_material_profile(material_profile or manifest.get("resolved_material_profile") or manifest.get("material_profile"))
         target_dir = self._target_material_dir(manifest, profile)
         texture_lookup = self._texture_lookup(texture_import_plan)
         texture_plan_lookup = self._texture_plan_lookup(texture_import_plan)
         rule_lookup = self._rule_lookup(profile)
         existing_strategy = manifest.get("existing_material_strategy", profile.get("existing_material_strategy", "reuse"))
         materials = []
-        for material in manifest.get("materials", []):
+        source_materials = manifest.get("materials", [])
+        try:
+            routes = self.slot_variant_routes(profile, source_materials, manifest.get("material_slots", []))
+        except ValueError as exc:
+            return {"profile": profile.get("name", ""), "count": 0, "materials": [], "slot_variant_error": str(exc)}
+        for material in source_materials:
             materials.append(
                 self._material_plan(
                     material,
@@ -33,6 +38,7 @@ class UnrealMaterialBindingPlanner(object):
                     profile,
                     existing_strategy,
                     manifest.get("textures", []),
+                    routes.get(material.get("name")),
                 )
             )
         reuse_summary = self._apply_material_instance_reuse(materials)
@@ -49,7 +55,27 @@ class UnrealMaterialBindingPlanner(object):
             "materials": materials,
         }
 
-    def _material_plan(self, material, target_dir, texture_lookup, texture_plan_lookup, rule_lookup, profile, existing_strategy, manifest_textures):
+    @classmethod
+    def slot_variant_routes(cls, profile, materials, slots):
+        routes = material_slot_variant_map(profile)
+        if routes:
+            # A routed slot must keep a unique target after UE asset-name conversion.
+            seen_slots = set()
+            for slot in slots:
+                name = slot.get("name", "") if isinstance(slot, dict) else slot
+                if name in routes and name in seen_slots:
+                    raise ValueError("Ambiguous source material slot: {0}".format(name))
+                seen_slots.add(name)
+            targets = {}
+            for item in materials:
+                source = item.get("name", "")
+                target = cls._material_instance_name(source).lower()
+                if target in targets and (source in routes or targets[target] in routes):
+                    raise ValueError("Ambiguous material slot variant target: {0}, {1}".format(targets[target], source))
+                targets[target] = source
+        return routes
+
+    def _material_plan(self, material, target_dir, texture_lookup, texture_plan_lookup, rule_lookup, profile, existing_strategy, manifest_textures, slot_variant):
         material_name = material.get("name", "M_Asset")
         target_asset_name = self._material_instance_name(material_name)
         slots = {}
@@ -60,8 +86,13 @@ class UnrealMaterialBindingPlanner(object):
         texture_contracts = {}
         virtual_texture_assets = []
         material_textures = self._textures_for_material(material, manifest_textures)
+        variant = resolve_material_variant(profile, material_textures, slot_variant)
+        parent_material = variant.get("selected_material_variant") or profile.get("master_material", "")
+        opaque_painter = parent_material == PROPS_PAINTER_OPAQUE_MASTER
         for texture in material_textures:
             usage = texture.get("usage", "unknown")
+            if opaque_painter and usage in ("opacity_mask", "opacity"):
+                continue
             texture_target = self._resolve_texture_target(texture, texture_lookup)
             texture_plan = self._resolve_texture_plan(texture, texture_target, texture_plan_lookup)
             rule = rule_lookup.get(usage, {})
@@ -88,14 +119,15 @@ class UnrealMaterialBindingPlanner(object):
             channels = texture.get("channels") or rule.get("channels")
             if channels:
                 channel_mappings[usage] = dict(channels)
-        variant = resolve_material_variant(profile, material_textures)
         planned_texture_parameter_names = list(texture_parameters.keys())
         planned_scalar_names = list(self._scalar_parameters(profile, channel_mappings, variant.get("detected_features", [])).keys())
         planned_vector_names = list((profile.get("vector_parameters", {}) or {}).keys())
         profile_api_mapping = dict(profile.get("parameter_api_mapping", {}) or {})
         profile_api_mapping.update(parameter_api_mapping(planned_texture_parameter_names + planned_scalar_names + planned_vector_names))
-        parent_material = variant.get("selected_material_variant") or profile.get("master_material", "")
-        static_switch_parameters = self._static_switch_parameters(profile, texture_parameters, variant.get("detected_features", []))
+        switch_features = variant.get("detected_features", [])
+        if opaque_painter:
+            switch_features = [feature for feature in switch_features if feature != "opacity_mask"]
+        static_switch_parameters = self._static_switch_parameters(profile, texture_parameters, switch_features)
         binding_contract = self._binding_contract(static_switch_parameters, texture_parameters, texture_contracts, virtual_texture_assets)
 
         return {
@@ -120,6 +152,7 @@ class UnrealMaterialBindingPlanner(object):
             "selected_material_variant": variant.get("selected_material_variant", ""),
             "material_variant_key": variant.get("variant_key", ""),
             "variant_reason": variant.get("variant_reason", ""),
+            "variant_source": "source_material" if slot_variant else "texture_features",
             "parameter_api_mapping": profile_api_mapping,
             "scalar_parameters": self._scalar_parameters(profile, channel_mappings, variant.get("detected_features", [])),
             "vector_parameters": dict(profile.get("vector_parameters", {})),
@@ -275,7 +308,8 @@ class UnrealMaterialBindingPlanner(object):
         target_path = sanitize_unreal_package_path(manifest.get("target_path", "/Game"))
         return profile.get("material_instance_dir", "{target_path}/Materials").format(target_path=target_path)
 
-    def _material_instance_name(self, material_name):
+    @staticmethod
+    def _material_instance_name(material_name):
         clean_name = sanitize_unreal_asset_name(material_name, "Material")
         if clean_name.startswith("MI_") or clean_name.endswith("_INST"):
             return clean_name
@@ -333,6 +367,8 @@ class UnrealMaterialBindingPlanner(object):
         features = set(detected_features or [])
         if "emissive" in features:
             parameters.setdefault("EmissiveIntensity", 1.0)
+        if not profile.get("expose_packed_channel_scalars", True):
+            return parameters
         for usage, channels in channel_mappings.items():
             for channel, meaning in channels.items():
                 name = self._channel_scalar_name(usage, channel, meaning)

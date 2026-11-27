@@ -4,11 +4,14 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from asset_forge.maya.export_package import build_export_package
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.manifest_schema import create_manifest, write_manifest
 from asset_forge.shared.material_profile_schema import write_material_profiles
+from asset_forge.unreal.acceptance_runner import UnrealPackageAcceptanceFlow
+from asset_forge.unreal.plugin_content_bootstrap import UnrealPluginContentBootstrap
 from asset_forge.unreal.package_acceptance import UnrealPackageAcceptanceValidator, validate_all_asset_forge_packages
 
 
@@ -67,6 +70,34 @@ class UnrealPackageAcceptanceTest(unittest.TestCase):
         self.assertIn("static_mesh_import_policy", report["import_policy_summary"])
         self.assertIn("texture_import_policy", report["import_policy_summary"])
         self.assertIn("manual_validation_required", report)
+
+    def test_mount_summary_reuses_the_plugin_content_inspection(self):
+        bootstrap = FakePluginContentBootstrap()
+        inspect = bootstrap.validate
+        inspections = []
+
+        def count_inspection():
+            inspections.append(True)
+            return inspect()
+
+        bootstrap.validate = count_inspection
+        validator = UnrealPackageAcceptanceValidator(
+            plugin_content_bootstrap=bootstrap,
+            material_asset_bootstrap=FakeMaterialAssetBootstrap(),
+        )
+
+        report = validator.validate(self.package["package_dir"])
+
+        self.assertEqual(len(inspections), 1)
+        self.assertEqual(report["plugin_mount_preflight"]["status"], "pass")
+
+    def test_default_flow_reuses_plugin_inspection_in_dry_run(self):
+        result = FakePluginContentBootstrap().validate()
+        with patch.object(UnrealPluginContentBootstrap, "validate", return_value=result) as validate:
+            report = UnrealPackageAcceptanceFlow().run(self.package["package_dir"])
+
+        validate.assert_called_once_with()
+        self.assertEqual(report["dry_run"]["plugin_content_validation"], result)
 
     def test_acceptance_report_can_be_written_to_disk(self):
         report_path = os.path.join(self.temp_dir, "acceptance_report.json")

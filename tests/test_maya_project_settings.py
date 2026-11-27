@@ -43,6 +43,20 @@ class MayaProjectSettingsTest(unittest.TestCase):
         ]:
             self.assertIn(key, settings)
 
+    def test_target_engine_version_round_trips_to_the_exported_manifest(self):
+        from asset_forge.maya.manifest_writer import MayaManifestWriter
+
+        for version in ("5.3", "5.6", "5.8", ""):
+            path = os.path.join(self.temp_dir, "target.json")
+            save_project_settings(path, {"target_engine_version": version})
+            preset = load_project_settings(path)
+            manifest = MayaManifestWriter().build(
+                {"asset_name": "SM_Crate", "project_preset": preset}, {}, "mesh.fbx", "/Game/Props"
+            )
+            self.assertEqual(manifest["target_engine_version"], version)
+        with self.assertRaises(ValueError):
+            normalize_project_settings({"target_engine_version": "UE5.x"})
+
     def test_missing_fields_use_defaults_and_sanitize_target_path(self):
         settings = normalize_project_settings({"ue_target_path": "/Game/Props/Test01\n", "triangle_budget": "30000"})
 
@@ -97,6 +111,36 @@ class MayaProjectSettingsTest(unittest.TestCase):
             raw = json.load(stream)
         self.assertEqual(raw["texture_prefix"], "T_")
         self.assertEqual(raw["version"], "0.3")
+
+    def test_scene_preset_survives_a_shelf_relaunch_and_does_not_leak_to_the_next_scene(self):
+        from unittest.mock import Mock
+        from asset_forge.maya.ui import AssetForgeMayaWindow
+
+        scene = os.path.join(self.temp_dir, "MyProp.ma")
+        preset = os.path.join(self.temp_dir, "MyProp.assetforge.json")
+        with open(preset, "w", encoding="utf8") as stream:
+            json.dump({"schema": "asset_forge_project_preset", "texture_root": "sourceimages",
+                       "export_root": "packages", "ue_target_path": "/Game/Experience"}, stream)
+        original = dict(default_project_settings(), ue_target_path="/Game/Production")
+        for _ in range(2):
+            window = AssetForgeMayaWindow.__new__(AssetForgeMayaWindow)
+            window.cmds = Mock()
+            window.cmds.file.return_value = scene
+            window.settings_before_scene_preset = None
+            window.project_settings_path = "artist.json"
+            window._settings_from_ui = Mock(return_value=original)
+            window._apply_project_settings = Mock()
+            window._set_settings_path = Mock()
+            window._restore_scene_preset()
+            applied = window._apply_project_settings.call_args.args[0]
+            self.assertEqual(applied["ue_target_path"], "/Game/Experience")
+            self.assertEqual(os.path.normpath(applied["texture_root"]), os.path.join(self.temp_dir, "sourceimages"))
+            self.assertEqual(os.path.normpath(applied["export_root"]), os.path.join(self.temp_dir, "packages"))
+            self.assertEqual(window.project_settings_path, preset)
+            window.cmds.file.return_value = os.path.join(self.temp_dir, "AnotherProp.ma")
+            window._restore_scene_preset()
+            window._apply_project_settings.assert_called_with(original)
+            self.assertEqual(window.project_settings_path, "artist.json")
 
     def test_non_json_extension_is_normalized_to_json(self):
         self.assertEqual(save_project_settings(os.path.join(self.temp_dir, "project_settings"), {})[-5:], ".json")

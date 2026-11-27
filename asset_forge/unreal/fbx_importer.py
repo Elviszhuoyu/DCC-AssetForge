@@ -128,7 +128,7 @@ class UnrealStaticMeshFbxImporter(object):
             "options": options,
             "warnings": warnings,
             "ignored_options": [],
-            "next_action": "在真实 UE 5.6 导入报告中确认这些 editor properties 是否被成功设置。" if warnings else "可按该 FBX Static Mesh 导入策略执行。",
+            "next_action": "在目标 UE 工程的导入报告中确认这些 editor properties 是否被成功设置。" if warnings else "可按该 FBX Static Mesh 导入策略执行。",
         }
 
     def _target_asset_path(self, manifest):
@@ -229,7 +229,7 @@ class UnrealStaticMeshFbxImporter(object):
 
         report["status"] = "warning" if report["warnings"] else ("success" if report["applied"] else "skipped")
         if report["warnings"]:
-            report["next_action"] = "在真实 UE 5.6 中打开 Static Mesh，确认 Nanite、LODGroup 与 LOD 导入结果。"
+            report["next_action"] = "在目标 UE 工程中打开 Static Mesh，确认 Nanite、LODGroup 与 LOD 导入结果。"
             self.last_import_policy_report["issues"].extend(report["warnings"])
         self.last_import_policy_report["static_mesh_policy_report"] = report
         return report

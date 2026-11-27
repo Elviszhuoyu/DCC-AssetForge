@@ -8,7 +8,7 @@ from asset_forge.shared.acceptance_gate import apply_acceptance_gate, create_gat
 from asset_forge.shared.interface_contract import validate_manifest_contract
 from asset_forge.shared.manifest_lint import lint_static_prop_manifest
 from asset_forge.shared.material_profile_contract import validate_material_profile_contract
-from asset_forge.shared.material_profile_schema import get_material_profile, read_material_profiles
+from asset_forge.shared.material_profile_schema import get_material_profile, read_material_profiles, resolve_material_profile
 from asset_forge.shared.report_artifacts import attach_report_artifact_metadata, default_report_path
 from asset_forge.shared.report_schema import attach_acceptance_summary, attach_report_schema_validation, create_acceptance_summary, write_report
 from asset_forge.shared.material_profile_validator import (
@@ -17,7 +17,7 @@ from asset_forge.shared.material_profile_validator import (
     validate_packed_texture_channel_rules,
 )
 from asset_forge.shared.path_utils import normalize_path
-from asset_forge.unreal.manifest_finder import find_latest_manifest
+from asset_forge.unreal.manifest_finder import find_latest_manifest, find_manifest_files
 from asset_forge.unreal.manifest_reader import UnrealManifestReader
 from asset_forge.unreal.dependency_audit import audit_unreal_dependencies
 from asset_forge.unreal.engine_version_preflight import UnrealEngineVersionPreflight
@@ -25,6 +25,7 @@ from asset_forge.unreal.material_asset_bootstrap import UnrealMaterialAssetBoots
 from asset_forge.unreal.material_binding_contract import validate_material_binding_contract
 from asset_forge.unreal.material_binding_planner import UnrealMaterialBindingPlanner
 from asset_forge.unreal.material_graph_evidence import build_material_graph_evidence_report
+from asset_forge.unreal.material_texture_binding_validator import texture_binding_check_status, validate_material_texture_bindings
 from asset_forge.unreal.package_validator import UnrealPackageValidator
 from asset_forge.unreal.plugin_content_bootstrap import UnrealPluginContentBootstrap
 from asset_forge.unreal.plugin_mount_preflight import UnrealPluginMountPreflight
@@ -53,37 +54,52 @@ class UnrealPackageAcceptanceValidator(object):
         self.material_asset_bootstrap = material_asset_bootstrap or UnrealMaterialAssetBootstrap()
         self.texture_import_planner = texture_import_planner or UnrealTextureImportPlanner()
         self.material_binding_planner = material_binding_planner or UnrealMaterialBindingPlanner()
+        self._uses_default_mount_check = plugin_mount_preflight is None
         self.plugin_mount_preflight = plugin_mount_preflight or UnrealPluginMountPreflight(content_bootstrap=self.plugin_content_bootstrap)
         self.engine_version_preflight = engine_version_preflight or UnrealEngineVersionPreflight()
 
     def validate(self, manifest_or_package_path, report_path=None, strict=False, block_warnings=None, require_import=False, command_args=None):
         manifest_path = self._resolve_manifest_path(manifest_or_package_path)
+        error = ""
         if not manifest_path:
-            report = self._missing_manifest_report(manifest_or_package_path)
+            error = "未找到 DCC AssetForge manifest：{0}".format(manifest_or_package_path)
+        else:
+            try:
+                prepared = self.reader.load(manifest_path, require_fbx_exists=True)
+            except (OSError, ValueError, TypeError, AttributeError) as exc:
+                error = "无法读取 manifest {0}：{1}".format(manifest_path, exc)
+        if error:
+            report = self._manifest_error_report(manifest_path, error)
             apply_acceptance_gate(report, create_gate_policy(strict, block_warnings, require_import))
-            active_report_path = normalize_path(report_path or default_report_path(manifest_or_package_path if os.path.isdir(manifest_or_package_path) else os.getcwd(), "package_acceptance"))
+            package_dir = manifest_or_package_path if os.path.isdir(manifest_or_package_path) else os.path.dirname(os.path.abspath(manifest_or_package_path))
+            active_report_path = normalize_path(report_path or default_report_path(package_dir, "package_acceptance"))
             attach_report_artifact_metadata(report, active_report_path, command_args)
             attach_report_schema_validation(report, require_gate=True)
             write_report(active_report_path, report)
             return report
 
-        prepared = self.reader.load(manifest_path, require_fbx_exists=True)
         manifest = prepared.get("manifest", {})
         interface_contract = validate_manifest_contract(manifest, manifest_path)
         manifest_lint = lint_static_prop_manifest(manifest)
         package_validation = self.package_validator.validate(manifest)
         engine_version_preflight = self.engine_version_preflight.check(manifest)
         plugin_content_validation = self.plugin_content_bootstrap.validate()
-        plugin_mount = self.plugin_mount_preflight.check()
+        if self._uses_default_mount_check:
+            plugin_mount = self.plugin_mount_preflight.check(plugin_content_validation)
+        else:
+            plugin_mount = self.plugin_mount_preflight.check()
         material_asset_validation = self.material_asset_bootstrap.inspect_assets()
+        profile = resolve_material_profile(manifest.get("resolved_material_profile") or manifest.get("material_profile"))
         texture_plan = self.texture_import_planner.plan(manifest)
-        material_plan = self.material_binding_planner.plan(manifest, texture_plan, manifest.get("material_profile"))
-        material_profile_validation = validate_material_texture_coverage(manifest.get("material_profile"), manifest.get("textures", []))
-        material_profile_contract = validate_material_profile_contract(manifest.get("material_profile"), material_plan)
+        material_plan = self.material_binding_planner.plan(manifest, texture_plan, profile)
+        material_texture_bindings = validate_material_texture_bindings(material_plan, texture_plan, material_profile=profile)
+        material_texture_bindings["blocks_acceptance"] = bool(profile.get("require_complete_texture_sets"))
+        material_profile_validation = validate_material_texture_coverage(profile, manifest.get("textures", []))
+        material_profile_contract = validate_material_profile_contract(profile, material_plan)
         material_profile_reference = self._material_profile_reference_validation(manifest)
         material_profile_snapshot = self._material_profile_snapshot_validation(manifest)
-        texture_quality_validation = validate_material_texture_quality(manifest.get("material_profile"), manifest.get("textures", []))
-        channel_validation = validate_packed_texture_channel_rules(manifest.get("material_profile"))
+        texture_quality_validation = validate_material_texture_quality(profile, manifest.get("textures", []))
+        channel_validation = validate_packed_texture_channel_rules(profile)
         parent_material_validation = self._parent_material_validation(material_plan, material_asset_validation)
         material_binding_contract = validate_material_binding_contract(manifest, material_plan)
         material_graph_evidence = build_material_graph_evidence_report(
@@ -128,6 +144,12 @@ class UnrealPackageAcceptanceValidator(object):
             self._check("release_dependency_audit", release_dependency_audit.get("status"), "Release Dependency Audit", self._messages(release_dependency_audit)),
             self._check("static_mesh_lod_policy", static_mesh_lod_policy.get("status"), "Static Mesh LOD 策略", self._messages(static_mesh_lod_policy)),
         ]
+        checks.extend(
+            self._check("material_texture_requirements", texture_binding_check_status(material_texture_bindings, item),
+                        "必需贴图槽", [item["message"]])
+            for item in material_texture_bindings["checks"]
+            if item["id"] == "required_texture_parameter_missing"
+        )
         checks.append(
             self._check(
                 "engine_version_preflight",
@@ -161,6 +183,7 @@ class UnrealPackageAcceptanceValidator(object):
             "material_asset_validation": material_asset_validation,
             "texture_import_plan": texture_plan,
             "material_binding_plan": material_plan,
+            "material_texture_binding_validation": material_texture_bindings,
             "parent_material_validation": parent_material_validation,
             "material_binding_contract": material_binding_contract,
             "material_graph_evidence_report": material_graph_evidence,
@@ -176,6 +199,8 @@ class UnrealPackageAcceptanceValidator(object):
             "static_mesh_lod_policy_validation": static_mesh_lod_policy,
         }
         attach_acceptance_summary(report, summary)
+        if material_plan.get("slot_variant_error"):
+            report["mandatory_blockers"] = [material_plan["slot_variant_error"]]
         apply_acceptance_gate(report, create_gate_policy(strict, block_warnings, require_import))
         active_report_path = normalize_path(report_path or default_report_path(os.path.dirname(os.path.abspath(manifest_path)), "package_acceptance"))
         attach_report_artifact_metadata(report, active_report_path, command_args)
@@ -190,27 +215,22 @@ class UnrealPackageAcceptanceValidator(object):
             return find_latest_manifest(manifest_or_package_path)
         return ""
 
-    def _missing_manifest_report(self, path):
-        check = self._check("manifest", "error", "Manifest", ["未找到 DCC AssetForge manifest：{0}".format(path)])
+    def _manifest_error_report(self, path, error):
+        check = self._check("manifest", "error", "Manifest", [error])
         report = {
             "status": "error",
             "version": "0.1",
             "schema_version": "0.2",
             "asset_forge_schema_version": "0.2",
             "stage": "package_acceptance",
-            "manifest_path": "",
+            "manifest_path": normalize_path(path or ""),
+            "manifest_validation": {"can_import": False, "issues": [error]},
             "asset_name": "",
             "target_path": "",
             "checks": [check],
             "summary": self._summary([check]),
         }
-        attach_acceptance_summary(report, report["summary"])
-        apply_acceptance_gate(report, create_gate_policy(False, None, False))
-        active_report_path = normalize_path(report.get("report_path", ""))
-        if active_report_path:
-            attach_report_artifact_metadata(report, active_report_path)
-        attach_report_schema_validation(report, require_gate=False)
-        return report
+        return attach_acceptance_summary(report, report["summary"])
 
     def _parent_material_validation(self, material_plan, material_asset_validation):
         if hasattr(self.material_asset_bootstrap, "validate_parent_materials"):
@@ -270,6 +290,9 @@ class UnrealPackageAcceptanceValidator(object):
         if not profile_name:
             check = self._report_check("material_profile_reference", "warning", "", "manifest 未指定 material_profile，将使用默认 Material Profile")
             return self._report_from_checks([check], "manifest 未指定 material_profile")
+        if manifest.get("resolved_material_profile"):
+            check = self._report_check("material_profile_reference", "pass", profile_name, "Using material profile from package snapshot")
+            return self._report_from_checks([check], "Material Profile 引用有效")
         if get_material_profile(profile_name):
             check = self._report_check("material_profile_reference", "pass", profile_name, "manifest material_profile 可在项目配置中找到")
             return self._report_from_checks([check], "Material Profile 引用有效")
@@ -368,8 +391,10 @@ class UnrealPackageAcceptanceValidator(object):
 
     def _summary_next_action(self, errors, warnings):
         error_ids = [item.get("id", "") for item in errors]
+        if any("fbx_path" in message or "FBX 文件缺失" in message for check in errors for message in check.get("messages", [])):
+            return "恢复 manifest.fbx_path 指向的 FBX 或重新从 DCC 导出完整资产包，然后重新验收"
         if "manifest" in error_ids:
-            return "确认资产包目录内存在 DCC AssetForge manifest 后重新执行验收"
+            return "检查资产包内的 manifest 文件及其报错字段，然后重新验收"
         if "parent_materials" in error_ids:
             return "先确认 AssetForge 插件内容已挂载，并执行默认材质 Bootstrap 后重新检查母材质"
         if errors:
@@ -398,9 +423,9 @@ class UnrealPackageAcceptanceValidator(object):
 
     def _manual_validation_required(self):
         return [
-            "真实 UE 5.6：确认 Static Mesh Nanite、LODGroup、LOD 导入结果。",
-            "真实 UE 5.6：确认 Texture Virtual Texture、Streaming、Texture Group 属性。",
-            "真实 UE 5.6：确认母材质网络节点、参数、连接和保存结果。",
+            "在目标 UE 工程中确认 Static Mesh Nanite、LODGroup、LOD 导入结果。",
+            "在目标 UE 工程中确认 Texture Virtual Texture、Streaming、Texture Group 属性。",
+            "在目标 UE 工程中确认母材质网络节点、参数、连接和保存结果。",
         ]
 
 
@@ -408,19 +433,39 @@ def validate_asset_forge_package(manifest_or_package_path, report_path=None, str
     return UnrealPackageAcceptanceValidator().validate(manifest_or_package_path, report_path, strict, block_warnings, require_import, command_args)
 
 
+def package_decisions(reports):
+    decisions = []
+    for report in reports:
+        summary = report.get("summary", {})
+        decisions.append(
+            {
+                "package_dir": normalize_path(report.get("package_dir") or os.path.dirname(report.get("manifest_path", ""))),
+                "asset_name": report.get("asset_name", ""),
+                "gate_passed": report.get("gate_passed"),
+                "blocking_reasons": list(report.get("blocking_reasons", [])),
+                "status": report.get("status", ""),
+                "decision": summary.get("decision", report.get("decision", "")),
+                "can_accept": summary.get("can_accept", report.get("can_accept", False)),
+                "can_import": summary.get("can_import", report.get("can_import", False)),
+                "warning_count": summary.get("warning_count", len(report.get("warnings", []))),
+                "error_count": summary.get("error_count", len(report.get("errors", []))),
+                "next_action": summary.get("next_action", report.get("next_action", "")),
+            }
+        )
+    return decisions
+
+
 def validate_all_asset_forge_packages(export_root, report_path=None, strict=False, block_warnings=None, require_import=False, command_args=None):
     validator = UnrealPackageAcceptanceValidator()
-    manifests = []
-    for root, _, file_names in os.walk(export_root):
-        for file_name in file_names:
-            if file_name.endswith("_manifest.json"):
-                manifests.append(os.path.join(root, file_name))
+    manifests = find_manifest_files(export_root)
     reports = [validator.validate(path, strict=strict, block_warnings=block_warnings, require_import=require_import) for path in sorted(manifests)]
     warnings = []
     errors = []
     for report in reports:
         warnings.extend(report.get("warnings", []))
         errors.extend(report.get("errors", []))
+    if not reports:
+        errors.append({"source": "packages", "message": "目录中没有可验收的资产包，请指定包含 *_manifest.json 的发布目录"})
     summary = create_acceptance_summary(
         "error" if errors else ("warning" if warnings else "pass"),
         warnings,
@@ -429,9 +474,10 @@ def validate_all_asset_forge_packages(export_root, report_path=None, strict=Fals
     )
     summary.update(
         {
+            "blocked_packages": [normalize_path(os.path.dirname(item["manifest_path"])) for item in reports if not item["gate_passed"]],
             "can_accept": all(report.get("summary", {}).get("can_accept", False) for report in reports) if reports else False,
             "warning_count": sum(report.get("summary", {}).get("warning_count", 0) for report in reports),
-            "error_count": sum(report.get("summary", {}).get("error_count", 0) for report in reports),
+            "error_count": sum(report.get("summary", {}).get("error_count", 0) for report in reports) if reports else len(errors),
         }
     )
     batch_report = {
@@ -446,6 +492,8 @@ def validate_all_asset_forge_packages(export_root, report_path=None, strict=Fals
         },
         "summary": summary,
         "reports": reports,
+        "package_decisions": package_decisions(reports),
+        "mandatory_blockers": [reason for item in reports for reason in item.get("mandatory_blockers", [])],
     }
     attach_acceptance_summary(batch_report, summary)
     apply_acceptance_gate(batch_report, create_gate_policy(strict, block_warnings, require_import))

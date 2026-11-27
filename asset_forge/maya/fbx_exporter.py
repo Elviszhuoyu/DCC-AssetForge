@@ -1,8 +1,11 @@
+# -*- coding: utf-8 -*-
 """Maya FBX exporter for Static Prop assets."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import os
+
+from asset_forge.shared.python_compat import to_text
 
 from asset_forge.maya.cmds_bridge import get_cmds, get_mel
 
@@ -141,7 +144,7 @@ class MayaFbxExporter(object):
             return ""
 
     def _short_name(self, node):
-        return str(node or "").split("|")[-1]
+        return to_text(node or "").split("|")[-1]
 
     def _maya_path(self, path):
         return os.path.abspath(path).replace("\\", "/")

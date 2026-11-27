@@ -81,11 +81,19 @@ def _preview_texture_policy(texture_plan):
     _preview_virtual_texture_policy(report)
     _preview_streaming_policy(report)
     _preview_texture_group_policy(report)
+    if "normal_format" in texture_plan:
+        requested["normal_format"] = texture_plan["normal_format"]
+        requested["flip_green_channel"] = texture_plan["flip_green_channel"]
+        report["actual"]["flip_green_channel"] = texture_plan["flip_green_channel"]
+    if texture_plan.get("normal_format_warning"):
+        report["warnings"].append(texture_plan["normal_format_warning"])
     report["actual_policy"] = {
         "effective_virtual_texture": report.get("effective_virtual_texture", report.get("actual", {}).get("virtual_texture")),
         "never_stream": report.get("actual", {}).get("texture_streaming"),
         "texture_group": report.get("actual", {}).get("texture_group"),
     }
+    if "flip_green_channel" in report["actual"]:
+        report["actual_policy"]["flip_green_channel"] = report["actual"]["flip_green_channel"]
     report["user_message"] = _preview_policy_user_message(report)
     return report
 
@@ -195,7 +203,7 @@ class UnrealTextureImporter(object):
                 asset_path = texture.get("target_asset_path", "")
                 imported.append(asset_path)
                 self._record_policy(texture, "reused", "复用已有贴图资产。")
-                self._configure_imported_texture(texture, [asset_path])
+                self._configure_imported_texture(texture, [asset_path], reused=True)
                 continue
 
             tasks.append(self._build_task(texture, replace_existing=True))
@@ -237,7 +245,7 @@ class UnrealTextureImporter(object):
         set_unreal_property(task, "save", True)
         return task
 
-    def _configure_imported_texture(self, texture_plan, imported_paths):
+    def _configure_imported_texture(self, texture_plan, imported_paths, reused=False):
         asset_path = self._primary_asset_path(imported_paths, texture_plan)
         if not asset_path:
             self.last_configuration_report["issues"].append("贴图导入后未返回资产路径：{0}".format(texture_plan.get("asset_name", "")))
@@ -252,7 +260,7 @@ class UnrealTextureImporter(object):
         compression_value = self._compression_value(texture_plan.get("compression", ""))
         if compression_value is not None:
             set_unreal_property(texture_asset, "compression_settings", compression_value)
-        policy_report = self._apply_texture_import_policy(texture_asset, asset_path, texture_plan)
+        policy_report = self._apply_texture_import_policy(texture_asset, asset_path, texture_plan, reused)
         self._save_asset(asset_path)
         self.last_configuration_report["configured"].append(
             {
@@ -267,7 +275,7 @@ class UnrealTextureImporter(object):
             }
         )
 
-    def _apply_texture_import_policy(self, texture_asset, asset_path, texture_plan):
+    def _apply_texture_import_policy(self, texture_asset, asset_path, texture_plan, reused):
         report = {
             "asset_path": asset_path,
             "requested_policy": {
@@ -291,17 +299,37 @@ class UnrealTextureImporter(object):
         self._apply_virtual_texture_policy(texture_asset, report)
         self._apply_streaming_policy(texture_asset, report)
         self._apply_texture_group_policy(texture_asset, report)
+        self._apply_normal_format(texture_asset, texture_plan, report, reused)
         report["actual_policy"] = {
             "effective_virtual_texture": report.get("effective_virtual_texture", report.get("actual", {}).get("virtual_texture")),
             "never_stream": report.get("actual", {}).get("texture_streaming"),
             "texture_group": report.get("actual", {}).get("texture_group"),
         }
+        if "flip_green_channel" in report["actual"]:
+            report["actual_policy"]["flip_green_channel"] = report["actual"]["flip_green_channel"]
         report["user_message"] = self._policy_user_message(report)
 
         if report["warnings"]:
-            report["next_action"] = "打开导入后的贴图资产，确认 Virtual Texture、Never Stream 与 Texture Group 是否符合请求策略。"
+            report["next_action"] = "打开导入后的贴图资产，核对报告中标出的设置。"
             self.last_configuration_report["issues"].extend(report["warnings"])
         return report
+
+    def _apply_normal_format(self, texture_asset, texture_plan, report, reused):
+        if "normal_format" not in texture_plan:
+            return
+        if texture_plan.get("normal_format_warning"):
+            report["warnings"].append(texture_plan["normal_format_warning"])
+        property_name = "flip_green_channel"
+        expected = texture_plan[property_name]
+        report["requested_policy"].update(normal_format=texture_plan["normal_format"], flip_green_channel=expected)
+        if reused:
+            actual = self._first_actual_property(texture_asset, [property_name])
+            report["actual"][property_name] = actual
+            if actual != expected:
+                report["warnings"].append("复用的法线贴图绿通道设置与当前包体约定不一致，请核对贴图，或按覆盖策略重新导入。")
+            return
+        result = self._apply_property(texture_asset, [property_name], expected)
+        self._record_property_result(report, property_name, result, expected, "法线绿通道")
 
     def _apply_virtual_texture_policy(self, texture_asset, report):
         vt_policy = report["requested_policy"].get("virtual_texture_policy", "project_default")

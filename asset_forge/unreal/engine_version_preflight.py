@@ -33,15 +33,18 @@ class UnrealEngineVersionPreflight(object):
         current_mm = parse_major_minor(current_version)
         association_mm = parse_major_minor(association)
 
-        if target_version and current_version:
-            if target_mm and current_mm and target_mm != current_mm:
+        if target_version and not target_mm:
+            errors.append("Cannot read a major.minor UE version from the manifest target: {0}.".format(target_version))
+            checks.append(self._check("manifest_vs_runtime", "error", target_version, current_version))
+        elif target_mm and current_mm:
+            if target_mm != current_mm:
                 errors.append(
                     "Manifest target_engine_version is {0}, but current UE runtime is {1}.".format(
                         target_version, current_version
                     )
                 )
             checks.append(self._check("manifest_vs_runtime", "error" if errors else "pass", target_version, current_version))
-        elif target_version and not current_version:
+        elif target_mm:
             warnings.append("Cannot read current UE runtime version; keep this import as manual validation required.")
             checks.append(self._check("manifest_vs_runtime", "warning", target_version, current_version))
         else:

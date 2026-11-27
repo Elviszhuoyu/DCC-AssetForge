@@ -40,6 +40,7 @@ def bootstrap():
         "action_count": len(action_plan),
         "actions": [item.get("id", "") for item in action_plan],
         "widget_asset_path": widget_launch_plan.get("asset_path", ""),
+        "widget_tab_id": widget_launch_plan.get("tab_id", ""),
         "widget_launch_status": widget_launch_plan.get("status", ""),
         "widget_launch_issues": widget_launch_plan.get("issues", []),
         "material_asset_count": material_asset_plan.get("asset_count", 0),
@@ -98,7 +99,7 @@ def _load_action_plan():
 def _load_widget_launch_plan():
     from asset_forge.unreal.editor_widget_launcher import get_widget_launch_plan
 
-    return get_widget_launch_plan()
+    return get_widget_launch_plan(native_declared=_cpp_editor_module_declared())
 
 
 def _load_material_asset_plan():
@@ -109,6 +110,17 @@ def _load_material_asset_plan():
 
 def _register_tool_menu():
     if _cpp_editor_module_declared() and os.environ.get("ASSET_FORGE_PYTHON_MENU_FALLBACK") != "1":
+        from asset_forge.unreal.unreal_bridge import get_unreal
+
+        unreal = get_unreal()
+        tool_menus = getattr(unreal, "ToolMenus", None)
+        if tool_menus is not None:
+            from asset_forge.unreal.review_editor import register_review_menus
+
+            menus = tool_menus.get()
+            if menus is not None:
+                register_review_menus(unreal, menus, native_workbench=True)
+                menus.refresh_all_widgets()
         return {
             "status": "skipped",
             "registered": [],

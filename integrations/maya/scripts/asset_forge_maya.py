@@ -1,8 +1,12 @@
+# -*- coding: utf-8 -*-
 """Maya module entry points for DCC AssetForge."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
-import importlib
+try:
+    from importlib import reload as reload_module
+except ImportError:
+    from imp import reload as reload_module
 import sys
 
 from asset_forge.shared.constants import TARGET_PLATFORM_HIGH_END_MOBILE
@@ -18,7 +22,7 @@ def reload_asset_forge_modules():
     """Reload DCC AssetForge Maya/shared modules inside the same Maya Python process."""
     for module_name in sorted(list(sys.modules.keys()), reverse=True):
         if module_name.startswith(RELOAD_PREFIXES):
-            importlib.reload(sys.modules[module_name])
+            reload_module(sys.modules[module_name])
 
 
 def reload_and_show():
@@ -83,6 +87,7 @@ def export_selected(
             rules=_active_rules(pipeline.rules, settings),
             texture_import_policy=_texture_import_policy(settings),
             static_mesh_import_policy=_static_mesh_import_policy(settings),
+            project_preset=settings,
             source_name_suffix="Maya",
         )
     except Exception as exc:
@@ -125,6 +130,7 @@ def _texture_import_policy(settings):
         "virtual_texture_policy": settings.get("virtual_texture_policy", "project_default"),
         "texture_streaming_policy": settings.get("texture_streaming_policy", "project_default"),
         "texture_group": settings.get("texture_group", "project_default"),
+        "normal_format": settings.get("normal_format", "directx"),
     }
 
 
@@ -140,15 +146,11 @@ def _static_mesh_import_policy(settings):
 
 
 def _active_rules(rules, settings):
-    result = dict(rules or {})
-    static_rules = dict(result.get("static_prop", {}))
-    budgets = dict(static_rules.get("max_triangles", {}))
-    if int(settings.get("triangle_budget") or 0) > 0:
-        budgets[settings.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE] = int(settings.get("triangle_budget"))
-    static_rules["max_triangles"] = budgets
-    static_rules["name_prefix"] = settings.get("mesh_prefix") or "SM_"
-    result["static_prop"] = static_rules
-    return result
+    from asset_forge.maya.project_settings import apply_rule_settings
+
+    return apply_rule_settings(rules, settings.get("target_platform") or TARGET_PLATFORM_HIGH_END_MOBILE,
+                               settings.get("mesh_prefix") or "SM_", int(settings.get("triangle_budget") or 0),
+                               int(settings.get("material_slot_budget") or 0))
 
 
 def _pipeline_class():

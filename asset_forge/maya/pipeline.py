@@ -1,17 +1,24 @@
+# -*- coding: utf-8 -*-
 """Maya Static Prop MVP workflow orchestration."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
+import os
+
+from asset_forge.maya.workbench_diagnostics import PACKED_TEXTURE_IMPACT, describe
 from asset_forge.maya.adapter import MayaAdapter
 from asset_forge.maya.export_package import build_export_package
 from asset_forge.maya.fbx_exporter import MayaFbxExporter
 from asset_forge.maya.manifest_writer import MayaManifestWriter
+from asset_forge.maya.project_settings import normalize_normal_format
+from asset_forge.maya.scene_textures import apply_scene_textures
 from asset_forge.maya.texture_packager import MayaTexturePackager
 from asset_forge.shared.ai_analysis import LocalChineseSuggestionClient, analyze_validation
 from asset_forge.shared.asset_health_report import create_asset_health_report
-from asset_forge.shared.constants import SOURCE_DCC_MAYA, TARGET_ENGINE_UNREAL, TARGET_PLATFORM_HIGH_END_MOBILE
+from asset_forge.shared.constants import ASSET_TYPE_STATIC_PROP, SOURCE_DCC_MAYA, TARGET_ENGINE_UNREAL, TARGET_PLATFORM_HIGH_END_MOBILE
 from asset_forge.shared.material_profile_schema import get_project_material_profiles, resolve_material_profile, write_material_profiles
 from asset_forge.shared.material_profile_validator import validate_material_texture_coverage
+from asset_forge.shared.python_compat import to_text
 from asset_forge.shared.material_texture_set_mapping import (
     build_material_texture_set_mapping,
     infer_texture_set_token_from_materials,
@@ -90,15 +97,18 @@ class MayaStaticPropPipeline(object):
         package_version_padding=3,
         package_version_start=1,
         project_preset=None,
+        material_texture_set_overrides=None,
     ):
         asset_roots = list(asset_roots or [])
         if not asset_roots:
             raise RuntimeError("没有选中资产")
         active_rules = rules or self.rules
         scan_result = self.scan_assets(asset_roots)
-        scan_result = self._apply_texture_folder(scan_result, texture_folder, material_profile, texture_set_token)
-        scan_result = self._apply_texture_profile_defaults(scan_result, material_profile)
+        scan_result = self.match_texture_source(scan_result, texture_folder, material_profile, texture_set_token, material_texture_set_overrides)
+        scan_result = self._apply_texture_profile_defaults(
+            scan_result, material_profile, (texture_import_policy or {}).get("normal_format"))
         scan_result = self._apply_material_profile_validation(scan_result, material_profile)
+        scan_result = self._attach_asset_budgets(scan_result, active_rules, target_platform)
         scan_result = self._apply_asset_name_override(scan_result, "", source_name_suffix)
         scan_result = self._attach_package_naming_policy(
             scan_result,
@@ -111,6 +121,8 @@ class MayaStaticPropPipeline(object):
         scan_result = self._attach_material_texture_bindings(scan_result, target_path)
         validation_result = self.validate_scan(scan_result, target_platform, active_rules)
         validation_result = self._attach_texture_set_selection_gate(scan_result, validation_result)
+        validation_result = self._attach_material_texture_binding_gate(scan_result, validation_result)
+        validation_result = self._attach_mesh_and_texture_diagnostics(scan_result, validation_result)
         health_report = create_asset_health_report(scan_result, validation_result)
         scan_result = dict(scan_result, asset_health_report=health_report)
         validation_result = dict(validation_result, asset_health_report=health_report)
@@ -141,6 +153,7 @@ class MayaStaticPropPipeline(object):
         package_version_padding=3,
         package_version_start=1,
         project_preset=None,
+        material_texture_set_overrides=None,
     ):
         return self.export_assets(
             [asset_root],
@@ -161,6 +174,7 @@ class MayaStaticPropPipeline(object):
             package_version_padding,
             package_version_start,
             project_preset,
+            material_texture_set_overrides,
         )
 
     def export_assets(
@@ -183,20 +197,24 @@ class MayaStaticPropPipeline(object):
         package_version_padding=3,
         package_version_start=1,
         project_preset=None,
+        material_texture_set_overrides=None,
     ):
         asset_roots = list(asset_roots or [])
         if not asset_roots:
             raise RuntimeError("没有选中资产")
         active_rules = rules or self.rules
         scan_result = self.scan_assets(asset_roots)
-        scan_result = self._apply_texture_folder(scan_result, texture_folder, material_profile, texture_set_token)
-        scan_result = self._apply_texture_profile_defaults(scan_result, material_profile)
+        scan_result = self.match_texture_source(scan_result, texture_folder, material_profile, texture_set_token, material_texture_set_overrides)
+        scan_result = self._apply_texture_profile_defaults(
+            scan_result, material_profile, (texture_import_policy or {}).get("normal_format"))
         scan_result = self._apply_material_profile_validation(scan_result, material_profile)
+        scan_result = self._attach_asset_budgets(scan_result, active_rules, target_platform)
         scan_result = self._apply_asset_name_override(scan_result, "", source_name_suffix)
         scan_result = self._attach_material_texture_bindings(scan_result, target_path)
         validation_result = self.validate_scan(scan_result, target_platform, active_rules)
         validation_result = self._attach_texture_set_selection_gate(scan_result, validation_result)
         validation_result = self._attach_material_texture_binding_gate(scan_result, validation_result)
+        validation_result = self._attach_mesh_and_texture_diagnostics(scan_result, validation_result)
         health_report = create_asset_health_report(scan_result, validation_result)
         scan_result = dict(scan_result, asset_health_report=health_report)
         validation_result = dict(validation_result, asset_health_report=health_report)
@@ -239,7 +257,8 @@ class MayaStaticPropPipeline(object):
             package_dir=export_package["package_dir"],
             material_profile=material_profile,
             material_profiles_snapshot_path=export_package["material_profiles_snapshot_path"],
-            texture_import_policy=texture_import_policy or {},
+            texture_import_policy=dict(texture_import_policy or {}, normal_format=normalize_normal_format(
+                (texture_import_policy or {}).get("normal_format"))),
             static_mesh_import_policy=static_mesh_import_policy or {},
         )
         self.manifest_writer.write(manifest_path, manifest)
@@ -274,7 +293,7 @@ class MayaStaticPropPipeline(object):
             return {}
         result = {}
         for transform in (scan_result or {}).get("transforms", []) or []:
-            short_name = str(transform or "").split("|")[-1]
+            short_name = to_text(transform or "").split("|")[-1]
             target = _append_publish_suffix(short_name, suffix)
             if target != short_name:
                 result[transform] = target
@@ -282,7 +301,7 @@ class MayaStaticPropPipeline(object):
         if result:
             return result
         for root in (scan_result or {}).get("asset_roots", []) or []:
-            short_name = str(root or "").split("|")[-1]
+            short_name = to_text(root or "").split("|")[-1]
             target = _append_publish_suffix(short_name, suffix)
             if target != short_name:
                 result[root] = target
@@ -345,7 +364,7 @@ class MayaStaticPropPipeline(object):
         output_dir="",
     ):
         result = dict(scan_result or {})
-        result["package_name_override"] = str(package_name_override or "").strip()
+        result["package_name_override"] = to_text(package_name_override or "").strip()
         result["package_version_mode"] = package_version_mode
         result["package_version_padding"] = package_version_padding
         result["package_version_start"] = package_version_start
@@ -368,11 +387,12 @@ class MayaStaticPropPipeline(object):
         write_material_profiles(snapshot_path, get_project_material_profiles())
         return snapshot_path
 
-    def _apply_texture_folder(self, scan_result, texture_folder, material_profile, texture_set_token=""):
-        if not texture_folder:
-            return scan_result
-
+    def match_texture_source(self, scan_result, texture_folder, material_profile, texture_set_token="", material_texture_set_overrides=None):
+        """Use the same texture matching for previews, validation, and export."""
         profile = resolve_material_profile(material_profile)
+        if not texture_folder:
+            return apply_scene_textures(scan_result, profile, self.texture_folder_scanner)
+
         folder_scan = self.texture_folder_scanner.scan(texture_folder, scan_result.get("asset_name", ""), profile, texture_set_token=texture_set_token)
         if not texture_set_token:
             inferred_token = self._infer_texture_set_token_from_materials(scan_result.get("materials", []), folder_scan.get("texture_sets", []))
@@ -391,13 +411,13 @@ class MayaStaticPropPipeline(object):
             result["textures"] = []
             result["texture_folder_scan"] = folder_scan
             result["asset_name_candidates"] = folder_scan.get("asset_name_candidates", [])
-            material_mapping = self._build_material_texture_set_mapping(scan_result.get("materials", []), [], folder_scan, scan_result.get("asset_name", ""))
+            material_mapping = self._build_material_texture_set_mapping(scan_result.get("materials", []), [], folder_scan, scan_result.get("asset_name", ""), material_texture_set_overrides)
             result["materials"] = material_mapping["materials"]
             result["material_texture_sets"] = material_mapping["material_texture_sets"]
             return result
         result["textures"] = list(folder_scan.get("textures", []))
         result["asset_name_candidates"] = folder_scan.get("asset_name_candidates", [])
-        material_mapping = self._build_material_texture_set_mapping(scan_result.get("materials", []), folder_scan.get("textures", []), folder_scan, scan_result.get("asset_name", ""))
+        material_mapping = self._build_material_texture_set_mapping(scan_result.get("materials", []), folder_scan.get("textures", []), folder_scan, scan_result.get("asset_name", ""), material_texture_set_overrides)
         result["texture_folder_scan"] = dict(folder_scan, material_texture_sets=material_mapping["material_texture_sets"])
         result["materials"] = material_mapping["materials"]
         result["material_texture_sets"] = material_mapping["material_texture_sets"]
@@ -408,17 +428,32 @@ class MayaStaticPropPipeline(object):
 
     def _apply_material_profile_validation(self, scan_result, material_profile):
         result = dict(scan_result)
-        result["material_profile_validation"] = validate_material_texture_coverage(
-            material_profile,
-            result.get("textures", []),
-        )
+        profile = resolve_material_profile(material_profile)
+        result["material_profile_validation"] = validate_material_texture_coverage(profile, result.get("textures", []))
+        policies = {rule["usage"]: rule.get("missing_severity", "error") for rule in profile.get("texture_rules", [])}
+        for check in result["material_profile_validation"]["checks"]:
+            check["missing_severity"] = policies[check["usage"]]
         return result
 
-    def _apply_texture_profile_defaults(self, scan_result, material_profile):
+    def _attach_asset_budgets(self, scan_result, rules, target_platform):
+        static = rules.get(ASSET_TYPE_STATIC_PROP, rules)
+        configured = {
+            "triangles": static.get("max_triangles", {}).get(target_platform),
+            "material_slots": static.get("max_material_slots", {}).get(target_platform),
+        }
+        return dict(scan_result, asset_budgets={name: limit for name, limit in configured.items()
+                                             if isinstance(limit, int) and not isinstance(limit, bool)})
+
+    def _apply_texture_profile_defaults(self, scan_result, material_profile, normal_format=None):
         profile = resolve_material_profile(material_profile)
         rules_by_usage = dict((rule.get("usage", ""), rule) for rule in profile.get("texture_rules", []))
+        normal_format = normalize_normal_format(normal_format)
         for texture in _iter_scan_textures(scan_result):
-            rule = rules_by_usage.get(texture.get("usage", ""), {})
+            usage = texture.get("usage", "")
+            if usage == "normal":
+                declared = to_text(texture.get("normal_format") or "").strip().lower()
+                texture["normal_format"] = declared if declared in ("directx", "opengl") else normal_format
+            rule = rules_by_usage.get(usage, {})
             if not rule:
                 continue
             if rule.get("parameter") and not texture.get("parameter"):
@@ -432,10 +467,10 @@ class MayaStaticPropPipeline(object):
         return scan_result
 
     def _apply_asset_name_override(self, scan_result, asset_name_override="", source_name_suffix=""):
-        active_name = str(asset_name_override or "").strip()
+        active_name = to_text(asset_name_override or "").strip()
         source_suffix = _safe_publish_suffix(source_name_suffix)
         if not active_name and source_suffix:
-            base_name = str(scan_result.get("asset_name", "") or "").strip()
+            base_name = to_text(scan_result.get("asset_name", "") or "").strip()
             suffix = "_" + source_suffix
             active_name = base_name if base_name.endswith(suffix) else base_name + suffix
         if not active_name:
@@ -462,7 +497,7 @@ class MayaStaticPropPipeline(object):
                 "value": ", ".join([item.get("set_name", "") for item in folder_scan.get("texture_sets", [])]),
                 "limit": "选择一个贴图集",
                 "message": "贴图目录内存在多个完整贴图集，导出前需要确认本模型使用哪一套贴图。",
-                "next_action": "在 UI 的“贴图集关键词”中填写 a1,d1 或完整贴图集名称片段，重新扫描后再导出。",
+                "next_action": "在 UI 的“贴图名筛选词”中填写 能区分所需贴图集的名称片段，重新扫描后再导出。",
             }
         )
         result["checks"] = checks
@@ -474,31 +509,88 @@ class MayaStaticPropPipeline(object):
         return result
 
     def _attach_material_texture_binding_gate(self, scan_result, validation_result):
-        blocking = [item for item in scan_result.get("material_texture_binding_risks", []) or [] if item.get("severity") == "error"]
-        if not blocking:
+        risks = scan_result.get("material_texture_binding_risks", []) or []
+        if not risks:
             return validation_result
-        result = dict(validation_result)
-        checks = list(result.get("checks", []))
-        for item in blocking:
-            checks.append(
-                {
-                    "id": item.get("id", "material_texture_binding"),
-                    "label": "材质贴图绑定",
-                    "status": "error",
-                    "severity": "error",
-                    "object": item.get("material_name", "") or item.get("texture_set", ""),
-                    "value": item.get("slot_name", "") or item.get("texture_count", 0),
-                    "limit": "每个 Maya 材质必须匹配对应贴图集",
-                    "message": item.get("message", "材质贴图绑定失败"),
-                    "next_action": "检查“贴图详情”中的候选贴图集，补齐缺失贴图集或填写正确贴图集关键词后重新扫描。",
-                }
-            )
-        result["checks"] = checks
-        result["status"] = "error"
-        result["can_export"] = False
-        summary = dict(result.get("summary", {}))
-        summary["errors"] = int(summary.get("errors", 0)) + len(blocking)
-        result["summary"] = summary
+        checks = list(validation_result["checks"])
+        summary = dict(validation_result["summary"])
+        blocking = False
+        for item in risks:
+            severity = item["severity"]
+            if severity not in ("error", "warning"):
+                continue
+            target = (item.get("material_name") or item.get("texture_set") or item.get("path")
+                      or item.get("ue_material_instance") or str(item.get("slot_index", "")))
+            check = dict(id=item.get("id", "material_texture_binding"), label="材质贴图绑定",
+                         status=severity, severity=severity, object=target,
+                         value=item.get("materials") or item.get("slot_name") or item.get("texture_count", 0),
+                         limit="每个材质明确匹配对应贴图集", message=item.get("message", "材质贴图绑定失败"))
+            if item.get("candidates"):
+                check["candidates"] = list(item["candidates"])
+                check["next_action"] = "在当前问题里指定对应贴图集后重新检查。"
+            checks.append(check)
+            summary["errors" if severity == "error" else "warnings"] += 1
+            blocking = blocking or severity == "error" or not validation_result.get("allow_warning_export", True)
+        status = "error" if summary["errors"] else "warning"
+        return dict(validation_result, checks=checks, summary=summary, status=status,
+                    can_export=validation_result.get("can_export", False) and not blocking)
+
+    def _attach_mesh_and_texture_diagnostics(self, scan, validation):
+        checks = list(validation["checks"])
+        failures = []
+        assignment = scan.get("material_assignment")
+        if assignment:
+            faces = sum(len(item.get("face_indices", [])) for item in assignment.values())
+            failures.append(dict(id="material_assignment", label="表面材质分配", status="error",
+                                 severity="error", value=faces, limit=0,
+                                 message="存在未分配有效材质的面，或无法读取面材质。",
+                                 affected_meshes=sorted(assignment), mesh_results=assignment))
+        if assignment is not None and not any(check.get("id") == "texture_set_selection" for check in checks):
+            profile = scan.get("material_profile_validation", {})
+            required = {item["usage"]: item.get("missing_severity", "error")
+                        for item in profile.get("checks", []) if item.get("usage")}
+            separate = set(scan.get("scene_separate_texture_materials", ()))
+            for item in scan.get("material_texture_bindings", []):
+                if item.get("status") not in ("bound", "unbound_no_texture_evidence"):
+                    continue
+                present = set(item["texture_usages"])
+                for usage, textures in item.get("textures_by_usage", {}).items():
+                    if not any(texture.get("path") and os.path.isfile(texture["path"]) for texture in textures):
+                        present.discard(usage)
+                missing = set(required) - present
+                slot = item.get("slot_name") or item["material_name"]
+                if "packed_arm" in missing:
+                    severity = required["packed_arm"]
+                    failures.append(dict(id="missing_packed_texture", label="ARM/ORM 打包贴图",
+                                         status=severity, severity=severity, object=slot,
+                                         value="未找到有效的 ARM/ORM 贴图", limit="1 张 ARM/ORM 打包贴图",
+                                         separate_texture_maps=item["material_name"] in separate,
+                                         message=PACKED_TEXTURE_IMPACT))
+                    missing.remove("packed_arm")
+                for severity in ("error", "warning"):
+                    absent = sorted(usage for usage in missing if required[usage] == severity)
+                    if absent:
+                        failures.append(dict(id="required_texture", label="必需贴图", status=severity,
+                                             severity=severity, object=slot, value=absent,
+                                             limit=sorted(required), message="缺少材质规则要求的贴图。"))
+        checks.extend(failures)
+        diagnostics = []
+        for item in checks:
+            obj = item.get("object") or (item.get("affected_meshes") or [scan.get("asset_root", "")])[0]
+            evidence = item.get("mesh_results", {})
+            has_components = any(row.get("face_indices") or row.get("faces") or row.get("zero_length_edges")
+                                 for row in evidence.values())
+            diagnostics.append(dict(item, diagnostic=describe(item, scan, validation, obj, has_components)))
+        result = dict(validation, checks=diagnostics)
+        if failures:
+            errors = sum(item["status"] == "error" for item in failures)
+            warnings = len(failures) - errors
+            summary = dict(validation["summary"])
+            summary["errors"] += errors
+            summary["warnings"] += warnings
+            blocked = errors > 0 or warnings > 0 and not validation.get("allow_warning_export", True)
+            result.update(status="error" if summary["errors"] else "warning", summary=summary,
+                          can_export=validation.get("can_export", False) and not blocked)
         return result
 
     def _merged_textures(self, existing, incoming):
@@ -514,8 +606,8 @@ class MayaStaticPropPipeline(object):
     def _attach_folder_textures_to_materials(self, materials, textures, asset_name):
         return self._build_material_texture_set_mapping(materials, textures, {}, asset_name)["materials"]
 
-    def _build_material_texture_set_mapping(self, materials, textures, folder_scan, asset_name):
-        return build_material_texture_set_mapping(materials, textures, folder_scan, asset_name)
+    def _build_material_texture_set_mapping(self, materials, textures, folder_scan, asset_name, overrides=None):
+        return build_material_texture_set_mapping(materials, textures, folder_scan, asset_name, material_texture_set_overrides=overrides)
 
     def _selected_texture_set_infos(self, folder_scan, textures_by_set):
         return selected_texture_set_infos(folder_scan, textures_by_set)
@@ -589,7 +681,7 @@ class ExportValidationError(RuntimeError):
 
 
 def _safe_publish_suffix(value):
-    text = str(value or "").strip().replace(" ", "_")
+    text = to_text(value or "").strip().replace(" ", "_")
     return "".join(ch for ch in text if ch.isalnum() or ch == "_").strip("_")
 
 

@@ -1,7 +1,9 @@
+# -*- coding: utf-8 -*-
 """Default executable rule schema for DCC AssetForge 0.1."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
+import io
 import json
 import os
 
@@ -52,6 +54,8 @@ DEFAULT_RULES = {
                 "severity": SEVERITY_ERROR,
                 "enabled": True,
             },
+            {"id": "zero_area_triangles", "label": "零面积三角形", "severity": SEVERITY_WARNING, "enabled": True},
+            {"id": "zero_length_edges", "label": "零长度边", "severity": SEVERITY_WARNING, "enabled": True},
             {
                 "id": "empty_mesh",
                 "label": "空 Mesh",
@@ -138,7 +142,7 @@ def get_project_rules(config_path=None):
     path = config_path or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "config", "project_rules.json"))
     if not os.path.exists(path):
         return get_default_rules()
-    with open(path, "r", encoding="utf-8") as stream:
+    with io.open(path, "r", encoding="utf-8") as stream:
         data = json.load(stream)
     return _merge_rules(get_default_rules(), data)
 

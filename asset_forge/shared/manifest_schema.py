@@ -5,6 +5,8 @@ from __future__ import absolute_import
 import io
 import json
 
+from asset_forge.shared.python_compat import write_utf8_json
+
 from asset_forge.shared.constants import (
     ASSET_TYPE_SKELETAL_MESH,
     ASSET_TYPE_STATIC_PROP,
@@ -45,6 +47,7 @@ REQUIRED_MANIFEST_FIELDS = [
 
 def create_manifest(asset_name, fbx_path, target_path, checks=None, score=0, **kwargs):
     """Create a v0.1 manifest dictionary."""
+    project_preset = kwargs.get("project_preset") or {}
     texture_import_policy = dict(DEFAULT_TEXTURE_IMPORT_POLICY)
     texture_import_policy.update(kwargs.get("texture_import_policy", {}) or {})
     static_mesh_import_policy = dict(DEFAULT_STATIC_MESH_IMPORT_POLICY)
@@ -57,7 +60,7 @@ def create_manifest(asset_name, fbx_path, target_path, checks=None, score=0, **k
         "asset_type": kwargs.get("asset_type", ASSET_TYPE_STATIC_PROP),
         "source_dcc": kwargs.get("source_dcc", SOURCE_DCC_MAYA),
         "target_engine": kwargs.get("target_engine", TARGET_ENGINE_UNREAL),
-        "target_engine_version": kwargs.get("target_engine_version", ""),
+        "target_engine_version": kwargs.get("target_engine_version") or project_preset.get("target_engine_version", ""),
         "target_platform": kwargs.get("target_platform", TARGET_PLATFORM_HIGH_END_MOBILE),
         "fbx_path": fbx_path,
         "target_path": target_path,
@@ -77,7 +80,7 @@ def create_manifest(asset_name, fbx_path, target_path, checks=None, score=0, **k
         "texture_selection_policy": kwargs.get("texture_selection_policy", {}),
         "texture_folder_scan": kwargs.get("texture_folder_scan", {}),
         "package_naming": kwargs.get("package_naming", {}),
-        "project_preset": kwargs.get("project_preset", {}),
+        "project_preset": project_preset,
         "texture_import_policy": texture_import_policy,
         "static_mesh_import_policy": static_mesh_import_policy,
         "existing_mesh_strategy": kwargs.get("existing_mesh_strategy", "overwrite"),
@@ -153,9 +156,7 @@ def validate_manifest(manifest):
 def write_manifest(path, manifest, pretty=True):
     """Write a manifest JSON file using UTF-8."""
     indent = 2 if pretty else None
-    with io.open(path, "w", encoding="utf-8") as stream:
-        stream.write(json.dumps(manifest, ensure_ascii=False, indent=indent))
-        stream.write("\n")
+    write_utf8_json(path, manifest, indent=indent)
 
 
 def read_manifest(path):

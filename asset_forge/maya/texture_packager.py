@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
 """Copy referenced texture files into a DCC AssetForge export package."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import os
 import shutil

@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 """Shared package naming policy for DCC exports."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import os
 import re
+
+from asset_forge.shared.python_compat import to_text
 
 from asset_forge.shared.path_utils import normalize_path
 
@@ -15,12 +17,12 @@ PACKAGE_VERSION_MODES = (PACKAGE_VERSION_MODE_OVERWRITE, PACKAGE_VERSION_MODE_AU
 
 
 def sanitize_package_name(value, fallback="Asset"):
-    clean = re.sub(r"[^0-9A-Za-z_]+", "_", str(value or "")).strip("_")
+    clean = re.sub(r"[^0-9A-Za-z_]+", "_", to_text(value or "")).strip("_")
     return clean or fallback
 
 
 def normalize_package_version_mode(value):
-    value = str(value or "").strip().lower()
+    value = to_text(value or "").strip().lower()
     aliases = {
         "": PACKAGE_VERSION_MODE_OVERWRITE,
         "overwrite_current": PACKAGE_VERSION_MODE_OVERWRITE,
@@ -45,7 +47,7 @@ def resolve_package_naming(
 ):
     """Resolve the package folder identity without changing the DCC asset name."""
     clean_asset_name = sanitize_package_name(asset_name)
-    manual_name = sanitize_package_name(package_name_override, "") if str(package_name_override or "").strip() else ""
+    manual_name = sanitize_package_name(package_name_override, "") if to_text(package_name_override or "").strip() else ""
     base_package_name = manual_name or clean_asset_name
     mode = normalize_package_version_mode(version_mode)
     padding = _safe_int(version_padding, 3)

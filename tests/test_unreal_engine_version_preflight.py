@@ -43,6 +43,19 @@ class UnrealEngineVersionPreflightTest(unittest.TestCase):
         self.assertFalse(report["can_write_assets"])
         self.assertIn("5.6", report["errors"][0]["message"])
 
+    def test_project_release_lines_are_checked_before_writing(self):
+        for runtime in ("5.3.2", "5.6.1", "5.8.4"):
+            project_version = ".".join(runtime.split(".")[:2])
+            self._write_uproject(project_version)
+            guard = UnrealEngineVersionPreflight(unreal_module=FakeUnreal(runtime, self.uproject_path))
+            for target in ("5.3", "5.6", "5.8", "not-a-version"):
+                with self.subTest(runtime=runtime, target=target):
+                    self.assertEqual(guard.check({"target_engine_version": target})["can_write_assets"], target == project_version)
+
+    def test_unreadable_runtime_cannot_report_a_version_match(self):
+        guard = UnrealEngineVersionPreflight(unreal_module=FakeUnreal("custom-build", ""))
+        self.assertEqual(guard.check({"target_engine_version": "5.8"})["status"], "warning")
+
     def test_missing_runtime_reports_warning_not_block(self):
         report = UnrealEngineVersionPreflight(unreal_module=FakeUnreal("", "")).check({"target_engine_version": "5.5"})
 

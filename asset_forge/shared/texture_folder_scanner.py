@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Scan Painter or Designer texture folders using a Material Profile."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import os
 import re
@@ -75,11 +75,11 @@ class TextureFolderScanner(object):
                         {
                             "status": "warning",
                             "id": "suffix_only_match",
-                            "message": "贴图 {0} 未匹配到资产名，已按贴图集候选选择；如目录内有多套贴图，请显式填写贴图集关键词。".format(usage),
+                            "message": "贴图 {0} 未匹配到资产名，已按贴图集候选选择；如目录内有多套贴图，请显式填写贴图名筛选词。".format(usage),
                             "usage": usage,
                             "path": normalize_path(selected["path"]),
                             "match_mode": "suffix_only",
-                            "next_action": "在“贴图集关键词”中填写 a1,d1 或完整贴图集名称片段后重新扫描。",
+                            "next_action": "在“贴图名筛选词”中填写 能区分所需贴图集的名称片段后重新扫描。",
                         }
                     )
 
@@ -129,7 +129,7 @@ class TextureFolderScanner(object):
                 "actions": [],
                 "planned_count": 0,
                 "skipped_count": 0,
-                "message": "请先在“贴图集关键词”中选择或确认贴图集，再执行贴图前缀重命名。",
+                "message": "请先在“贴图名筛选词”中选择或确认贴图集，再执行贴图前缀重命名。",
             }
         actions = []
         for texture in scan_result.get("textures", []):
@@ -231,6 +231,18 @@ class TextureFolderScanner(object):
             "naming_warnings": naming_validation.get("warnings", []),
             "rename_suggestions": naming_validation.get("rename_suggestions", []),
         }
+
+    def texture_files_in_directory(self, directory):
+        return self._texture_files(directory, recursive=False)
+
+    def texture_set_identity(self, path, rule):
+        """Return an exact set prefix only when a separated usage alias ends the filename."""
+        stem = os.path.splitext(os.path.basename(path))[0]
+        suffixes = {_normalize_name(suffix) for suffix in self._expanded_suffixes(rule)} - {""}
+        for boundary in re.finditer(r"[_ .-]+", stem):
+            if boundary.start() and _normalize_name(stem[boundary.end():]) in suffixes:
+                return stem[:boundary.start()]
+        return ""
 
     def _texture_files(self, texture_folder, recursive=False):
         if not texture_folder or not os.path.isdir(texture_folder):
@@ -351,7 +363,7 @@ class TextureFolderScanner(object):
                         selected.append(matched)
                         selected_names.add(matched.get("set_name", ""))
                 else:
-                    issues.append({"status": "warning", "id": "texture_set_selection_unmatched", "message": "贴图集关键词未匹配到候选：{0}".format(token), "token": token})
+                    issues.append({"status": "warning", "id": "texture_set_selection_unmatched", "message": "贴图名筛选词未匹配到候选：{0}".format(token), "token": token})
             return selected, issues, False, bool(issues)
 
         if len(texture_sets) == 1:
@@ -368,9 +380,9 @@ class TextureFolderScanner(object):
                 {
                     "status": "warning",
                     "id": "texture_set_selection_required",
-                    "message": "未填写贴图集关键词，已自动选择当前最优贴图集：{0}。".format(best[0].get("set_name", "")),
+                    "message": "未填写贴图名筛选词，已自动选择当前最优贴图集：{0}。".format(best[0].get("set_name", "")),
                     "selected_texture_set": best[0].get("set_name", ""),
-                    "next_action": "如需指定其它套件，请填写 a1,d1 或完整贴图集名称片段后重新扫描。",
+                    "next_action": "如需指定其它套件，请填写 能区分所需贴图集的名称片段后重新扫描。",
                 }
             )
             return [], issues, False, True
@@ -434,6 +446,10 @@ class TextureFolderScanner(object):
             suffixes.extend(["Normal", "NormalMap", "N"])
         elif usage == "packed_arm":
             suffixes.extend(["ARM", "ORM", "OcclusionRoughnessMetallic", "Occlusion_Roughness_Metallic"])
+        elif usage == "roughness":
+            suffixes.extend(["Roughness", "Rough"])
+        elif usage == "metallic":
+            suffixes.extend(["Metallic", "Metalness"])
         elif usage == "emissive":
             suffixes.extend(["Emissive", "Emission", "Emit", "Glow"])
         elif usage == "height":

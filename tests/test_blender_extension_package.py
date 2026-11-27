@@ -18,6 +18,10 @@ class BlenderExtensionPackageTest(unittest.TestCase):
         manifest = read_blender_manifest(plan["manifest"])
 
         self.assertEqual(manifest["id"], "asset_forge")
+        self.assertEqual(manifest["version"], "0.2.0")
+        from integrations.blender.asset_forge_extension import bl_info
+
+        self.assertEqual(bl_info["version"], (0, 2, 0))
         self.assertEqual(manifest["type"], "add-on")
         self.assertEqual(manifest["blender_version_min"], "4.2.0")
         self.assertIn("SPDX:MIT", manifest["license"])

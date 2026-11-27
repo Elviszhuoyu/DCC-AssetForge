@@ -1,59 +1,127 @@
 # DCC AssetForge
 
-[简体中文](README.zh-CN.md)
+**[简体中文](README.zh-CN.md)** · [v0.2.0 release](https://github.com/Elviszhuoyu/DCC-AssetForge/releases/tag/v0.2.0)
 
 [![Offline CI](https://github.com/Elviszhuoyu/DCC-AssetForge/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Elviszhuoyu/DCC-AssetForge/actions/workflows/ci.yml)
 
 DCC AssetForge is an open-source, DCC-to-Unreal workflow for technical artists and art teams. It turns a Maya or Blender static prop into an auditable package, then lets an Unreal Editor gate review the package before importing it.
 
-The current public release is [v0.1.0](https://github.com/Elviszhuoyu/DCC-AssetForge/releases/tag/v0.1.0), matching the Python, Blender, and Unreal manifests. Screenshots and GIFs are intentionally omitted until real host captures are available.
-
 > DCC AssetForge is an independent project. It is not affiliated with, endorsed by, or sponsored by Autodesk, Blender Foundation, or Epic Games. Maya, Blender, and Unreal Engine are trademarks of their respective owners.
+
+## Windows quick install
+
+**[Download DCC-AssetForge-v0.2.0-Win64.zip](https://github.com/Elviszhuoyu/DCC-AssetForge/releases/download/v0.2.0/DCC-AssetForge-v0.2.0-Win64.zip)** · [SHA-256 file](https://github.com/Elviszhuoyu/DCC-AssetForge/releases/download/v0.2.0/DCC-AssetForge-v0.2.0-Win64.zip.sha256) · [Release notes](RELEASE_NOTES.md)
+
+1. Right-click the ZIP, choose **Extract All**, and select a local folder with an ASCII-only path and no spaces. Keep `Payload` beside the EXE.
+2. Double-click **DCC-AssetForge-Setup.exe** in the extracted folder. Setup uses Windows .NET Framework 4.8.
+3. Choose the host and version, check the destination, and click **安装** (Install). For Unreal, choose engine installation to share the plugin across projects, or project installation for a single `.uproject`. If the plugin is already installed in the engine, enable it under **Edit → Plugins** in the new project.
+
+If Setup flags non-ASCII characters, spaces, or OneDrive, close it and move the entire extracted folder to a local folder outside the sync location, then reopen Setup.
+
+### If Windows shows SmartScreen
+
+Setup is unsigned. Confirm that the ZIP came from the official release before choosing **More info**, then **Run anyway**. If those buttons are unavailable on a managed PC, use manual installation or contact the administrator. [Microsoft SmartScreen guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/publish-first-app#step-6-handle-smartscreen-for-new-apps)
+
+```mermaid
+flowchart LR
+    A["Windows protected your PC"] --> B["1. More info"] --> C["2. Run anyway"]
+```
+
+*Button sequence diagram.*
+
+### Manual installation
+
+| Host | Steps |
+| --- | --- |
+| Maya | Open Maya and drag `Install_DCC_AssetForge_Maya.py` from the extracted folder into the viewport. Click **AF** on the **AssetForge** shelf. |
+| Unreal Editor | Close the editor and copy the matching `AssetForge` folder from `Payload/Unreal` into the engine or project's `Plugins` folder. Reopen the project and enable **DCC AssetForge** in **Edit → Plugins**. |
+| Blender | Open **Edit → Preferences → Get Extensions**, choose **Install from Disk**, and select `Payload/Blender/DCC-AssetForge-Blender-v0.2.0.zip`. |
+
+For the exact Unreal folder locations, source builds, updates and removal, see the [installation guide](安装指南.md).
+
+## First export and import
+
+1. **Check and export in Maya.** Select a static prop, click **AF** on the **AssetForge** shelf, then choose **检查资产** and **检查并导出 Package**. For the Blender Beta export path, open **DCC AssetForge** in the 3D View sidebar (N).
+2. **Check and import in Unreal.** Click **AF** on the toolbar, open **包体导入**, select the exported package, and choose **检查包体**. Confirm the destination and write policy before clicking **确认导入**.
+3. **Review the imported assets.** Open **入库批审** from the import result. Review the mesh, material slots, textures, and checks. Finish with a viewport inspection.
+
+## In the hosts
+
+### Maya · asset checks and component location
+
+![Maya 2024.2 at 1920×1080, with three zero-length edges located on SG552](docs/images/maya-workbench.png)
+
+<details>
+<summary>Maya texture matching and the 21-texture count</summary>
+
+![Maya 2024.2 at 1920×1080, showing matched base color, normal and ARM textures](docs/images/maya-texture-settings.png)
+
+</details>
+
+### Unreal Editor · SG552 material render
+
+![SG552 static prop rendered in Unreal Editor 5.8.4](docs/images/unreal-sg552.png)
+
+<details>
+<summary>Unreal package import receipt and batch review</summary>
+
+![Unreal package import completed with one mesh, 21 textures and seven material instances](docs/images/unreal-import.png)
+
+![Unreal batch review with 117 checks passed and no issues after setting this batch's material slot limit to eight](docs/images/unreal-review.png)
+
+The SG552 sample's batch review uses a limit of eight material slots. The imported mesh uses seven.
+
+</details>
+
+### Windows installer and Blender Beta
+
+<details>
+<summary>Windows installer · Unreal engine installation</summary>
+
+![WPF installer in Unreal engine installation mode](docs/images/installer-unreal.png)
+
+</details>
+
+<details>
+<summary>Blender 5.2.1 LTS · basic export sidebar (Beta)</summary>
+
+![Blender 5.2.1 LTS with the DCC AssetForge basic export sidebar](docs/images/blender-export-beta.png)
+
+</details>
+
+Local folder paths are masked where they appear.
+
+## Host compatibility
+
+| Host | Support and verification |
+| --- | --- |
+| Maya 2022–2026 | Python 3. Uses PySide2 through Maya 2024 and PySide6 for 2025–2026. Maya 2024.2 passed manual drag-and-drop installation, workbench reopen, a 21-texture sample, and 100% and 150% layout checks. Other versions have limited host verification. |
+| Unreal Editor 5.8.4 Win64 | Precompiled for the exact patch and engine build. The final engine-level Gate build passed an actual asset import. Engine and project installation, cold start and uninstall were also checked on v0.2.0 candidates. |
+| Unreal Editor 5.6.1 Win64 | Precompiled for the exact patch and engine build. An earlier v0.2.0 candidate passed project installation, workbench launch, and loading 36 stock assets. The final WPF install path was not repeated on this version. |
+| Other Unreal Editor 5.3–5.8 builds | Project-level source installation requires a compatible Visual Studio C++ toolchain and Windows SDK. UE 5.3–5.5 may be unable to read the bundled stock assets saved in UE 5.6.1, even if the plugin builds. Source builds and imports have not been verified for each version. |
+| Blender 4.2 LTS–5.x | Basic export support (Beta). Blender 5.2.1 LTS passed an isolated installation and removal smoke test. The final extension sidebar was opened in Blender 5.2.1. Other versions have not been tested in the desktop app. |
+| 3ds Max | Unsupported in v0.2.0. |
+
+Automatic Maya installation through Setup and the Windows administrator prompt remain unverified. Before removing an engine-level UE plugin, disable it in the projects using it.
 
 ## Why it exists
 
-A raw FBX export does not answer the questions a production team actually asks:
+Inconsistent names and misrouted packed texture channels often surface late in Unreal. Artists then repeat exports and fixes, while reviewers reconstruct the same material and import decisions by hand.
 
-- Which project preset and naming policy produced this asset?
-- Which textures and material profile were selected, and why?
-- Did the mesh pass naming and budget checks before import?
-- What did Unreal import, reject, or change?
-- Can another artist or TA audit the result without reconstructing the original DCC session?
-
-DCC AssetForge records those decisions and moves them through an explicit gate instead of relying on an opaque export button.
+- **Asset checks and the Unreal import gate.** Check naming, mesh budgets and texture inputs before export. Review the package and expected changes in Unreal before writing assets.
+- **Painter PBR and ARM.** Recognize Substance 3D Painter's Unreal texture exports for base color, normal and packed ARM/ORM. ARM uses red for ambient occlusion, green for roughness, and blue for metallic.
+- **Incremental material reuse.** Reuse compatible material instances and texture assets according to the selected import policy. Review what will be reused or updated before confirming.
+- **Unreal batch review.** Review imported static meshes and textures, locate issues, preview eligible texture fixes, and compare subsequent reviews.
+- **Shared JSON project presets.** Use one preset to share naming, budgets, texture matching, material profiles and target paths across a team. [Example preset](config/project_settings.example.json)
 
 ## Workflow
 
 ```mermaid
 flowchart LR
-    A["Maya or Blender selection"] --> B["Scan and naming checks"]
-    B --> C["JSON project preset"]
-    C --> D["Auditable package: FBX, textures, manifest, reports"]
-    D --> E["Unreal Gate: review, check, import"]
-    E --> F["Mesh, slot, texture, and material evidence"]
+    A["Maya / Blender"] --> B["Check and export AF package"] --> C["Unreal import gate"] --> D["Batch review and viewport inspection"]
 ```
 
-The main concepts are:
-
-- **JSON project preset** — one readable contract for export roots, Unreal target paths, naming, budgets, material profiles, texture matching, and package versioning.
-- **Auditable package** — a folder containing the exchange asset, textures, manifest, preset snapshot, export report, and material/texture binding evidence.
-- **Naming checks** — validates mesh and texture prefixes while keeping the asset identity separate from the versioned package folder name.
-- **UE Gate** — lists packages, runs a check before import, records import history, and previews cleanup candidates instead of silently deleting project content.
-- **Material evidence** — records parent material selection, texture parameters, material instances, mesh slots, and validation status. It does not replace a real visual review in Unreal Editor.
-
-## Current scope and evidence
-
-| Area | Current evidence | Public support statement |
-| --- | --- | --- |
-| Core schemas, reports, naming, package checks | Host-independent automated tests | Maintained on `main` |
-| Maya 2026 | Prior local static-prop workflow evidence | Implemented; fresh public-release host validation pending |
-| Blender 5.1.2 | Prior local background and workbench evidence | Implemented; manifest minimum is 4.2, but 4.2–5.0 are not currently verified |
-| Unreal Engine 5.6 | Prior local Gate/import/material evidence | Implemented; fresh clean-project and visual validation pending |
-| Other Maya, Blender, or Unreal versions | No current evidence | Unverified |
-| Skeletal mesh and animation | Partial research/code paths only | Experimental; not a supported release workflow |
-| 3ds Max and standalone desktop app | No implementation claim | Out of scope |
-
-“Prior local evidence” means those hosts were exercised during development. It does not mean every current commit has been rerun in a clean host environment. Host-dependent items remain unverified for the first public release until that rerun is completed.
+Each package carries the exchange asset, textures, a project preset snapshot, an export report, and material binding records for review.
 
 ## Stability boundary
 
@@ -83,97 +151,27 @@ scripts/                     Installation, launch, import, and validation helper
 tests/                       Host-independent regression and contract tests
 ```
 
-## Installation
+## Inspect mesh components in Maya
 
-Clone the repository into a path you control. Python 3.9 or newer is recommended for offline development and tests. Maya, Blender, and Unreal provide their own Python runtimes for host integration.
+Select the asset root and choose **检查资产** in the docked workbench. Click a zero-area face or zero-length edge issue to select the reported faces or edges and show their markers. Choose **转为顶点** to inspect the directly affected vertices, or **扩选一圈** for their neighbors. After making a correction, use **复检当前网格** to recheck that mesh. Export still checks the full asset.
 
-### Offline development environment
+## Review assets in the Unreal Content Browser
 
-Windows PowerShell:
+Select static meshes, textures or a folder. Open **DCC AssetForge 资产体检** from the context menu and scan the selection. Pick an asset on the left to inspect its issues on the right. Double-click an issue or use its locate button to select the object in the Content Browser.
 
-```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
-```
+For a repairable texture, choose **预览修复影响** to review the current settings, proposed changes and affected references. **确认修改并复扫** saves the approved texture changes and checks the current asset again. After a revised delivery, use **复验当前资产** to compare results. Open **批次记录** to return to a batch or **返修单** to read the current round's HTML work order. Each round is retained under the project's `Saved/AssetForge/Reviews`.
 
-Pillow is a development dependency and an optional runtime helper for flattening Maya playblast alpha. DCC and Unreal Python APIs are supplied by their host applications and are not installed from this repository.
+## Opaque PBR and studio parents
 
-### Maya
+Select `Props_Opaque_PBR` for opaque static props. Each slot requires an sRGB base color, a linear tangent-space normal and a linear ORM texture (red occlusion, green roughness, blue metallic). Its Opaque / Default Lit parent uses three texture samples.
 
-Run the following from Maya's Python Script Editor after replacing the two placeholders:
+To use a studio parent, copy the profile under a new name in `config/material_profiles.json`. Set `master_material` to the project's Unreal asset path and `allow_external_master_material` to `true`. Configure shader parameter names in `texture_rules` and optional feature-specific parents in `material_variants`. A declared variant takes precedence over the profile parent. Install the studio materials in the target project. The UE gate uses the shipped profile snapshot and checks the planned texture parameters against the real project parent before import.
 
-```python
-repo_root = r"<REPOSITORY_ROOT>"
-bootstrap_path = repo_root + r"\scripts\maya_launch_asset_forge.py"
-scope = {"ASSET_FORGE_REPO_ROOT": repo_root, "ASSET_FORGE_BOOTSTRAP_PATH": bootstrap_path}
-exec(compile(open(bootstrap_path, "rb").read(), bootstrap_path, "exec"), scope)
-scope["bootstrap"](repo_root=repo_root, open_ui=True)
-```
-
-To add the optional shelf button, run the same bootstrap and then call:
-
-```python
-scope["install_ui_shelf_button"](repo_root=repo_root)
-```
-
-### Blender
-
-The installer accepts an explicit add-on directory on any platform. Its automatic default currently targets the Windows Blender user directory.
-
-```powershell
-py -3 scripts\blender_install_asset_forge_extension.py `
-  --repo-root . `
-  --blender-version 5.1
-```
-
-Then enable **DCC AssetForge** in Blender Preferences and open the sidebar in the 3D View. For a non-Windows or portable Blender install, pass `--user-addons-dir <PATH>`.
-
-This `0.1.0` workflow is a direct/manual add-on install. It is not a claim that the package is eligible for Blender's official Extensions Platform, which currently requires add-ons submitted there to use GPL-3.0-or-later.
-
-### Unreal Engine
-
-Close Unreal Editor before installing or rebuilding the C++ editor module. Start with a dry run:
-
-```powershell
-py -3 scripts\unreal_plugin_install.py "<PROJECT.uproject>" --dry-run
-```
-
-If the plan points only to the intended project, run the installer without `--dry-run`, build the project’s Editor target with its licensed Unreal Engine installation, then restart the editor. The repository does not include or redistribute Unreal Engine code or binaries.
-
-## Minimal offline example
-
-The sample generator creates a small redacted static-prop package without opening a DCC or Unreal Editor:
-
-```powershell
-py -3 -c "from asset_forge.shared.sample_static_prop_package import create_offline_static_prop_package; print(create_offline_static_prop_package('.tmp/public-sample'))"
-```
-
-Inspect the generated manifest and reports under `.tmp/public-sample`. This proves the package contract only; it does not prove a Maya/Blender export or Unreal import.
-
-The example project preset is [config/project_settings.example.json](config/project_settings.example.json).
-
-## Uninstallation
-
-- **Offline checkout:** remove the virtual environment and the cloned repository when no longer needed. Generated reports and exported packages live outside the source tree unless you explicitly place them under it.
-- **Maya:** remove the `assetForgeMayaWorkbenchButton` shelf button, remove any custom module entry you created, and restart Maya. The bootstrap does not copy Autodesk files.
-- **Blender:** disable the add-on, then remove the `asset_forge_extension` folder from the user add-ons directory used during installation.
-- **Unreal:** disable `AssetForge` in the `.uproject`, close the editor, remove `<PROJECT>/Plugins/AssetForge`, and regenerate/rebuild project files if required. Never remove the entire project `Plugins` directory.
-
-Automatic uninstall is not provided in `0.1.0`; the paths above are intentionally explicit.
-
-## Troubleshooting
-
-- **Maya loads an older checkout:** use the bootstrap snippet above; it purges known DCC AssetForge modules and prepends the selected repository path.
-- **Blender add-on is missing:** verify the `--user-addons-dir` and enable the add-on in Preferences. The internal extension ID remains `asset_forge` for compatibility.
-- **UE plugin does not load:** confirm the editor is closed during the build, the plugin is under the target project, and the project’s Editor target compiled successfully.
-- **No package appears in UE Gate:** verify the selected folder contains the generated manifest, not only an FBX.
-- **Materials look wrong:** read the material evidence and slot/texture reports, then inspect the real graph and viewport. JSON readback alone is not visual acceptance.
-- **Tests fail on Pillow:** install `requirements-dev.txt` in the Python environment running the tests.
+For a coated cover, add `"material_variants": {"coating": "/Game/Studio/Materials/M_Coating"}` and `"material_slot_variants": [{"material": "M_Cover", "variant": "coating"}]` to the same project profile. An exact exported material name takes precedence over texture features. Assets without that slot use their usual parents. Duplicate routes, undeclared variants and external parents without permission block import.
 
 ## Compatibility identifiers
 
-The public brand is **DCC AssetForge**. The following internal identifiers remain unchanged in `0.1.x` because renaming them would break manifests, scripts, imports, or host registrations:
+The public brand is **DCC AssetForge**. The following internal identifiers remain unchanged in v0.2.0 because renaming them would break manifests, scripts, imports, or host registrations:
 
 - Python package and Blender extension ID: `asset_forge`
 - Unreal plugin/module and mount: `AssetForge`, `AssetForgeEditor`, `/AssetForge`
@@ -182,10 +180,34 @@ The public brand is **DCC AssetForge**. The following internal identifiers remai
 
 New user-facing titles, manifests, documentation, and release names use DCC AssetForge. Compatibility identifiers are not a second brand.
 
+Set the optional engine version in the project preset to have Unreal Gate check the major and minor engine version before import. [Example preset](config/project_settings.example.json)
+
 ## Contributing and security
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes and [SECURITY.md](SECURITY.md) before reporting a vulnerability. Do not attach proprietary scenes, textures, engine binaries, private project paths, or live credentials to issues.
 
 ## License and third-party software
 
+Developed by **卓雨 (Elviszhuoyu)**. [Author's website](https://work.zhuoyulabs.com)
+
 Original project code and documentation are licensed under the [MIT License](LICENSE). The DCC AssetForge project name and six original AF icons are excluded from MIT and use the separate [Brand Asset Policy](BRAND_ASSET_POLICY.md). Host applications and optional dependencies are not bundled and remain subject to their own licenses and terms. See [NOTICE.md](NOTICE.md) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+<details>
+<summary>Advanced: silent and IT deployment</summary>
+
+For project deployments from the release ZIP, use `Install_DCC_AssetForge_Unreal.ps1` with `-CheckOnly` to preview or `-Source` to select source installation. [Command example](安装指南.md)
+
+Run these development commands from the **source repository root** with the relevant host closed.
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+py -3 scripts\unreal_plugin_install.py "<PROJECT.uproject>" --dry-run
+py -3 scripts\blender_install_asset_forge_extension.py --repo-root . --blender-version 5.2
+py -3 -c "from asset_forge.shared.sample_static_prop_package import create_offline_static_prop_package; print(create_offline_static_prop_package('.tmp/public-sample'))"
+```
+
+Confirm the Unreal dry run, then remove `--dry-run` to install the source plugin. Compile the Editor target with the engine used by that project. The Blender development installation uses the checkout at runtime. For portable Blender, select the add-on directory with `--user-addons-dir`.
+
+</details>

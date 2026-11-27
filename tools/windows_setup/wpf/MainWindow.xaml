@@ -1,0 +1,371 @@
+<Window x:Class="AssetForge.Setup.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="DCC AssetForge 安装助手 v0.2.0" Icon="AssetForge.ico"
+        Width="660" Height="520" MinWidth="620" MinHeight="498"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResize"
+        Background="#141414" Foreground="#F0F0F0" FontFamily="Segoe UI, Microsoft YaHei UI"
+        FontSize="12.5" UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="HostPage" TargetType="{x:Type GroupBox}">
+                <Setter Property="Padding" Value="11"/>
+                <Setter Property="Background" Value="{StaticResource CardBrush}"/>
+                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type GroupBox}">
+                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}" CornerRadius="10">
+                                <ContentPresenter/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="ModePanel" TargetType="{x:Type GroupBox}">
+                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type GroupBox}"><ContentPresenter/></ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Grid Margin="22,13,22,12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Border Width="39" Height="39" CornerRadius="9" BorderBrush="{StaticResource LineBrush}"
+                    BorderThickness="1" Background="{StaticResource HoverBrush}">
+                <Image x:Name="HeaderBadge" Width="32" Height="32" HorizontalAlignment="Center"
+                       VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+            </Border>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+                <TextBlock Text="DCC AssetForge" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <Border CornerRadius="999" Background="{StaticResource HoverBrush}" BorderBrush="{StaticResource LineBrush}"
+                        BorderThickness="1" Padding="7,2" Margin="9,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="v0.2.0" FontSize="11" Foreground="{StaticResource SecondaryBrush}"/>
+                </Border>
+            </StackPanel>
+            <Button Grid.Column="2" x:Name="GuideButton" Content="安装指南" Click="ActionClick" Height="30"
+                    Style="{StaticResource GhostButton}" VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="GuideButton"/>
+        </Grid>
+
+        <Border Grid.Row="1" Margin="0,11,0,0" Background="#101010" BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="1" CornerRadius="8" Padding="3">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <RadioButton x:Name="TabUnreal" Content="Unreal Engine" GroupName="HostPage" IsChecked="True"
+                             Style="{StaticResource SegmentRadio}" Checked="SelectionChanged"
+                             AutomationProperties.AutomationId="TabUnreal"/>
+                <RadioButton x:Name="TabMaya" Grid.Column="1" Content="Maya" GroupName="HostPage" Margin="3,0,0,0"
+                             Style="{StaticResource SegmentRadio}" Checked="SelectionChanged"
+                             AutomationProperties.AutomationId="TabMaya"/>
+                <RadioButton x:Name="TabBlender" Grid.Column="2" Content="Blender (Beta)" GroupName="HostPage" Margin="3,0,0,0"
+                             Style="{StaticResource SegmentRadio}" Checked="SelectionChanged"
+                             AutomationProperties.AutomationId="TabBlender"/>
+            </Grid>
+        </Border>
+
+        <!-- Hidden panels remain measured and arranged so switching does not rebuild or relayout the window. -->
+        <Grid Grid.Row="2" Margin="0,9,0,10">
+            <GroupBox x:Name="UePage" AutomationProperties.AutomationId="UePage" AutomationProperties.Name="Unreal Engine 安装">
+                <GroupBox.Style>
+                    <Style TargetType="{x:Type GroupBox}" BasedOn="{StaticResource HostPage}">
+                        <Setter Property="Visibility" Value="Hidden"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=TabUnreal}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </GroupBox.Style>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid Margin="0,0,0,7">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <RadioButton x:Name="ModeEngine" GroupName="UnrealMode" IsChecked="True"
+                                     Style="{StaticResource ModeRadio}" Checked="SelectionChanged" Margin="0,0,4,0"
+                                     AutomationProperties.AutomationId="ModeEngine"
+                                     AutomationProperties.Name="安装到引擎（推荐）">
+                            <StackPanel>
+                                <TextBlock Text="安装到引擎（推荐）" FontWeight="SemiBold" FontSize="13"/>
+                                <TextBlock Text="一次安装，同版本所有工程可直接启用" FontSize="11.5"
+                                           Foreground="{StaticResource SecondaryBrush}" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </RadioButton>
+                        <RadioButton x:Name="ModeProject" Grid.Column="1" GroupName="UnrealMode"
+                                     Style="{StaticResource ModeRadio}" Checked="SelectionChanged" Margin="4,0,0,0"
+                                     AutomationProperties.AutomationId="ModeProject"
+                                     AutomationProperties.Name="安装到单个工程">
+                            <StackPanel>
+                                <TextBlock Text="安装到单个工程" FontWeight="SemiBold" FontSize="13"/>
+                                <TextBlock Text="仅写入指定 .uproject，适合项目隔离" FontSize="11.5"
+                                           Foreground="{StaticResource SecondaryBrush}" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </RadioButton>
+                    </Grid>
+
+                    <Grid Grid.Row="1">
+                        <GroupBox x:Name="UeEngineModePanel" AutomationProperties.AutomationId="UeEngineModePanel"
+                                  AutomationProperties.Name="引擎级安装">
+                            <GroupBox.Style>
+                                <Style TargetType="{x:Type GroupBox}" BasedOn="{StaticResource ModePanel}">
+                                    <Setter Property="Visibility" Value="Hidden"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsChecked, ElementName=ModeEngine}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </GroupBox.Style>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Grid Margin="0,0,0,5">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="本机引擎" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="RefreshButton" Content="刷新检测" Height="27"
+                                            Click="ActionClick" Style="{StaticResource GhostButton}" Margin="0,0,6,0"
+                                            AutomationProperties.AutomationId="RefreshButton"/>
+                                    <Button Grid.Column="2" x:Name="FindEngineButton" Content="查找引擎文件夹…" Height="27"
+                                            Click="ActionClick" Style="{StaticResource GhostButton}"
+                                            AutomationProperties.AutomationId="FindEngineButton"/>
+                                </Grid>
+                                <ScrollViewer Grid.Row="1" Style="{StaticResource DarkScrollViewer}"
+                                              AutomationProperties.Name="已检测到的 Unreal 引擎">
+                                    <ItemsControl x:Name="EngineList" AutomationProperties.AutomationId="EngineList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <CheckBox x:Name="EngineChoice" Margin="0,0,0,4" Style="{StaticResource EngineRowCheck}"
+                                                          IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          IsEnabled="{Binding IsEnabled}" Click="SelectionChanged"
+                                                          AutomationProperties.AutomationId="EngineChoice"
+                                                          AutomationProperties.Name="{Binding Name}">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
+                                                        </Grid.RowDefinitions>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding Name}" FontSize="12.5" FontWeight="SemiBold"
+                                                                       VerticalAlignment="Center"/>
+                                                            <Border CornerRadius="999" Padding="6,1" Margin="7,0,0,0" VerticalAlignment="Center"
+                                                                    Background="{StaticResource HoverBrush}" BorderBrush="{StaticResource SelectionLineBrush}"
+                                                                    BorderThickness="1">
+                                                                <TextBlock Text="{Binding Badge}" FontSize="10.5" Foreground="{StaticResource TextBrush}"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <TextBlock Grid.Row="1" Margin="0,1,0,0" Text="{Binding Path}"
+                                                                   Style="{StaticResource PathText}" FontSize="11"/>
+                                                    </Grid>
+                                                </CheckBox>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                                <TextBlock Grid.Row="1" Margin="0,7,0,0" Text="检测结果将显示在这里，也可手动查找引擎。"
+                                           Foreground="{StaticResource SecondaryBrush}" IsHitTestVisible="False">
+                                    <TextBlock.Style>
+                                        <Style TargetType="{x:Type TextBlock}">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasItems, ElementName=EngineList}" Value="False">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </GroupBox>
+
+                        <GroupBox x:Name="UeProjectModePanel" AutomationProperties.AutomationId="UeProjectModePanel"
+                                  AutomationProperties.Name="工程级安装">
+                            <GroupBox.Style>
+                                <Style TargetType="{x:Type GroupBox}" BasedOn="{StaticResource ModePanel}">
+                                    <Setter Property="Visibility" Value="Hidden"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsChecked, ElementName=ModeProject}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </GroupBox.Style>
+                            <StackPanel>
+                                <TextBlock Text="选择工程" FontSize="13" FontWeight="SemiBold" Margin="0,2,0,7"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="ProjectCombo" Style="{StaticResource DarkCombo}" SelectionChanged="SelectionChanged"
+                                              AutomationProperties.AutomationId="ProjectCombo" AutomationProperties.Name="选择 Unreal 工程"/>
+                                    <Button Grid.Column="1" x:Name="FindProjectButton" Content="浏览 .uproject…" Height="34"
+                                            Margin="7,0,0,0" Click="ActionClick" Style="{StaticResource GhostButton}"
+                                            AutomationProperties.AutomationId="FindProjectButton"/>
+                                </Grid>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button x:Name="FindProjectEngineButton" Content="选择对应引擎…" Height="27"
+                                            Click="ActionClick" Style="{StaticResource GhostButton}"
+                                            AutomationProperties.AutomationId="FindProjectEngineButton"/>
+                                    <CheckBox x:Name="SourceCheck" Content="源码安装" Margin="7,0,0,0"
+                                              Style="{StaticResource InlineCheck}" Click="SelectionChanged"
+                                              AutomationProperties.AutomationId="SourceCheck"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                    </Grid>
+
+                    <Border Grid.Row="2" Margin="0,5,0,0" Style="{StaticResource TargetSlot}">
+                        <StackPanel>
+                            <TextBlock Text="目标安装目录" FontSize="10.5" Foreground="{StaticResource SecondaryBrush}"/>
+                            <TextBlock x:Name="UeTargetText" Text="请选择安装位置" Margin="0,1,0,0"
+                                       Style="{StaticResource PathText}" AutomationProperties.AutomationId="UeTargetText"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </GroupBox>
+
+            <GroupBox x:Name="MayaPage" AutomationProperties.AutomationId="MayaPage" AutomationProperties.Name="Maya 安装">
+                <GroupBox.Style>
+                    <Style TargetType="{x:Type GroupBox}" BasedOn="{StaticResource HostPage}">
+                        <Setter Property="Visibility" Value="Hidden"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=TabMaya}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </GroupBox.Style>
+                <StackPanel Margin="1,1,1,0">
+                    <TextBlock Text="Maya 2022–2026" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <TextBlock Text="安装器会打开已选的 Maya 更新工具架。请先保存工作，并关闭正在使用的 Maya。"
+                               Foreground="{StaticResource SecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,15"/>
+                    <TextBlock Text="选择版本" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,7"/>
+                    <Grid Margin="0,0,0,11">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="MayaCombo" Style="{StaticResource DarkCombo}" SelectionChanged="SelectionChanged"
+                                  AutomationProperties.AutomationId="MayaCombo" AutomationProperties.Name="选择 Maya 版本"/>
+                        <Button Grid.Column="1" x:Name="FindMayaButton" Content="查找 Maya…" Height="34" Margin="7,0,0,0"
+                                Click="ActionClick" Style="{StaticResource GhostButton}" AutomationProperties.AutomationId="FindMayaButton"/>
+                    </Grid>
+                    <Border Style="{StaticResource TargetSlot}">
+                        <StackPanel>
+                            <TextBlock Text="目标安装目录" FontSize="10.5" Foreground="{StaticResource SecondaryBrush}"/>
+                            <TextBlock x:Name="MayaTargetText" Text="请选择 Maya 版本" Margin="0,1,0,0"
+                                       Style="{StaticResource PathText}" AutomationProperties.AutomationId="MayaTargetText"/>
+                        </StackPanel>
+                    </Border>
+                    <Button x:Name="MayaFallbackButton" Content="定位拖放安装文件" Height="28"
+                            Margin="0,9,0,0" HorizontalAlignment="Left" Click="ActionClick"
+                            Style="{StaticResource GhostButton}" AutomationProperties.AutomationId="MayaFallbackButton"/>
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox x:Name="BlenderPage" AutomationProperties.AutomationId="BlenderPage" AutomationProperties.Name="Blender Beta 安装">
+                <GroupBox.Style>
+                    <Style TargetType="{x:Type GroupBox}" BasedOn="{StaticResource HostPage}">
+                        <Setter Property="Visibility" Value="Hidden"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=TabBlender}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </GroupBox.Style>
+                <StackPanel Margin="1,1,1,0">
+                    <TextBlock Text="Blender 4.2 LTS–5.x" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <TextBlock Text="基础导出支持（Beta，已在 Blender 5.2.1 LTS 冒烟验证）。安装或卸载前请关闭 Blender。"
+                               Foreground="{StaticResource SecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,15"/>
+                    <TextBlock Text="选择版本" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,7"/>
+                    <Grid Margin="0,0,0,11">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="BlenderCombo" Style="{StaticResource DarkCombo}" SelectionChanged="SelectionChanged"
+                                  AutomationProperties.AutomationId="BlenderCombo" AutomationProperties.Name="选择 Blender 版本"/>
+                        <Button Grid.Column="1" x:Name="FindBlenderButton" Content="查找 Blender…" Height="34" Margin="7,0,0,0"
+                                Click="ActionClick" Style="{StaticResource GhostButton}" AutomationProperties.AutomationId="FindBlenderButton"/>
+                    </Grid>
+                    <Border Style="{StaticResource TargetSlot}">
+                        <StackPanel>
+                            <TextBlock Text="目标安装目录" FontSize="10.5" Foreground="{StaticResource SecondaryBrush}"/>
+                            <TextBlock x:Name="BlenderTargetText" Text="请选择 Blender 版本" Margin="0,1,0,0"
+                                       Style="{StaticResource PathText}" AutomationProperties.AutomationId="BlenderTargetText"/>
+                        </StackPanel>
+                    </Border>
+                    <Button x:Name="BlenderFallbackButton" Content="定位扩展 ZIP" Height="28"
+                            Margin="0,9,0,0" HorizontalAlignment="Left" Click="ActionClick"
+                            Style="{StaticResource GhostButton}" AutomationProperties.AutomationId="BlenderFallbackButton"/>
+                </StackPanel>
+            </GroupBox>
+        </Grid>
+
+        <Border Grid.Row="3" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="0,9,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid VerticalAlignment="Center" Margin="1,0,12,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Ellipse x:Name="StatusDot" Width="6" Height="6" Fill="{StaticResource SecondaryBrush}"
+                             Margin="0,0,7,0" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" x:Name="StatusText" Text="正在检测本机软件…" FontSize="12"
+                               VerticalAlignment="Center" Style="{StaticResource PathText}"
+                               AutomationProperties.AutomationId="StatusText"/>
+                </Grid>
+                <Button Grid.Column="1" x:Name="UninstallButton" Content="卸载" Width="71" Margin="0,0,7,0"
+                        IsEnabled="False" Click="ActionClick" Style="{StaticResource GhostButton}"
+                        AutomationProperties.AutomationId="UninstallButton"/>
+                <Button Grid.Column="2" x:Name="InstallButton" Content="安装" Width="82" IsEnabled="False"
+                        Click="ActionClick" Style="{StaticResource PrimaryButton}" AutomationProperties.AutomationId="InstallButton"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
+

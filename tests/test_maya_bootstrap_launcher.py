@@ -3,10 +3,12 @@ from __future__ import absolute_import
 import importlib.util
 import json
 import os
+import shutil
 import sys
 import tempfile
 import types
 import unittest
+from unittest import mock
 
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
@@ -228,12 +230,55 @@ class MayaBootstrapLauncherTest(unittest.TestCase):
         self.assertEqual(report["status"], "success")
         self.assertEqual(report["button"], launcher.UI_SHELF_BUTTON)
         button = fake_cmds.buttons[launcher.UI_SHELF_BUTTON]
-        self.assertIn("IconMayaShelf.png", button["image"])
+        self.assertTrue(button["image"].endswith("/Workbench/brand/af_shelf.png"))
         self.assertEqual(button["image"], button["image1"])
         self.assertEqual(button["label"], "DCC AssetForge")
         self.assertEqual(button["imageOverlayLabel"], "")
         self.assertIn("maya_launch_asset_forge.py", button["command"])
-        self.assertIn("bootstrap(repo_root=ASSET_FORGE_REPO_ROOT, open_ui=True)", button["command"])
+        self.assertEqual(button["sourceType"], "python")
+
+    def test_shelf_click_in_maya_main_opens_checkout_once_and_preserves_globals(self):
+        launcher = load_launcher()
+        namespace = {"__name__": "__main__", "__file__": "maya.exe", "__builtins__": __builtins__,
+                     "ASSET_FORGE_REPO_ROOT": "other-checkout", "bootstrap": object()}
+        original = namespace.copy()
+        with tempfile.TemporaryDirectory(prefix="Artist's Checkout ") as repo:
+            os.makedirs(os.path.join(repo, "scripts"))
+            shutil.copyfile(LAUNCHER_PATH, os.path.join(repo, "scripts", "maya_launch_asset_forge.py"))
+            entry = launcher._entry_script_path(repo)
+            os.makedirs(os.path.dirname(entry))
+            with open(entry, "w", encoding="utf-8") as stream:
+                stream.write("shows = []\ndef reload_and_show():\n    shows.append(__file__)\n")
+            with mock.patch.dict(sys.modules), mock.patch.object(sys, "path", sys.path[:]), \
+                    mock.patch.object(sys, "argv", ["maya", "-noAutoloadPlugins"]):
+                exec(launcher._ui_shelf_command(repo), namespace)
+                self.assertEqual(sys.modules[launcher.MODULE_NAME].shows, [entry])
+        self.assertEqual(namespace, original)
+
+    def test_saved_workspace_restores_existing_control_without_shelf_or_pythonpath(self):
+        from asset_forge.maya.ui import _workspace_restore_script
+        with tempfile.TemporaryDirectory(prefix="美术 A's 工作区 ") as repo:
+            scripts = os.path.join(repo, "scripts")
+            maya_package = os.path.join(repo, "asset_forge", "maya")
+            os.makedirs(scripts)
+            os.makedirs(maya_package)
+            shutil.copyfile(LAUNCHER_PATH, os.path.join(scripts, "maya_launch_asset_forge.py"))
+            for folder in (os.path.dirname(maya_package), maya_package):
+                open(os.path.join(folder, "__init__.py"), "w").close()
+            with open(os.path.join(maya_package, "ui.py"), "w", encoding="utf-8") as stream:
+                stream.write("calls = []\ndef restore_workspace():\n    calls.append('restore')\n")
+            command = _workspace_restore_script(repo)
+            self.assertTrue(command.isascii())
+            self.assertNotIn(repo, command)
+            with mock.patch.dict(sys.modules), mock.patch.object(sys, "path", sys.path[:]):
+                for name in list(sys.modules):
+                    if name == "asset_forge" or name.startswith("asset_forge."):
+                        del sys.modules[name]
+                namespace = {"__builtins__": __builtins__}
+                exec(command, namespace)
+                self.assertEqual(sys.modules["asset_forge.maya.ui"].calls, ["restore"])
+                self.assertEqual(set(namespace), {"__builtins__"})
+                self.assertEqual(sys.path.count(repo), 1)
 
     def test_load_bridge_module_replaces_stale_cached_bridge(self):
         launcher = load_launcher()

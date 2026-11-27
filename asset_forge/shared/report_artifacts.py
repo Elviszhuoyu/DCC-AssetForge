@@ -2,7 +2,7 @@
 
 from __future__ import absolute_import
 
-import datetime
+import time
 import os
 
 from asset_forge.shared.path_utils import normalize_path
@@ -22,7 +22,7 @@ REPORT_FILE_NAMES = {
 
 
 def utc_now():
-    return datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def report_artifacts_dir(base_dir):

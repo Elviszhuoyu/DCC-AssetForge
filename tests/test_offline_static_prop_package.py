@@ -43,7 +43,7 @@ class OfflineStaticPropPackageTest(unittest.TestCase):
         self.assertEqual(report["asset_name"], "SM_AF_Offline_Crate")
         self.assertEqual(report["dry_run"]["status"], "skipped")
         self.assertIn("texture_quality_validation", report["package_acceptance"])
-        self.assertIn("在真实 UE 5.6", report["next_action"])
+        self.assertIn("在目标 UE 工程中使用 --run-import", report["next_action"])
 
     def test_auto_materials_records_before_after_without_faking_ue_success(self):
         package = create_offline_static_prop_package(self.temp_dir)
@@ -54,7 +54,7 @@ class OfflineStaticPropPackageTest(unittest.TestCase):
         self.assertEqual(report["auto_materials"]["bootstrap_report"]["status"], "failed")
         self.assertEqual(report["auto_materials"]["bootstrap_report"]["material_network_status"], "generated_pbr")
         self.assertNotEqual(report["auto_materials"]["bootstrap_report"]["material_network_status"], "placeholder")
-        self.assertIn("真实 UE 5.6", report["next_action"])
+        self.assertIn("目标 UE 工程", report["next_action"])
         self.assertIn("before", report["auto_materials"])
         self.assertIn("after", report["auto_materials"])
 

@@ -15,6 +15,8 @@ class UnrealPluginContentBootstrap(object):
 
     def __init__(self, unreal_module=None, descriptor_path=None):
         self.unreal = unreal_module or get_unreal()
+        self._plugin_api = getattr(self.unreal, "PluginBlueprintLibrary", None)
+        self._registered_descriptor = self._registered_descriptor_path()
         self.descriptor_path = descriptor_path or self._default_descriptor_path()
 
     def validate(self, plan=None):
@@ -38,27 +40,39 @@ class UnrealPluginContentBootstrap(object):
             "missing_compatibility_assets": [item["path"] for item in checks if item["id"] == "asset_exists" and item["status"] == "info"],
         }
 
-    def _default_descriptor_path(self):
-        active_descriptor = self._active_installed_descriptor_path()
-        if active_descriptor:
-            return active_descriptor
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        return os.path.join(repo_root, "Plugins", "AssetForge", "AssetForge.uplugin")
+    def _registered_descriptor_path(self):
+        lookup = getattr(self._plugin_api, "get_plugin_descriptor_file_path", None)
+        path = lookup("AssetForge") if lookup else None
+        if not isinstance(path, str) or not path:
+            return ""
+        return self._absolute_unreal_path(path)
 
-    def _active_installed_descriptor_path(self):
-        if self.unreal is None:
-            return ""
+    def _absolute_unreal_path(self, path):
+        if not os.path.isabs(path):
+            convert = getattr(getattr(self.unreal, "Paths", None), "convert_relative_path_to_full", None)
+            if convert:
+                path = convert(path) or path
+        return os.path.abspath(path)
+
+    def _default_descriptor_path(self):
+        if self._registered_descriptor:
+            return self._registered_descriptor
+        python_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        content_root = os.path.dirname(python_root)
+        if os.path.basename(python_root).lower() == "python" and os.path.basename(content_root).lower() == "content":
+            plugin_root = os.path.dirname(content_root)
+            return os.path.join(plugin_root, "AssetForge.uplugin")
+
         paths_api = getattr(self.unreal, "Paths", None)
-        if paths_api is None:
-            return ""
         for root in self._active_plugin_roots(paths_api, lowercase=False):
-            candidate = os.path.join(root, "AssetForge", "AssetForge.uplugin")
-            if os.path.exists(candidate):
-                return candidate
-        return ""
+            for subdirectory in ("AssetForge", "Marketplace/AssetForge"):
+                candidate = os.path.join(root, subdirectory, "AssetForge.uplugin")
+                if os.path.isfile(candidate):
+                    return candidate
+        return os.path.join(python_root, "Plugins", "AssetForge", "AssetForge.uplugin")
 
     def _descriptor_check(self):
-        if not os.path.exists(self.descriptor_path):
+        if not os.path.isfile(self.descriptor_path):
             return self._check("plugin_descriptor", "error", self.descriptor_path, "缺少 AssetForge.uplugin")
 
         with io.open(self.descriptor_path, "r", encoding="utf-8") as stream:
@@ -72,9 +86,19 @@ class UnrealPluginContentBootstrap(object):
 
     def _directory_checks(self, plan):
         checks = []
-        content_root = os.path.dirname(self.descriptor_path)
-        for directory in ["Content", "Content/Materials", "Content/MaterialInstances", "Content/MaterialFunctions", "Content/ParameterCollections"]:
-            path = os.path.join(content_root, directory)
+        plugin_root = os.path.dirname(self.descriptor_path)
+        mount = plan.get("content_mount", plan.get("root", "")).rstrip("/")
+        directories = {"Content"}
+        if mount:
+            prefix = mount + "/"
+            # Texture presence keeps its existing asset-level warning policy.
+            for entry in self._planned_assets(plan, include_textures=False):
+                if entry["required"] and entry["path"].startswith(prefix):
+                    directory = entry["path"][len(prefix):].rpartition("/")[0]
+                    if directory:
+                        directories.add("Content/" + directory)
+        for directory in sorted(directories):
+            path = os.path.join(plugin_root, directory)
             status = "pass" if os.path.isdir(path) else "error"
             message = "插件内容目录存在" if status == "pass" else "缺少插件内容目录"
             checks.append(self._check("plugin_directory", status, path, message))
@@ -84,6 +108,16 @@ class UnrealPluginContentBootstrap(object):
         content_mount = plan.get("content_mount", plan.get("root", ""))
         if self.unreal is None:
             return self._check("content_mount", "warning", content_mount, "未在 Unreal Python 环境中运行，跳过插件挂载检查")
+
+        if not os.path.isfile(self.descriptor_path):
+            return self._check("content_mount", "warning", content_mount, "找不到本次检查的插件描述文件，无法确认内容挂载")
+
+        is_mounted = getattr(self._plugin_api, "is_plugin_mounted", None)
+        if is_mounted and self._registered_descriptor and (
+                os.path.normcase(os.path.abspath(self.descriptor_path)) == os.path.normcase(self._registered_descriptor)):
+            if is_mounted("AssetForge"):
+                return self._check("content_mount", "pass", content_mount, "当前 UE 已挂载 AssetForge 内容")
+            return self._check("content_mount", "warning", content_mount, "当前 UE 尚未挂载 AssetForge 内容，请启用插件后重开工程")
 
         paths_api = getattr(self.unreal, "Paths", None)
         if paths_api is None:
@@ -116,19 +150,25 @@ class UnrealPluginContentBootstrap(object):
             except Exception:
                 path = ""
             if path:
-                normalized = os.path.abspath(path).replace("\\", "/").rstrip("/") + "/"
+                normalized = self._absolute_unreal_path(path).replace("\\", "/").rstrip("/") + "/"
                 roots.append(normalized.lower() if lowercase else normalized)
         return roots
 
-    def _asset_checks(self, plan, mount_check=None):
+    def _planned_assets(self, plan, include_textures=True):
         asset_entries = []
-        asset_entries.extend({"path": texture.get("path", ""), "required": texture.get("required_for_import", True)} for texture in plan.get("placeholder_textures", []))
+        if include_textures:
+            asset_entries.extend(
+                {"path": texture.get("path", ""), "required": texture.get("required_for_import", True)}
+                for texture in plan.get("placeholder_textures", [])
+            )
         asset_entries.extend({"path": material.get("path", ""), "required": material.get("required_for_import", True)} for material in plan.get("materials", []))
         asset_entries.extend({"path": material_instance.get("path", ""), "required": True} for material_instance in plan.get("material_instances", []))
         asset_entries.extend({"path": function.get("path", ""), "required": True} for function in plan.get("functions", []))
         asset_entries.extend({"path": collection.get("path", ""), "required": True} for collection in plan.get("parameter_collections", []))
-        asset_entries = [entry for entry in asset_entries if entry.get("path")]
+        return [entry for entry in asset_entries if entry["path"]]
 
+    def _asset_checks(self, plan, mount_check=None):
+        asset_entries = self._planned_assets(plan)
         if self.unreal is None:
             return [
                 self._check(
@@ -151,20 +191,45 @@ class UnrealPluginContentBootstrap(object):
                 for entry in asset_entries
             ]
 
-        return [self._asset_exists_check(entry["path"], required=entry.get("required", True)) for entry in asset_entries]
-
-    def _asset_exists_check(self, asset_path, required=True):
         library = getattr(self.unreal, "EditorAssetLibrary", None)
-        exists = False
-        self._scan_asset_registry_path(asset_path)
-        if library and hasattr(library, "does_asset_exist"):
-            exists = any(bool(library.does_asset_exist(candidate)) for candidate in self._asset_path_candidates(asset_path))
-        elif library and hasattr(library, "load_asset"):
-            exists = any(bool(library.load_asset(candidate)) for candidate in self._asset_path_candidates(asset_path))
+        does_exist = getattr(library, "does_asset_exist", None)
+        load_asset = getattr(library, "load_asset", None)
+        existing = set()
+        if does_exist:
+            existing = {entry["path"] for entry in asset_entries
+                        if any(does_exist(path) for path in self._asset_path_candidates(entry["path"]))}
 
-        status = "pass" if exists else ("warning" if required else "info")
-        message = "插件资产存在" if exists else ("缺少插件资产" if required else "缺少 legacy 兼容资产，不阻断 HardSurface 主线")
-        return self._check("asset_exists", status, asset_path, message)
+        mount = plan.get("content_mount", plan.get("root", "")).rstrip("/")
+        content = os.path.join(os.path.dirname(self.descriptor_path), "Content")
+        known_mount = bool(mount and getattr(self.unreal, "Paths", None) and os.path.isdir(content))
+        pending = set()
+        if does_exist or load_asset:
+            for entry in asset_entries:
+                asset_path = entry["path"]
+                if asset_path in existing:
+                    continue
+                if known_mount and asset_path.startswith(mount + "/"):
+                    relative = asset_path[len(mount) + 1:].split(".", 1)[0]
+                    if not os.path.isfile(os.path.join(content, relative + ".uasset")):
+                        continue
+                pending.add(asset_path)
+        if pending:
+            folders = {path.rpartition("/")[0] or path for path in pending}
+            self._scan_asset_registry_paths(sorted(folders))
+            probe = does_exist or load_asset
+            existing.update(path for path in pending
+                            if any(probe(candidate) for candidate in self._asset_path_candidates(path)))
+
+        checks = []
+        for entry in asset_entries:
+            asset_path = entry["path"]
+            if asset_path in existing:
+                checks.append(self._check("asset_exists", "pass", asset_path, "插件资产存在"))
+            elif entry.get("required", True):
+                checks.append(self._check("asset_exists", "warning", asset_path, "缺少插件资产"))
+            else:
+                checks.append(self._check("asset_exists", "info", asset_path, "缺少 legacy 兼容资产，不阻断 HardSurface 主线"))
+        return checks
 
     def _asset_path_candidates(self, asset_path):
         if not asset_path:
@@ -175,18 +240,15 @@ class UnrealPluginContentBootstrap(object):
             candidates.append("{0}.{1}".format(asset_path, leaf))
         return candidates
 
-    def _scan_asset_registry_path(self, asset_path):
-        if not asset_path:
-            return
+    def _scan_asset_registry_paths(self, folders):
         registry_helpers = getattr(self.unreal, "AssetRegistryHelpers", None)
         if registry_helpers is None or not hasattr(registry_helpers, "get_asset_registry"):
             return
-        folder = asset_path.rsplit("/", 1)[0] if "/" in asset_path else asset_path
         try:
             registry = registry_helpers.get_asset_registry()
             if hasattr(registry, "scan_paths_synchronous"):
-                registry.scan_paths_synchronous([folder], True)
-            if hasattr(registry, "wait_for_completion"):
+                registry.scan_paths_synchronous(folders, True)
+            elif hasattr(registry, "wait_for_completion"):
                 registry.wait_for_completion()
         except Exception:
             return

@@ -9,6 +9,10 @@ public class AssetForgeEditor : ModuleRules
         PrivateDependencyModuleNames.AddRange(
             new string[]
             {
+                "ApplicationCore",
+                "AppFramework",
+                "AssetRegistry",
+                "ContentBrowser",
                 "Core",
                 "CoreUObject",
                 "DesktopPlatform",
@@ -18,6 +22,7 @@ public class AssetForgeEditor : ModuleRules
                 "JsonUtilities",
                 "Projects",
                 "PythonScriptPlugin",
+                "RHI",
                 "Slate",
                 "SlateCore",
                 "ToolMenus",

@@ -17,7 +17,7 @@ class MayaModulePackageTest(unittest.TestCase):
     def test_descriptor_maps_repo_root_and_maya_package_dirs(self):
         lines = read_maya_module_descriptor()
 
-        self.assertIn("+ AssetForge 0.1 ../..", lines)
+        self.assertIn("+ AssetForge 0.2.0 ../..", lines)
         self.assertIn("scripts: integrations/maya/scripts", lines)
         self.assertIn("icons: integrations/maya/icons", lines)
         self.assertIn("plug-ins: integrations/maya/plug-ins", lines)
