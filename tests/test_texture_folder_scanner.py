@@ -50,12 +50,13 @@ class TextureFolderScannerTest(unittest.TestCase):
     def test_optional_textures_are_not_required(self):
         self._write_texture("SM_Crate_01_BaseColor.png")
         self._write_texture("SM_Crate_01_Normal.png")
+        self._write_texture("SM_Crate_01_ARM.png")
 
         result = TextureFolderScanner().scan(self.temp_dir, "SM_Crate_01", self.profile)
         usages = [texture["usage"] for texture in result["textures"]]
 
         self.assertEqual(result["issues"], [])
-        self.assertEqual(usages, ["base_color", "normal"])
+        self.assertEqual(usages, ["base_color", "normal", "packed_arm"])
 
     def test_ignores_other_asset_textures_and_reports_unrecognized(self):
         self._write_texture("SM_Crate_01_BaseColor.png")
@@ -81,12 +82,13 @@ class TextureFolderScannerTest(unittest.TestCase):
     def test_matches_suffixes_case_insensitively(self):
         self._write_texture("sm_crate_01_basecolor.PNG")
         self._write_texture("sm_crate_01_normal.TGA")
+        self._write_texture("sm_crate_01_oRm.tga")
 
         result = TextureFolderScanner().scan(self.temp_dir, "SM_Crate_01", self.profile)
         usages = [texture["usage"] for texture in result["textures"]]
 
         self.assertEqual(result["issues"], [])
-        self.assertEqual(usages, ["base_color", "normal"])
+        self.assertEqual(usages, ["base_color", "normal", "packed_arm"])
 
     def test_reads_png_and_tga_dimensions_from_headers(self):
         self._write_png_header("SM_Crate_01_BaseColor.png", 128, 64)
@@ -131,6 +133,7 @@ class TextureFolderScannerTest(unittest.TestCase):
     def test_missing_t_prefix_warns_but_directory_can_still_be_used(self):
         self._write_texture("SM_Crate_01_BaseColor.png")
         self._write_texture("SM_Crate_01_Normal.png")
+        self._write_texture("SM_Crate_01_ARM.png")
 
         result = TextureFolderScanner().scan(self.temp_dir, "SM_Crate_01", self.profile)
 
@@ -138,7 +141,7 @@ class TextureFolderScannerTest(unittest.TestCase):
         self.assertEqual(result["directory_status"], "valid")
         self.assertTrue(result["can_use_directory"])
         self.assertEqual(result["texture_naming_validation"]["status"], "warning")
-        self.assertEqual(len(result["rename_suggestions"]), 2)
+        self.assertEqual(len(result["rename_suggestions"]), 3)
         self.assertFalse(result["rename_suggestions"][0]["will_modify_disk"])
         self.assertIn("是否添加 T_ 前缀", result["rename_suggestions"][0]["message"])
 

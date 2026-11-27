@@ -28,6 +28,7 @@ class FakeMaterialSlot(object):
 class FakeUvLayer(object):
     def __init__(self, name):
         self.name = name
+        self.uv = [(0.0, 0.0)] * 6
 
 
 class FakePolygon(object):

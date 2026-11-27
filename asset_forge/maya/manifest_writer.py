@@ -43,7 +43,7 @@ class MayaManifestWriter(object):
         static_mesh_import_policy=None,
     ):
         target_platform = validation_result.get("target_platform", TARGET_PLATFORM_HIGH_END_MOBILE)
-        return create_manifest(
+        manifest = create_manifest(
             scan_result.get("asset_name", ""),
             normalize_path(fbx_path),
             sanitize_unreal_package_path(target_path),
@@ -72,6 +72,9 @@ class MayaManifestWriter(object):
             material_profile=material_profile,
             material_profiles_snapshot_path=normalize_path(material_profiles_snapshot_path) if material_profiles_snapshot_path else "",
         )
+        if scan_result.get("asset_budgets"):
+            manifest["asset_budgets"] = dict(scan_result["asset_budgets"])
+        return manifest
 
     def write(self, manifest_path, manifest):
         parent = os.path.dirname(os.path.abspath(manifest_path))

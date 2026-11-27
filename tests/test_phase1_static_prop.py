@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import absolute_import
 
 import os
@@ -5,6 +6,7 @@ import shutil
 import tempfile
 import unittest
 
+from asset_forge.shared.mesh_geometry import inspect_mesh_triangles
 from asset_forge.maya.adapter import MayaAdapter
 from asset_forge.maya.fbx_exporter import DEFAULT_FBX_EXPORT_PRESET, MayaFbxExporter
 from asset_forge.maya.package_opener import open_directory
@@ -61,7 +63,9 @@ class FakeCmds(object):
             return self.parents.get(node, [])
         return self.children.get(node, [])
 
-    def polyEvaluate(self, mesh, triangle=False, vertex=False, face=False):
+    def polyEvaluate(self, mesh, triangle=False, vertex=False, face=False, uvcoord=False, uvSetName=None):
+        if uvcoord:
+            return 6
         if triangle:
             return 8240
         if vertex:
@@ -83,6 +87,8 @@ class FakeCmds(object):
         return ["map1", "lightmap"]
 
     def getAttr(self, attr):
+        if attr.endswith(".intermediateObject"):
+            return False
         return self.attrs[attr]
 
     def listHistory(self, node, pruneDagObjects=False):
@@ -190,7 +196,7 @@ class RenameMeshTransformCmds(object):
         self.renamed.append((node, new_short_name))
         return renamed
 
-    def polyEvaluate(self, mesh, triangle=False, vertex=False, face=False):
+    def polyEvaluate(self, mesh, triangle=False, vertex=False, face=False, uvcoord=False, uvSetName=None):
         return 1
 
     def listConnections(self, *args, **kwargs):
@@ -200,6 +206,8 @@ class RenameMeshTransformCmds(object):
         return ["map1"]
 
     def getAttr(self, attr):
+        if attr.endswith(".intermediateObject"):
+            return False
         if attr.endswith(".visibility"):
             return True
         return [(0.0, 0.0, 0.0)] if attr.endswith((".translate", ".rotate")) else [(1.0, 1.0, 1.0)]
@@ -209,6 +217,38 @@ class RenameMeshTransformCmds(object):
 
 
 class Phase1StaticPropTest(unittest.TestCase):
+    def test_uv_validation_checks_each_mesh_and_keeps_channel_order(self):
+        cmds = RenameMeshTransformCmds()
+        trim = "|SM_B|zuti|B_b|B_bShape"
+        counts = {"base": 0, "lightmap": 5, "unused": 9}
+        cmds.polyUVSet = lambda mesh, **kwargs: ["base", "lightmap", "unused"]
+        cmds.polyEvaluate = lambda mesh, uvcoord=False, uvSetName=None, **kwargs: (
+            counts[uvSetName] if uvcoord and mesh == trim else 6
+        )
+        scanner = MayaAssetScanner(cmds)
+        validator = StaticPropRuleValidator()
+        scan = scanner.scan("|SM_B")
+        validation = validator.validate(scan)
+        checks = {item["id"]: item for item in validation["checks"]}
+        self.assertFalse(scan["has_uv0"])
+        self.assertTrue(scan["has_lightmap_uv"])
+        self.assertFalse(validation["can_export"])
+        self.assertEqual(checks["uv0"]["affected_meshes"], [trim])
+        self.assertIn(trim, checks["uv0"]["message"])
+        self.assertEqual(scan["uv_sets"][trim], ["base", "lightmap", "unused"])
+
+        counts.update(base=5, lightmap=0)
+        scan = scanner.scan("|SM_B")
+        checks = {item["id"]: item for item in validator.validate(scan)["checks"]}
+        self.assertEqual(checks["uv0"]["status"], "pass")
+        self.assertEqual(checks["lightmap_uv"]["status"], "warning")
+        self.assertEqual(checks["lightmap_uv"]["affected_meshes"], [trim])
+        rules = get_default_rules()["static_prop"]
+        next(item for item in rules["checks"] if item["id"] == "lightmap_uv")["severity"] = "error"
+        self.assertFalse(StaticPropRuleValidator(rules).validate(scan)["can_export"])
+        rules["require_lightmap_uv"] = False
+        self.assertTrue(StaticPropRuleValidator(rules).validate(scan)["can_export"])
+
     def test_scanner_falls_back_to_single_mesh_assembly_when_selection_empty(self):
         selection = MayaAssetScanner(EmptySelectionSingleAssemblyCmds()).get_current_selection()
 
@@ -358,6 +398,8 @@ class Phase1StaticPropTest(unittest.TestCase):
                 stream.write(b"fake base color")
             with open(normal, "wb") as stream:
                 stream.write(b"fake normal")
+            with open(os.path.join(texture_folder, "SM_Crate_01_ORM.png"), "wb") as stream:
+                stream.write(b"fake packed map")
             scan = MayaAssetScanner(FakeCmds()).scan("|SM_Crate_01")
             scan["textures"] = []
             scan["materials"][0]["textures"] = []
@@ -374,10 +416,10 @@ class Phase1StaticPropTest(unittest.TestCase):
             )
 
             usages = [texture["usage"] for texture in result["manifest"]["textures"]]
-            self.assertEqual(usages, ["base_color", "normal"])
+            self.assertEqual(usages, ["base_color", "normal", "packed_arm"])
             self.assertEqual(result["scan"]["texture_folder_scan"]["issues"], [])
             self.assertEqual(result["scan"]["texture_folder_scan"]["directory_status"], "valid")
-            self.assertEqual(result["scan"]["texture_folder_scan"]["matched_count"], 2)
+            self.assertEqual(result["scan"]["texture_folder_scan"]["matched_count"], 3)
             self.assertEqual(result["scan"]["texture_folder_scan"]["texture_naming_validation"]["status"], "warning")
             self.assertTrue(result["export_report"]["texture_folder_scan"]["rename_suggestions"])
             self.assertEqual(result["scan"]["material_profile_validation"]["status"], "pass")
@@ -481,6 +523,67 @@ class Phase1StaticPropTest(unittest.TestCase):
             self.assertEqual(result["export_report"]["material_texture_bindings"][1]["material_name"], "B_a1")
         finally:
             shutil.rmtree(temp_dir)
+
+
+    def test_maya_host_runtime_roundtrips_unicode_settings_and_replaces_reports(self):
+        from asset_forge.maya.project_settings import load_project_settings, save_project_settings
+        from asset_forge.maya.ui import AssetForgeMayaWindow
+        from asset_forge.shared.python_compat import to_text
+        from asset_forge.shared.report_schema import write_report
+
+        root = tempfile.mkdtemp(prefix="assetforge_host_")
+        self.addCleanup(shutil.rmtree, root)
+        label = u"电源箱"
+        folder = os.path.join(to_text(root), label)
+        os.mkdir(folder)
+        path = os.path.join(folder, "preset.json")
+        save_project_settings(path, {"preset_name": label, "texture_root": folder})
+        self.assertEqual(load_project_settings(path)["preset_name"], label)
+        window = AssetForgeMayaWindow(cmds_module=FakeCmds(), pipeline=object(), log_root=folder)
+        self.assertTrue(callable(window._load_launcher_module().bootstrap))
+        window.logger.log("runtime_check", "ok", inputs={"preset": label})
+        report_path = os.path.join(folder, "result.json")
+        write_report(report_path, {"preset": label, "revision": 1})
+        write_report(report_path, {"preset": label, "revision": 2})
+        self.assertEqual(read_report(report_path), {"preset": label, "revision": 2})
+
+    def test_ambiguous_material_set_requires_artist_choice_before_export(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            texture_folder = os.path.join(workspace, "Painter")
+            output_dir = os.path.join(workspace, "Exports")
+            os.mkdir(texture_folder)
+            for set_name in ("Body", "Trim"):
+                for suffix in ("BaseColor", "Normal", "ORM"):
+                    with open(os.path.join(texture_folder, "Prop_{0}_{1}.png".format(set_name, suffix)), "wb") as stream:
+                        stream.write(b"test texture")
+
+            scan = MayaAssetScanner(FakeCmds()).scan("|SM_Crate_01")
+            scan["materials"] = [{"name": "M_Body_Trim", "textures": []}]
+            pipeline = MayaStaticPropPipeline(adapter=FakeScanAdapter(scan), exporter=FakeExporter())
+            args = {"texture_folder": texture_folder, "target_platform": "pc"}
+            for token in ("", "Trim,Body", "Body,Trim"):
+                preflight = pipeline.preflight_assets(["|SM_Crate_01"], texture_set_token=token, **args)
+                self.assertFalse(preflight["validation"]["can_export"])
+                check = next(c for c in preflight["asset_health_report"]["blocking_checks"]
+                             if c["id"] == "ambiguous_material_texture_set")
+                self.assertEqual(check["object"], "M_Body_Trim")
+                self.assertEqual(check["candidates"], ["Prop_Body", "Prop_Trim"])
+
+            with self.assertRaises(ExportValidationError) as caught:
+                pipeline.export_asset("|SM_Crate_01", output_dir, **args)
+            self.assertTrue(os.path.isfile(caught.exception.debug_report_path))
+            self.assertFalse(any(name.endswith((".fbx", "_manifest.json"))
+                                 for _, _, files in os.walk(output_dir) for name in files))
+
+            args["material_texture_set_overrides"] = {"M_Body_Trim": "Prop_Trim"}
+            result = pipeline.export_asset("|SM_Crate_01", output_dir, **args)
+            binding = next(b for b in result["manifest"]["material_texture_bindings"] if b["material_name"])
+            self.assertEqual(binding["texture_set"], "Prop_Trim")
+            self.assertEqual(binding["binding_source"], "manual_override")
+            self.assertEqual(binding["texture_count"], 3)
+
+            args["material_texture_set_overrides"]["M_Body_Trim"] = "Removed_Set"
+            self.assertFalse(pipeline.preflight_assets(["|SM_Crate_01"], **args)["validation"]["can_export"])
 
     def test_pipeline_auto_selects_texture_sets_from_material_names_when_token_empty(self):
         temp_dir = tempfile.mkdtemp()
@@ -648,7 +751,8 @@ class Phase1StaticPropTest(unittest.TestCase):
             )
 
             report = result["asset_health_report"]
-            self.assertIn(report["status"], ["ready", "review"])
+            self.assertEqual(report["status"], "blocked")
+            self.assertFalse(report["can_export"])
             self.assertIn("grade", report)
             self.assertFalse(os.path.exists(os.path.join(temp_dir, "Exports")))
             self.assertTrue(any(item["id"] == "unmatched_material" for item in report["texture_set_risks"]["items"]))
@@ -733,13 +837,14 @@ class Phase1StaticPropTest(unittest.TestCase):
                 target_platform="pc",
                 source_name_suffix="Maya",
                 package_version_mode="auto_increment",
-                project_preset={"preset_name": "Team", "preset_version": "0.3"},
+                project_preset={"preset_name": "Team", "preset_version": "0.3", "target_engine_version": "5.8"},
             )
 
             naming = result["manifest"]["package_naming"]
             self.assertEqual(naming["package_name"], "SM_Crate_01_Maya_v002")
             self.assertEqual(naming["version_mode"], "auto_increment")
             self.assertEqual(result["manifest"]["project_preset"]["preset_name"], "Team")
+            self.assertEqual(result["manifest"]["target_engine_version"], "5.8")
             self.assertTrue(result["package_dir"].endswith("/SM_Crate_01_Maya_v002"))
             self.assertTrue(result["fbx_path"].endswith("/SM_Crate_01_Maya.fbx"))
         finally:
@@ -1085,6 +1190,26 @@ class FakeMel(object):
 
     def eval(self, command):
         self.commands.append(command)
+
+
+
+class ZeroAreaMeshCheckTest(unittest.TestCase):
+    def test_reports_native_face_and_local_triangle_without_rejecting_thin_geometry(self):
+        from asset_forge.shared.rule_validator import StaticPropRuleValidator, checks_to_manifest_dict
+        origin, right, up = (0, 0, 0), (1, 0, 0), (0, 1, 0)
+        rows = [(2, 5, origin, right, up), (2, 5, origin, origin, right),
+                (2, 5, origin, (1, 1e-15, 0), right), (6, 3, right, (2, 0, 0), origin)]
+        measured = inspect_mesh_triangles(rows)
+        self.assertEqual(measured["triangle_count"], 4)
+        self.assertEqual(measured["zero_area_count"], 2)
+        self.assertEqual(measured["faces"], [
+            {"face_index": 2, "polygon_size": 5, "triangle_indices": [1]},
+            {"face_index": 6, "polygon_size": 3, "triangle_indices": [0]}])
+        parsed = StaticPropRuleValidator().validate({"mesh_geometry": {"Part": measured, "Clean": inspect_mesh_triangles([])}})
+        check = checks_to_manifest_dict(parsed)["zero_area_triangles"]
+        self.assertEqual(check["status"], "warning")
+        self.assertEqual(check["affected_meshes"], ["Part"])
+        self.assertEqual(check["mesh_results"]["Part"]["faces"], measured["faces"])
 
 
 if __name__ == "__main__":

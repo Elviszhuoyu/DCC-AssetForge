@@ -2,6 +2,7 @@
 
 from __future__ import absolute_import
 
+from asset_forge.unreal.material_graph_evidence import planned_parent_parameters
 from asset_forge.unreal.unreal_bridge import get_unreal
 
 
@@ -18,18 +19,18 @@ class UnrealMaterialEvidenceCollector(object):
         if not self.is_available():
             return {}
 
-        material_paths = _parent_material_paths(report)
-        graph = self._collect_graph(material_paths)
-        compile_log = self._collect_compile_log(material_paths)
+        parents = planned_parent_parameters(report.get("material_binding_plan", {}))
+        graph = self._collect_graph(parents)
+        compile_log = self._collect_compile_log(list(parents))
         return {
             "material_compile_log_evidence": compile_log,
             "real_ue_material_graph": graph,
         }
 
-    def _collect_graph(self, material_paths):
+    def _collect_graph(self, parents):
         materials = []
         issues = []
-        for material_path in material_paths:
+        for material_path, expected in parents.items():
             material_asset = self._load_asset(material_path)
             material = {
                 "material_path": material_path,
@@ -41,6 +42,23 @@ class UnrealMaterialEvidenceCollector(object):
             }
             if not material_asset:
                 issues.append("Missing material: {0}".format(material_path))
+                materials.append(material)
+                continue
+
+            if not material_path.startswith("/AssetForge/"):
+                material["comment_blocks"] = {"status": "not_applicable"}
+                material["expected_texture_parameters"] = sorted(expected)
+                try:
+                    names = self.unreal.MaterialEditingLibrary.get_texture_parameter_names(material_asset)
+                    declared = sorted(str(name) for name in names)
+                    declared_lower = {name.lower() for name in declared}
+                    missing = sorted(name for name in expected if name.lower() not in declared_lower)
+                    material["declared_texture_parameters"] = declared
+                    material["missing_texture_parameters"] = missing
+                    if missing:
+                        issues.append("{0} missing texture parameters: {1}".format(material_path, ", ".join(missing)))
+                except (AttributeError, RuntimeError, TypeError) as exc:
+                    issues.append("Cannot read texture parameters for {0}: {1}".format(material_path, exc))
                 materials.append(material)
                 continue
 
@@ -56,7 +74,7 @@ class UnrealMaterialEvidenceCollector(object):
 
         required = ("BaseColor", "Normal", "ARM")
         for material in materials:
-            if not material.get("exists"):
+            if not material.get("exists") or not material["material_path"].startswith("/AssetForge/"):
                 continue
             missing = [name for name in required if name not in material.get("required_parameters", {})]
             for name in missing:
@@ -72,29 +90,41 @@ class UnrealMaterialEvidenceCollector(object):
 
     def _collect_compile_log(self, material_paths):
         issues = []
-        recompiled = []
-        library = getattr(self.unreal, "MaterialEditingLibrary", None)
-        recompile = getattr(library, "recompile_material", None) if library else None
+        readback = []
+        unavailable = []
+        library = _material_comment_library(self.unreal)
+        read_errors = getattr(library, "try_read_asset_forge_material_compile_errors", None)
         for material_path in material_paths:
+            if read_errors is None:
+                unavailable.append(material_path)
+                continue
             material_asset = self._load_asset(material_path)
             if not material_asset:
                 issues.append("Missing material: {0}".format(material_path))
                 continue
-            if recompile:
-                try:
-                    recompile(material_asset)
-                except Exception as exc:
-                    issues.append("{0}: {1}".format(material_path, exc))
-                    continue
-            recompiled.append(material_path)
+            try:
+                errors = read_errors(material_asset)
+            except (AttributeError, RuntimeError, TypeError) as exc:
+                issues.append("{0}: {1}".format(material_path, exc))
+                continue
+            if errors is None:
+                unavailable.append(material_path)
+                continue
+            readback.append(material_path)
+            issues.extend("{0}: {1}".format(material_path, error) for error in errors)
         return {
-            "status": "error" if issues else ("pass" if recompiled else "skipped"),
-            "source": "Unreal Python MaterialEditingLibrary",
+            "status": "error" if issues else ("pass" if readback and not unavailable else "skipped"),
+            "source": "Unreal cached material shader resource",
             "material_paths": list(material_paths),
-            "recompiled_materials": recompiled,
+            "recompiled_materials": [],
+            "readback_materials": readback,
+            "unavailable_materials": unavailable,
             "error_count": len(issues),
-            "warning_count": 0,
-            "messages": [{"severity": "error", "text": item} for item in issues],
+            "warning_count": len(unavailable),
+            "messages": [{"severity": "error", "text": item} for item in issues] + [
+                {"severity": "warning", "text": "Cached shader evidence unavailable: {0}".format(path)}
+                for path in unavailable
+            ],
         }
 
     def _load_asset(self, path):
@@ -150,7 +180,7 @@ class UnrealMaterialEvidenceCollector(object):
 
     def _comment_blocks_summary(self, material_asset):
         library = _material_comment_library(self.unreal)
-        describe = getattr(library, "describe_asset_forge_comment_blocks", None) if library else None
+        describe = getattr(library, "read_asset_forge_comment_blocks", None)
         if describe is None:
             return {"status": "not_provided", "message": "DCC AssetForge material comment library is unavailable."}
         try:
@@ -167,22 +197,31 @@ class UnrealMaterialEvidenceCollector(object):
         invalid_dimensions = int(fields.get("invalid_graph_comment_dimensions") or 0)
         visible_with_size = int(fields.get("visible_graph_comments_with_size") or 0)
         has_dimension_readback = int(fields.get("graph_comment_dimension_rows") or 0) > 0
+        graph_available = bool(fields.get("graph_readback_available", 1))
         if not expected:
             status = "not_provided"
         elif expressions < expected or orphan or duplicate or invalid_dimensions:
             status = "error"
+        elif not graph_available:
+            status = "not_provided"
         elif linked < expected or (has_dimension_readback and visible_with_size < expected):
             status = "warning"
         cold_start_status = _cold_start_readback_status(fields)
         visible_for_risk = visible_with_size if has_dimension_readback else expected
+        graph_not_open = not graph_available and status == "not_provided"
+        visual_risk = _comment_block_visual_risk(expected, expressions, linked, orphan, duplicate, invalid_dimensions, visible_for_risk)
+        next_action = _comment_block_next_action(status, linked, orphan, duplicate, invalid_dimensions)
+        if graph_not_open:
+            visual_risk = "unknown"
+            next_action = "open the material graph and rerun comment readback"
         return dict(
             fields,
             status=status,
             raw=description,
             summary=_comment_block_summary(expected, expressions, linked, orphan, duplicate, invalid_dimensions, visible_with_size),
-            visual_review_risk=_comment_block_visual_risk(expected, expressions, linked, orphan, duplicate, invalid_dimensions, visible_for_risk),
-            next_action=_comment_block_next_action(status, linked, orphan, duplicate, invalid_dimensions),
-            current_session_readback_status="provided" if status != "not_provided" else "not_provided",
+            visual_review_risk=visual_risk,
+            next_action=next_action,
+            current_session_readback_status="provided" if graph_available and status != "not_provided" else "not_provided",
             cold_start_readback_status=cold_start_status,
             cold_start_readback_required=cold_start_status not in ("pass", "success", "verified"),
             real_ue_screenshot_required=True,
@@ -198,23 +237,6 @@ def _material_comment_library(unreal_module):
         if library is not None:
             return library
     return None
-
-
-def _parent_material_paths(report):
-    paths = []
-    binding_plan = report.get("material_binding_plan", {}) or {}
-    if binding_plan.get("master_material"):
-        paths.append(binding_plan.get("master_material"))
-    for material in binding_plan.get("materials", []) or []:
-        if material.get("parent_material"):
-            paths.append(material.get("parent_material"))
-    seen = set()
-    unique = []
-    for path in paths:
-        if path and path not in seen:
-            seen.add(path)
-            unique.append(path)
-    return unique
 
 
 def _class_name(obj):

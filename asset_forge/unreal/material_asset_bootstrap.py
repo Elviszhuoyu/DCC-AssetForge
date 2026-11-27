@@ -194,28 +194,45 @@ class UnrealMaterialAssetBootstrap(object):
                 "message": "未执行 UE 真实母材质检查。",
                 "checks": checks,
                 "missing_parent_materials": [],
-                "next_action": "请在真实 UE 5.6 Editor Python 环境中重新执行该步骤。",
+                "next_action": "请在目标 UE 工程的 Editor Python 环境中重新执行该步骤。",
             }
 
         checks = []
+        parameter_names = {}
         for item in materials:
             parent = item.get("parent_material", "")
             target = item.get("target_asset_path", "")
             if not parent:
                 checks.append(self._parent_check("error", parent, target, "Material Profile 未提供母材质路径，无法创建材质实例。"))
             elif self._asset_exists(parent):
-                checks.append(self._parent_check("pass", parent, target, "母材质存在，可以创建材质实例。"))
+                check = self._parent_check("pass", parent, target, "母材质存在，可以创建材质实例。")
+                expected = item.get("texture_parameters", {})
+                if expected and not parent.startswith("/AssetForge/"):
+                    if parent not in parameter_names:
+                        try:
+                            names = self.unreal.MaterialEditingLibrary.get_texture_parameter_names(self._load_asset(parent))
+                            parameter_names[parent] = {str(name).lower() for name in names}
+                        except (AttributeError, TypeError, RuntimeError):
+                            parameter_names[parent] = None
+                    declared = parameter_names[parent]
+                    missing_names = sorted(name for name in expected if declared is None or name.lower() not in declared)
+                    if missing_names:
+                        check = self._parent_check("error", parent, target, "Cannot bind project parent texture parameters: {0}".format(", ".join(missing_names)))
+                        check["id"] = "parent_texture_parameters"
+                        check["missing_parameters"] = missing_names
+                checks.append(check)
             else:
                 checks.append(self._parent_check("error", parent, target, "缺少母材质：{0}，材质实例将没有 parent。".format(parent)))
 
-        missing = [item.get("parent_material", "") for item in checks if item.get("status") == "error" and item.get("parent_material")]
+        errors = [check for check in checks if check["status"] == "error"]
+        missing = [check["parent_material"] for check in errors if check["id"] == "parent_material_exists" and check["parent_material"]]
         return {
-            "status": "error" if missing else "pass",
-            "can_create_material_instances": not missing,
-            "message": "母材质检查通过。" if not missing else "母材质缺失，无法安全创建材质实例。",
+            "status": "error" if errors else "pass",
+            "can_create_material_instances": not errors,
+            "message": "母材质检查通过。" if not errors else "母材质或贴图参数不符合绑定要求。",
             "checks": checks,
             "missing_parent_materials": missing,
-            "next_action": "" if not missing else "先确认 AssetForge 插件内容已挂载，并执行默认材质 Bootstrap 后重新检查母材质。",
+            "next_action": "" if not errors else "检查父材质路径及项目预设中的贴图参数名称。",
         }
 
     def bootstrap(self, dry_run=False, build_showcase=False, cleanup_obsolete_assets=False, repair_existing_assets=True):
@@ -246,7 +263,7 @@ class UnrealMaterialAssetBootstrap(object):
         }
         if self.unreal is None:
             report["issues"].append("当前不在 Unreal Python 环境，未创建真实资产。")
-            report["next_action"] = "请在真实 UE 5.6 Editor Python 环境中执行 Bootstrap 以创建或修复母材质资产。"
+            report["next_action"] = "请在目标 UE 工程的 Editor Python 环境中执行 Bootstrap 以创建或修复母材质资产。"
             return report
         if dry_run:
             report["obsolete_assets_planned_for_cleanup"] = self._existing_obsolete_assets()
@@ -461,7 +478,7 @@ class UnrealMaterialAssetBootstrap(object):
                     "created_nodes": [],
                     "connected": [],
                     "issues": issues,
-                    "next_action": "在真实 UE 5.6 Editor Python 环境中执行 Bootstrap 后确认节点和连接已创建。",
+                    "next_action": "在目标 UE 工程的 Editor Python 环境中执行 Bootstrap 后确认节点和连接已创建。",
                 }
             )
         return reports
@@ -891,16 +908,30 @@ class UnrealMaterialAssetBootstrap(object):
     def _function_normal_strength(self, function_asset, create_expression, editing_library, normal, strength, x, y, report):
         if normal is None or strength is None:
             return normal
-        flatten_class = getattr(self.unreal, "MaterialExpressionFlattenNormal", None)
-        one_minus_class = getattr(self.unreal, "MaterialExpressionOneMinus", None)
-        if flatten_class is None or one_minus_class is None:
-            return self._function_multiply(function_asset, create_expression, editing_library, normal, "", strength, "", x, y, report)
-        one_minus = create_expression(one_minus_class, x - 120, y)
-        editing_library.connect_material_expressions(strength, "", one_minus, "")
-        flatten = create_expression(flatten_class, x, y)
-        editing_library.connect_material_expressions(normal, "", flatten, "Normal")
-        editing_library.connect_material_expressions(one_minus, "", flatten, "Flatness")
-        return flatten
+        return self._scaled_tangent_normal(create_expression, editing_library, normal, "", strength, x, y)
+
+    def _scaled_tangent_normal(self, create, editing, normal, normal_output, strength, x, y):
+        # Scale the tangent plane, preserve its hemisphere and return a unit vector.
+        xy = create(self.unreal.MaterialExpressionComponentMask, x - 380, y - 100)
+        for component in ("r", "g", "b", "a"):
+            set_unreal_property(xy, component, component in ("r", "g"))
+        editing.connect_material_expressions(normal, normal_output, xy, "")
+        scaled = create(self.unreal.MaterialExpressionMultiply, x - 190, y - 100)
+        editing.connect_material_expressions(xy, "", scaled, "A")
+        editing.connect_material_expressions(strength, "", scaled, "B")
+        z = create(self.unreal.MaterialExpressionComponentMask, x - 380, y + 70)
+        for component in ("r", "g", "b", "a"):
+            set_unreal_property(z, component, component == "b")
+        editing.connect_material_expressions(normal, normal_output, z, "")
+        positive_z = create(self.unreal.MaterialExpressionMax, x - 190, y + 70)
+        set_unreal_property(positive_z, "const_b", 0.00001)
+        editing.connect_material_expressions(z, "", positive_z, "A")
+        combined = create(self.unreal.MaterialExpressionAppendVector, x, y)
+        editing.connect_material_expressions(scaled, "", combined, "A")
+        editing.connect_material_expressions(positive_z, "", combined, "B")
+        unit_normal = create(self.unreal.MaterialExpressionNormalize, x + 180, y)
+        editing.connect_material_expressions(combined, "", unit_normal, "")
+        return unit_normal
 
     def _material_function_expression_creator(self, editing_library, function_asset, report, asset_path):
         function_creator = getattr(editing_library, "create_material_expression_in_function", None)
@@ -988,7 +1019,7 @@ class UnrealMaterialAssetBootstrap(object):
         if editing_library is None:
             report["status"] = "warning"
             report["issues"].append("当前 UE Python API 不可用 MaterialEditingLibrary，无法自动生成母材质节点网络。")
-            report["next_action"] = "请在真实 UE 5.6 中确认 Python 插件和 MaterialEditingLibrary 可用后重新执行 Bootstrap。"
+            report["next_action"] = "请在目标 UE 工程中确认 Python 插件和 MaterialEditingLibrary 可用后重新执行 Bootstrap。"
             return report
 
         self._reset_generated_material_network(material_asset, editing_library, report)
@@ -1109,10 +1140,14 @@ class UnrealMaterialAssetBootstrap(object):
             roughness_intensity = self._create_parameter_expression(material_asset, editing_library, scalar_class, "RoughnessIntensity", -620, 610, report, "ScalarParameter", 1.0)
             metallic_intensity = self._create_parameter_expression(material_asset, editing_library, scalar_class, "MetallicIntensity", -620, 720, report, "ScalarParameter", 1.0)
             specular = self._create_parameter_expression(material_asset, editing_library, scalar_class, "Specular", -620, 830, report, "ScalarParameter", 0.5)
-            ao = self._multiply(material_asset, editing_library, packed, "R", ao_intensity, "", -360, 500, report) if ao_intensity else packed
+            ao = editing_library.create_material_expression(material_asset, self.unreal.MaterialExpressionLinearInterpolate, -360, 500)
+            set_unreal_property(ao, "const_a", 1.0)
+            editing_library.connect_material_expressions(packed, "R", ao, "B")
+            editing_library.connect_material_expressions(ao_intensity, "", ao, "Alpha")
+            report["created_nodes"].append({"parameter": "", "node_type": "LinearInterpolate", "x": -360, "y": 500})
             roughness = self._multiply(material_asset, editing_library, packed, "G", roughness_intensity, "", -360, 610, report) if roughness_intensity else packed
             metallic = self._multiply(material_asset, editing_library, packed, "B", metallic_intensity, "", -360, 720, report) if metallic_intensity else packed
-            self._connect_property(editing_library, ao, "" if ao is not packed else "R", "ambient_occlusion", report)
+            self._connect_property(editing_library, ao, "", "ambient_occlusion", report)
             self._connect_property(editing_library, roughness, "" if roughness is not packed else "G", "roughness", report)
             self._connect_property(editing_library, metallic, "" if metallic is not packed else "B", "metallic", report)
             if specular:
@@ -1717,26 +1752,21 @@ class UnrealMaterialAssetBootstrap(object):
     def _normal_strength(self, material_asset, editing_library, normal, strength, x, y, report):
         if strength is None:
             return normal, "RGB"
-        flatten_class = getattr(self.unreal, "MaterialExpressionFlattenNormal", None)
-        one_minus_class = getattr(self.unreal, "MaterialExpressionOneMinus", None)
-        if flatten_class is None or one_minus_class is None:
-            return self._multiply(material_asset, editing_library, normal, "RGB", strength, "", x, y, report), ""
-        one_minus = editing_library.create_material_expression(material_asset, one_minus_class, x - 120, y)
-        editing_library.connect_material_expressions(strength, "", one_minus, "")
-        flatten = editing_library.create_material_expression(material_asset, flatten_class, x, y)
-        editing_library.connect_material_expressions(normal, "RGB", flatten, "Normal")
-        editing_library.connect_material_expressions(one_minus, "", flatten, "Flatness")
-        report["api_usage"]["connect_expression"] = "MaterialEditingLibrary.connect_material_expressions"
-        report["created_nodes"].append({"parameter": "", "node_type": "OneMinus"})
-        report["created_nodes"].append({"parameter": "", "node_type": "FlattenNormal"})
-        return flatten, ""
+        def create(expression_class, node_x, node_y):
+            return editing_library.create_material_expression(material_asset, expression_class, node_x, node_y)
+
+        output = self._scaled_tangent_normal(create, editing_library, normal, "RGB", strength, x, y)
+        report["created_nodes"].append({"parameter": "", "node_type": "Normalize", "x": x + 180, "y": y})
+        return output, ""
 
     def _connect_property(self, editing_library, expression, output, property_name, report):
         material_property = self._material_property(property_name)
         if material_property is None:
             report["issues"].append("当前 UE Python API 缺少材质属性枚举：{0}".format(property_name))
             return
-        editing_library.connect_material_property(expression, output, material_property)
+        if editing_library.connect_material_property(expression, output, material_property) is False:
+            report["issues"].append("Material output connection failed: {0}".format(property_name))
+            return
         report["api_usage"]["connect_property"] = "MaterialEditingLibrary.connect_material_property"
         report["connected"].append({"parameter": "", "output": output, "material_property": property_name})
 

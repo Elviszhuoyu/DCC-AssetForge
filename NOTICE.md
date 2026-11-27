@@ -2,7 +2,7 @@
 
 DCC AssetForge
 
-Copyright (c) 2026 zhuoyu and DCC AssetForge contributors.
+Copyright (c) 2026 Elviszhuoyu (zhuoyu) and DCC AssetForge contributors.
 
 Original source code and documentation in this repository are licensed under the MIT License in `LICENSE`, unless a file states otherwise.
 

@@ -1,10 +1,11 @@
+# -*- coding: utf-8 -*-
 """AI analysis interface and local suggestion provider.
 
 The local provider is deterministic and offline. It keeps the AI advice layer
 usable before binding a real model provider.
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 from asset_forge.shared.constants import CHECK_STATUS_ERROR, CHECK_STATUS_WARNING
 from asset_forge.shared.rules_schema import get_default_rules

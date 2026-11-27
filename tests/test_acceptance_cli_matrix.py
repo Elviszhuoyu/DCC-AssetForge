@@ -19,6 +19,27 @@ class AcceptanceCliMatrixTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.temp_dir)
 
+    def test_default_acceptance_rejects_missing_fbx_and_preserves_each_asset_decision(self):
+        good = create_offline_static_prop_package(self.temp_dir, "SM_Usable")
+        os.remove(self.package["fbx_path"])
+        for flag in ("--validate-package", "--accept-flow", "--validate-all-packages", "--accept-flow-all"):
+            batch = "all" in flag
+            with self.subTest(flag=flag):
+                result = self._run([flag, self.temp_dir if batch else self.package["package_dir"]])
+                self.assertEqual(result.returncode, 2)
+                report = json.loads(result.stdout)
+                self.assertFalse(report["gate_passed"])
+                self.assertFalse(report["can_import"])
+                self.assertTrue(any("fbx_path" in reason for reason in report["blocking_reasons"]))
+                if batch:
+                    decisions = {row["asset_name"]: row for row in report["package_decisions"]}
+                    self.assertTrue(decisions[good["manifest"]["asset_name"]]["gate_passed"])
+                    broken = decisions[self.package["manifest"]["asset_name"]]
+                else:
+                    broken = report
+                self.assertEqual(broken["decision"], "blocked")
+                self.assertIn("FBX", broken["next_action"])
+
     def test_stage_acceptance_commands_emit_json_successfully(self):
         commands = [
             ["--validate-package", self.package["package_dir"]],

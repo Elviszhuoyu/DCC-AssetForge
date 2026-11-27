@@ -4,14 +4,24 @@ from __future__ import absolute_import
 
 import json
 import os
+import time
 
 from asset_forge.shared.acceptance_gate import apply_acceptance_gate, create_gate_policy
 from asset_forge.shared.path_utils import normalize_path
 from asset_forge.shared.report_artifacts import attach_report_artifact_metadata, default_report_path
 from asset_forge.shared.report_schema import attach_acceptance_summary, attach_report_schema_validation, create_acceptance_summary, write_report
 from asset_forge.unreal.manifest_finder import find_manifest_files
-from asset_forge.unreal.package_acceptance import UnrealPackageAcceptanceValidator
+from asset_forge.unreal.gate_operator_messages import operator_messages
+from asset_forge.unreal.package_acceptance import UnrealPackageAcceptanceValidator, package_decisions
 from asset_forge.unreal.pipeline import UnrealStaticMeshImportPipeline
+
+
+def _timed(timings, key, action, *args):
+    started = time.perf_counter()
+    try:
+        return action(*args)
+    finally:
+        timings[key] = round(timings.get(key, 0.0) + (time.perf_counter() - started) * 1000.0, 2)
 
 
 class UnrealPackageAcceptanceFlow(object):
@@ -20,6 +30,7 @@ class UnrealPackageAcceptanceFlow(object):
     def __init__(self, acceptance_validator=None, import_pipeline=None):
         self.acceptance_validator = acceptance_validator or UnrealPackageAcceptanceValidator()
         self.import_pipeline = import_pipeline
+        self._share_plugin_inspection = acceptance_validator is None and import_pipeline is None
 
     def run(
         self,
@@ -34,18 +45,44 @@ class UnrealPackageAcceptanceFlow(object):
         command_args=None,
         target_path_override=None,
     ):
-        before_acceptance = self.acceptance_validator.validate(package_dir)
-        material_bootstrap = self._run_auto_material_bootstrap(auto_bootstrap_material_assets)
-        acceptance = self.acceptance_validator.validate(package_dir) if auto_bootstrap_material_assets else before_acceptance
-        manifest_path = acceptance.get("manifest_path", "")
-        active_manifest_path = self._manifest_path_with_target_override(manifest_path, target_path_override, report_path)
+        started = time.perf_counter()
+        timings = {}
+        policy = create_gate_policy(strict, block_warnings, require_import)
+        before_acceptance = _timed(timings, "package_validation", self.acceptance_validator.validate, package_dir)
+        acceptance = before_acceptance
+        manifest_path = before_acceptance.get("manifest_path", "")
+        active_manifest_path = manifest_path
+        if acceptance.get("manifest_validation", {}).get("can_import") is not False:
+            active_manifest_path = self._manifest_path_with_target_override(manifest_path, target_path_override, report_path)
         pipeline = self.import_pipeline or UnrealStaticMeshImportPipeline(
             auto_bootstrap_material_assets=auto_bootstrap_material_assets,
             import_options=import_options,
         )
 
-        dry_run_report = self._run_dry_run(pipeline, active_manifest_path)
-        import_report = self._run_import(pipeline, active_manifest_path, acceptance, run_import)
+        # Bootstrap can write UE assets even when mesh import was not requested.
+        blocker = ""
+        version_denies_write = acceptance.get("engine_version_preflight", {}).get("can_write_assets") is False
+        if acceptance.get("mandatory_blockers"):
+            blocker = "; ".join(acceptance["mandatory_blockers"])
+            dry_run_report = self._skipped_step("dry_run", blocker)
+        elif version_denies_write:
+            dry_run_report = self._skipped_step("dry_run", "目标 UE 版本与当前工程不匹配或无法识别")
+            blocker = "UE 版本预检禁止写入当前工程"
+        elif not manifest_path or acceptance.get("manifest_validation", {}).get("can_import") is False:
+            blocker = acceptance.get("next_action") or "修复 manifest 和引用的文件后重新验收"
+            dry_run_report = self._skipped_step("dry_run", blocker)
+        elif auto_bootstrap_material_assets and (policy["strict"] or policy["block_warnings"]):
+            dry_run_report = _timed(timings, "dry_run", self._run_dry_run, pipeline, active_manifest_path, acceptance)
+            blocker = self._pre_import_blocker(acceptance, dry_run_report, {}, policy)
+        if blocker:
+            material_bootstrap = self._skipped_step("material_bootstrap", blocker)
+        else:
+            material_bootstrap = _timed(timings, "material_bootstrap", self._run_auto_material_bootstrap, auto_bootstrap_material_assets)
+            if auto_bootstrap_material_assets:
+                acceptance = _timed(timings, "package_validation", self.acceptance_validator.validate, package_dir)
+            dry_run_report = _timed(timings, "dry_run", self._run_dry_run, pipeline, active_manifest_path, acceptance)
+            blocker = self._pre_import_blocker(acceptance, dry_run_report, material_bootstrap, policy)
+        import_report = _timed(timings, "import", self._run_import, pipeline, active_manifest_path, blocker, run_import)
         report = self._flow_report(
             package_dir,
             before_acceptance,
@@ -58,11 +95,41 @@ class UnrealPackageAcceptanceFlow(object):
             import_options,
             active_manifest_path,
             target_path_override,
+            blocker,
         )
-        apply_acceptance_gate(report, create_gate_policy(strict, block_warnings, require_import))
+        timings["flow"] = round((time.perf_counter() - started) * 1000.0, 2)
+        report["timings_ms"] = timings
+        return self._persist(report, package_dir, report_path, command_args, policy)
+
+    def run_checked_import(self, package_dir, checked, import_options, *, project_file="", timings_ms=None, command_args=None):
+        """Use the workbench's verified in-memory gate evidence for the approved write."""
+        manifest = checked.get("source_manifest_path")
+        acceptance = checked.get("package_acceptance", {})
+        dry_run = checked.get("dry_run", {})
+        policy = create_gate_policy(require_import=True)
+        bootstrap = self._skipped_step("material_bootstrap", "门禁导入沿用已核验的母材质，不初始化插件内容")
+        blocker = (
+            self._pre_import_blocker(acceptance, dry_run, bootstrap, policy)
+            if checked.get("gate_passed") and checked.get("gate_import_options_override") == import_options
+            else "包体尚未通过当前选项的检查"
+        )
+        pipeline = self.import_pipeline or UnrealStaticMeshImportPipeline(import_options=import_options)
+        timings = dict(timings_ms or {})
+        imported = _timed(timings, "import", self._run_import, pipeline, manifest, blocker, True)
+        report = self._flow_report(package_dir, acceptance, acceptance, bootstrap, dry_run, imported,
+                                   True, False, import_options, manifest, None, blocker)
+        report["timings_ms"] = timings
+        report["workbench_project_file"] = project_file
+        return self._persist(report, package_dir, None, command_args, policy)
+
+    def _persist(self, report, package_dir, report_path, command_args, policy):
+        apply_acceptance_gate(report, policy)
         active_report_path = normalize_path(report_path or self._default_report_path(package_dir))
         attach_report_artifact_metadata(report, active_report_path, command_args)
         attach_report_schema_validation(report, require_gate=True)
+        if command_args and command_args[0] == "ue_gate_workbench":
+            for level in ("warnings", "errors"):
+                report["operator_" + level] = operator_messages(report, level)
         write_report(active_report_path, report)
         return report
 
@@ -77,24 +144,41 @@ class UnrealPackageAcceptanceFlow(object):
         except Exception as exc:
             return self._failed_step("material_bootstrap", "材质母版 Bootstrap 执行异常：{0}".format(exc))
         if report.get("status") == "failed" and not report.get("next_action"):
-            report["next_action"] = "请在真实 UE 5.6 Editor Python 环境中重新执行该步骤"
+            report["next_action"] = "请在目标 UE 工程的 Editor Python 环境中重新执行该步骤"
         return report
 
-    def _run_dry_run(self, pipeline, manifest_path):
+    def _run_dry_run(self, pipeline, manifest_path, acceptance):
         if not manifest_path:
             return self._skipped_step("dry_run", "缺少 manifest，跳过 dry-run")
         try:
+            if self._share_plugin_inspection and "plugin_content_validation" in acceptance:
+                return pipeline.dry_run_manifest(
+                    manifest_path, plugin_content_validation=acceptance["plugin_content_validation"],
+                )
             return pipeline.dry_run_manifest(manifest_path)
         except Exception as exc:
             return self._failed_step("dry_run", "dry-run 执行异常：{0}".format(exc))
 
-    def _run_import(self, pipeline, manifest_path, acceptance, run_import):
+    def _pre_import_blocker(self, acceptance, dry_run, bootstrap, policy):
+        if not acceptance.get("summary", {}).get("can_accept", False):
+            return "包验收未允许导入"
+        for label, step in (("包验收", acceptance), ("预演", dry_run), ("材质初始化", bootstrap)):
+            summary = step.get("summary", {})
+            status = step.get("status")
+            if status in ("failed", "error") or summary.get("can_accept") is False or step.get("errors") or summary.get("error_count"):
+                return "{0}存在阻断错误".format(label)
+            has_warning = status == "warning" or step.get("warnings") or step.get("issues") or summary.get("warning_count")
+            if policy["block_warnings"] and has_warning:
+                return "{0}存在警告，当前策略禁止写入 UE 资产".format(label)
+        return ""
+
+    def _run_import(self, pipeline, manifest_path, blocker, run_import):
         if not run_import:
             return self._skipped_step("import", "未请求真实导入；如需 UE 真实验收，请在 UE Python 中使用 --run-import")
         if not manifest_path:
             return self._skipped_step("import", "缺少 manifest，跳过真实导入")
-        if not acceptance.get("summary", {}).get("can_accept", False):
-            return self._skipped_step("import", "包验收存在阻断项，跳过真实导入")
+        if blocker:
+            return self._skipped_step("import", blocker)
         try:
             return pipeline.import_from_manifest(manifest_path)
         except Exception as exc:
@@ -129,9 +213,12 @@ class UnrealPackageAcceptanceFlow(object):
         import_options,
         active_manifest_path=None,
         target_path_override=None,
+        pre_import_blocker="",
     ):
         warnings = []
         errors = []
+        if pre_import_blocker:
+            errors.append({"source": "pre_import_gate", "message": pre_import_blocker})
         for source, report in [
             ("material_bootstrap", material_bootstrap),
             ("package_acceptance", acceptance),
@@ -148,11 +235,11 @@ class UnrealPackageAcceptanceFlow(object):
             warnings = self._filter_confirmed_material_network_warnings(warnings)
 
         if material_bootstrap.get("status") == "failed":
-            next_action = "请在真实 UE 5.6 Editor Python 环境中重新执行该步骤"
-        elif not run_import:
-            next_action = "在真实 UE 5.6 项目中使用 --run-import 执行真实导入与导入后验收"
+            next_action = "请在目标 UE 工程的 Editor Python 环境中重新执行该步骤"
         elif errors:
-            next_action = "修复阻断项后重新执行一键验收"
+            next_action = (acceptance.get("next_action") if not acceptance.get("can_accept", True) else "") or "修复阻断项后重新执行一键验收"
+        elif not run_import:
+            next_action = "在目标 UE 工程中使用 --run-import 执行真实导入与导入后验收"
         else:
             next_action = "检查 warnings，确认资产可验收"
 
@@ -177,6 +264,7 @@ class UnrealPackageAcceptanceFlow(object):
             "summary": summary,
             "auto_materials": self._auto_materials_report(before_acceptance, acceptance, material_bootstrap, auto_bootstrap_material_assets),
             "package_acceptance": acceptance,
+            "mandatory_blockers": list(acceptance.get("mandatory_blockers", [])),
             "dry_run": dry_run_report,
             "import": import_report,
             "import_result_summary": self._import_result_summary(import_report, run_import),
@@ -394,6 +482,8 @@ class UnrealBatchPackageAcceptanceFlow(object):
             elif report.get("summary", {}).get("warning_count", 0):
                 warning_packages.append(package_dir)
 
+        if not reports:
+            errors.append({"source": "packages", "message": "目录中没有可验收的资产包，请指定包含 *_manifest.json 的发布目录"})
         summary = create_acceptance_summary(
             "error" if errors else ("warning" if warnings else "pass"),
             warnings,
@@ -421,29 +511,11 @@ class UnrealBatchPackageAcceptanceFlow(object):
             },
             "summary": summary,
             "reports": reports,
-            "package_decisions": self._package_decisions(reports),
+            "mandatory_blockers": [reason for item in reports for reason in item.get("mandatory_blockers", [])],
+            "package_decisions": package_decisions(reports),
             "user_guidance": self._user_guidance(summary),
         }
         return attach_acceptance_summary(report, summary)
-
-    def _package_decisions(self, reports):
-        decisions = []
-        for report in reports:
-            summary = report.get("summary", {})
-            decisions.append(
-                {
-                    "package_dir": normalize_path(report.get("package_dir", "")),
-                    "asset_name": report.get("asset_name", ""),
-                    "status": report.get("status", ""),
-                    "decision": summary.get("decision", report.get("decision", "")),
-                    "can_accept": summary.get("can_accept", report.get("can_accept", False)),
-                    "can_import": summary.get("can_import", report.get("can_import", False)),
-                    "warning_count": summary.get("warning_count", len(report.get("warnings", []))),
-                    "error_count": summary.get("error_count", len(report.get("errors", []))),
-                    "next_action": summary.get("next_action", report.get("next_action", "")),
-                }
-            )
-        return decisions
 
     def _user_guidance(self, summary):
         return {

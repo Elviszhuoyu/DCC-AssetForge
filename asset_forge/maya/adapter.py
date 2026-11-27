@@ -29,6 +29,12 @@ class MayaAdapter(DccAdapter):
     def scan_assets(self, asset_roots, rules=None):
         return self.scanner.scan_many(asset_roots)
 
+    def scene_textures(self, asset_roots):
+        return self.scanner.scene_textures(asset_roots)
+
+    def count_scene_textures(self, asset_roots):
+        return self.scanner.count_scene_textures(asset_roots)
+
     def rename_with_prefix(self, asset_roots, prefix="SM_"):
         return self.scanner.rename_with_prefix(asset_roots, prefix)
 

@@ -6,6 +6,9 @@ from __future__ import absolute_import
 import os
 import re
 
+from asset_forge.shared.rule_validator import summarize_mesh_uvs
+from asset_forge.shared.mesh_geometry import inspect_mesh_triangles
+
 DEFAULT_STATIC_MESH_PREFIX = "SM_"
 
 
@@ -61,8 +64,15 @@ class BlenderStaticPropScanner(object):
         identity = self._asset_identity(roots, name_prefix=name_prefix)
         asset_name = identity["asset_name"]
         materials = self._materials(meshes)
-        uv_sets = self._uv_sets(meshes)
-        return {
+        collision_data = self._collision_nodes(roots + meshes)
+        geometry = {}
+        for obj in meshes:
+            if obj.name not in collision_data["valid"]:
+                measured = self._geometry_triangles(obj)
+                if measured is not None:
+                    geometry[obj.name] = measured
+        result = {
+            "mesh_geometry": geometry,
             "asset_root": roots[0].name if roots else "",
             "asset_roots": [item.name for item in roots],
             "asset_name": asset_name,
@@ -78,27 +88,26 @@ class BlenderStaticPropScanner(object):
             "transforms": [item.name for item in roots],
             "transform_data": self._transform_data(roots),
             "mesh_transform_data": self._transform_data(meshes),
-            "triangles": sum(self._triangle_count(item) for item in meshes),
+            "triangles": sum(geometry[item.name]["triangle_count"] if "triangle_count" in geometry.get(item.name, {}) else self._triangle_count(item) for item in meshes),
             "vertices": sum(self._vertex_count(item) for item in meshes),
             "faces": sum(self._face_count(item) for item in meshes),
             "material_slots": len(self._material_slots(meshes, materials)),
             "material_slot_details": self._material_slots(meshes, materials),
             "materials": materials,
             "textures": [],
-            "uv_sets": uv_sets,
-            "has_uv0": any(bool(value) for value in uv_sets.values()),
-            "has_lightmap_uv": any(len(value) >= 2 for value in uv_sets.values()),
             "frozen_transform": self._all_transforms_frozen(meshes),
             "container_frozen_transform": self._all_transforms_frozen(roots),
             "empty_meshes": [item.name for item in meshes if self._vertex_count(item) == 0 or self._face_count(item) == 0],
-            "collision_nodes": self._collision_nodes(roots + meshes)["valid"],
-            "invalid_collision_nodes": self._collision_nodes(roots + meshes)["invalid"],
+            "collision_nodes": collision_data["valid"],
+            "invalid_collision_nodes": collision_data["invalid"],
             "hidden_objects": [item.name for item in roots + meshes if self._is_hidden(item)],
             "history_nodes": [],
             "illegal_scale": self._has_illegal_scale(roots),
             "source_dcc": "blender",
             "scene_path": getattr(getattr(self.bpy, "data", None), "filepath", "") or "",
         }
+        result.update(self._uv_sets(meshes, set(collision_data["valid"])))
+        return result
 
     def _load_bpy(self):
         try:
@@ -333,13 +342,51 @@ class BlenderStaticPropScanner(object):
             return slots
         return [{"index": index, "name": item.get("name", "")} for index, item in enumerate(materials or [])]
 
-    def _uv_sets(self, meshes):
-        result = {}
+    def _uv_sets(self, meshes, collision_nodes):
+        names = {}
+        counts = {}
         for mesh in meshes:
-            data = getattr(mesh, "data", None)
-            layers = _safe_list(getattr(data, "uv_layers", []))
-            result[getattr(mesh, "name", "")] = [getattr(layer, "name", "UVMap") for layer in layers]
-        return result
+            data = mesh.data
+            if getattr(data, "is_editmode", False):
+                # Blender's RNA UV collection is empty in Edit Mode. Read its live face-corner layers.
+                import bmesh
+                edit_mesh = bmesh.from_edit_mesh(data)
+                names[mesh.name] = list(edit_mesh.loops.layers.uv.keys())
+                if mesh.name not in collision_nodes:
+                    corners = sum(len(face.verts) for face in edit_mesh.faces)
+                    counts[mesh.name] = [corners] * min(2, len(names[mesh.name]))
+            else:
+                layers = list(data.uv_layers)
+                names[mesh.name] = [layer.name for layer in layers]
+                if mesh.name not in collision_nodes:
+                    counts[mesh.name] = [len(layer.uv) for layer in layers[:2]]
+        return summarize_mesh_uvs(names, counts)
+
+    def _geometry_triangles(self, obj):
+        data = obj.data
+        # Older saved reports and minimal offline adapters can lack tessellation.
+        if not hasattr(data, "calc_loop_triangles"):
+            return None
+        try:
+            if data.is_editmode:
+                import bmesh
+                bm = bmesh.from_edit_mesh(data)
+                face_ids = {face: i for i, face in enumerate(bm.faces)}
+                rows = ((face_ids[a.face], len(a.face.verts), a.vert.co, b.vert.co, c.vert.co)
+                        for a, b, c in bm.calc_loop_triangles())
+            else:
+                data.calc_loop_triangles()
+                points = [tuple(vertex.co) for vertex in data.vertices]
+                polygons = data.polygons
+                def object_triangles():
+                    for triangle in data.loop_triangles:
+                        a, b, c = triangle.vertices
+                        face = triangle.polygon_index
+                        yield face, len(polygons[face].vertices), points[a], points[b], points[c]
+                rows = object_triangles()
+            return inspect_mesh_triangles(rows)
+        except (RuntimeError, TypeError, ValueError, IndexError) as exc:
+            return {"read_error": str(exc)}
 
     def _triangle_count(self, obj):
         data = getattr(obj, "data", None)

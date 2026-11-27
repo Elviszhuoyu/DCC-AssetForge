@@ -67,14 +67,14 @@ class UnrealStaticMeshImportPipeline(object):
         self.auto_bootstrap_material_assets = bool(auto_bootstrap_material_assets)
         self.import_options = dict(import_options or {})
 
-    def dry_run_manifest(self, manifest_path, log_path=None):
+    def dry_run_manifest(self, manifest_path, log_path=None, *, plugin_content_validation=None):
         prepared = self._apply_import_options_override(self.reader.load(manifest_path, require_fbx_exists=True))
         manifest = prepared["manifest"]
         active_log_path = log_path or self._default_import_report_path(manifest, manifest_path)
         if not prepared["can_import"]:
             report = self.logger.failed(manifest, prepared["issues"], "Manifest 校验失败", prepared.get("preset"))
             report["manifest_path"] = normalize_path(manifest_path)
-            self._attach_common_preflight(report, manifest)
+            self._attach_common_preflight(report, manifest, plugin_content_validation)
             self._log_texture_policy_preview_events(report, active_log_path)
             self._finalize_report(report)
             self._write_log(active_log_path, report)
@@ -83,7 +83,7 @@ class UnrealStaticMeshImportPipeline(object):
 
         report = self.logger.skipped(manifest, prepared["preset"], "预检查通过，未执行导入")
         report["manifest_path"] = normalize_path(manifest_path)
-        self._attach_common_preflight(report, manifest)
+        self._attach_common_preflight(report, manifest, plugin_content_validation)
         self._log_texture_policy_preview_events(report, active_log_path)
         self._finalize_report(report)
         self._write_log(active_log_path, report)
@@ -133,6 +133,11 @@ class UnrealStaticMeshImportPipeline(object):
             return report
 
         report = self.logger.success(manifest, imported_assets, preset=prepared["preset"])
+        profile = manifest.get("resolved_material_profile") or manifest.get("material_profile")
+        if isinstance(profile, dict):
+            report["review_policy"] = {"material_profile": profile["name"], "material_profile_snapshot": profile}
+        elif profile:
+            report["review_policy"] = {"material_profile": profile}
         report["manifest_path"] = normalize_path(manifest_path)
         report["static_mesh_import_policy_report"] = getattr(
             self.importer,
@@ -148,7 +153,7 @@ class UnrealStaticMeshImportPipeline(object):
         self._select_material_variants_for_imported_textures(report)
         self._attach_material_sampler_policy_validation(report)
         self._create_material_instances(report)
-        self._attach_material_texture_binding_validation(report, manifest)
+        self._attach_material_texture_binding_validation(report, manifest, after_import=True)
         self._assign_material_slots(report)
         self._collect_material_graph_evidence(report)
         self._attach_material_graph_evidence(report)
@@ -211,11 +216,14 @@ class UnrealStaticMeshImportPipeline(object):
         prepared["gate_import_options_override"] = options
         return prepared
 
-    def _attach_common_preflight(self, report, manifest):
+    def _attach_common_preflight(self, report, manifest, plugin_content_validation=None):
         report["gate_import_options_override"] = dict(self.import_options or {})
         self._attach_engine_version_preflight(report, manifest)
         self._attach_package_validation(report, manifest)
-        self._attach_plugin_content_validation(report)
+        if plugin_content_validation is None:
+            self._attach_plugin_content_validation(report)
+        else:
+            report["plugin_content_validation"] = plugin_content_validation
         self._attach_texture_import_plan(report, manifest)
         self._attach_material_binding_plan(report, manifest)
         self._attach_material_texture_binding_validation(report, manifest)
@@ -305,7 +313,7 @@ class UnrealStaticMeshImportPipeline(object):
             report["material_binding_plan"] = self.material_binding_planner.plan(
                 manifest,
                 report.get("texture_import_plan", {}),
-                manifest.get("material_profile"),
+                manifest.get("resolved_material_profile") or manifest.get("material_profile"),
             )
         except ValueError as exc:
             report["material_binding_plan"] = {
@@ -326,7 +334,7 @@ class UnrealStaticMeshImportPipeline(object):
                 "material_network_message": plan.get("material_network_message", ""),
                 "content_mount": plan.get("content_mount", ""),
                 "asset_count": plan.get("asset_count", 0),
-                "next_action": "在真实 UE 5.6 中执行材质 Bootstrap，并打开母材质确认节点和连接。",
+                "next_action": "在目标 UE 工程中执行材质 Bootstrap，并打开母材质确认节点和连接。",
             }
         except Exception as exc:
             report["material_network_summary"] = {
@@ -376,20 +384,20 @@ class UnrealStaticMeshImportPipeline(object):
             "status": "warning",
             "policy": policy,
             "message": "已记录 Static Mesh Nanite / LOD 策略；Nanite 是虚拟化几何系统，不等同传统 LOD。当前报告不假装完成生产级自动 LOD。",
-            "next_action": "在真实 UE 5.6 中导入后，打开 Static Mesh 资产确认 Nanite、LODGroup 与 LOD 导入结果。",
+            "next_action": "在目标 UE 工程中导入后，打开 Static Mesh 资产确认 Nanite、LODGroup 与 LOD 导入结果。",
         }
         return report
 
     def _attach_material_profile_validation(self, report, manifest):
         report["material_profile_validation"] = validate_material_texture_coverage(
-            manifest.get("material_profile"),
+            manifest.get("resolved_material_profile") or manifest.get("material_profile"),
             manifest.get("textures", []),
         )
         return report
 
     def _attach_texture_quality_validation(self, report, manifest):
         report["texture_quality_validation"] = validate_material_texture_quality(
-            manifest.get("material_profile"),
+            manifest.get("resolved_material_profile") or manifest.get("material_profile"),
             manifest.get("textures", []),
         )
         return report
@@ -545,7 +553,7 @@ class UnrealStaticMeshImportPipeline(object):
             material_texture_paths = texture_parameter_paths.union(slot_paths)
             requires_vt = any(path in vt_assets for path in material_texture_paths)
             original_parent = material.get("parent_material", "")
-            vt_candidate = self._vt_material_variant(original_parent)
+            vt_candidate = original_parent if material.get("variant_source") == "source_material" else self._vt_material_variant(original_parent)
             uses_vt = requires_vt and vt_candidate in vt_capable_parents
             selected_parent = vt_candidate if uses_vt else original_parent
             material["requires_virtual_texture_sampling"] = requires_vt
@@ -774,17 +782,31 @@ class UnrealStaticMeshImportPipeline(object):
             {"status": "skipped", "existing_material_strategy": "", "actions": [], "issues": []},
         )
 
-    def _attach_material_texture_binding_validation(self, report, manifest):
-        report["material_texture_binding_validation"] = validate_material_texture_bindings(
+    def _attach_material_texture_binding_validation(self, report, manifest, after_import=False):
+        if not self._content_import_enabled(report, "import_materials"):
+            report["material_texture_binding_validation"] = {
+                "status": "skipped", "can_accept": True, "blocks_acceptance": False,
+                "checks": [], "warnings": [], "errors": [], "reason": "import_materials=false",
+            }
+            return report
+        validation = validate_material_texture_bindings(
             report.get("material_binding_plan", {}),
             texture_import_plan=report.get("texture_import_plan", {}),
             material_parameter_report=report.get("material_parameter_report", {}),
             imported_textures=report.get("imported_textures", []),
-            material_profile=manifest.get("material_profile"),
+            material_profile=manifest.get("resolved_material_profile") or manifest.get("material_profile"),
             unreal_module=getattr(self.material_instance_creator, "unreal", None),
+            after_import=after_import,
         )
-        if report.get("status") == "success":
-            report["material_texture_binding_validation"]["blocks_acceptance"] = False
+        report["material_texture_binding_validation"] = validation
+        if validation["runtime_readback_required"]:
+            validation["blocks_acceptance"] = not validation["can_accept"]
+            if not validation["can_accept"]:
+                report["status"] = UNREAL_IMPORT_STATUS_FAILED
+                report["message"] = "材质实例的必需贴图未通过导入后校验"
+                report.setdefault("issues", []).extend(item["message"] for item in validation["errors"])
+        elif report.get("status") == "success":
+            validation["blocks_acceptance"] = False
         return report
 
     def _content_import_enabled(self, report, key):
@@ -851,7 +873,7 @@ class UnrealStaticMeshImportPipeline(object):
                 "message": "母材质缺失，无法安全创建材质实例",
                 "checks": checks,
                 "missing_parent_materials": [item.get("parent_material", "") for item in checks],
-                "next_action": "在真实 UE 5.6 项目中确认 AssetForge 插件内容挂载，并执行默认材质 Bootstrap 后重试",
+                "next_action": "在目标 UE 工程中确认 AssetForge 插件内容挂载，并执行默认材质 Bootstrap 后重试",
             }
         return blockers
 
@@ -894,6 +916,7 @@ class UnrealStaticMeshImportPipeline(object):
             material_sampler_policy_validation=report.get("material_sampler_policy_validation", {}),
             compile_log_evidence=report.get("material_compile_log_evidence", {}),
             real_ue_material_graph=report.get("real_ue_material_graph", {}),
+            material_texture_binding_validation=report.get("material_texture_binding_validation", {}),
         )
         return report
 

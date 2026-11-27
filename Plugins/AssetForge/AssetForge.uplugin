@@ -1,11 +1,12 @@
 {
   "FileVersion": 3,
-  "Version": 1,
-  "VersionName": "0.1.0",
+  "Version": 2,
+  "VersionName": "0.2.0",
   "FriendlyName": "DCC AssetForge",
   "Description": "DCC AssetForge review gate for auditable static-prop packages.",
   "Category": "Pipeline",
-  "CreatedBy": "DCC AssetForge Contributors",
+  "CreatedBy": "卓雨 (Elviszhuoyu)",
+  "CreatedByURL": "https://work.zhuoyulabs.com",
   "CanContainContent": true,
   "EnabledByDefault": false,
   "Plugins": [

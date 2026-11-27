@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
 """Lightweight texture metadata readers for offline validation."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import os
 import struct

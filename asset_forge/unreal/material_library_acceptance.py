@@ -2,6 +2,9 @@
 
 from __future__ import absolute_import
 
+from asset_forge.shared.constants import RENDER_MODE_MASKED, RENDER_MODE_OPAQUE
+from asset_forge.shared.material_profile_schema import PROPS_PAINTER_OPAQUE_MASTER
+from asset_forge.unreal.material_library import AF_CHARACTER_BASIC, AF_ENVIRONMENT_MASTER, AF_PROPS_MASTER
 from asset_forge.unreal.material_package_schema import get_default_material_package_plan
 from asset_forge.unreal.material_showcase import build_material_showcase_report
 
@@ -59,12 +62,18 @@ def validate_material_library_product_readiness(plan=None):
     textures = {item["name"]: item for item in active_plan.get("placeholder_textures", [])}
     texture_paths = {item["path"] for item in active_plan.get("placeholder_textures", [])}
 
-    if set(materials) != {
-        "/AssetForge/Materials/M_AF_Props_Master",
-        "/AssetForge/Materials/M_AF_Environment_Master",
-        "/AssetForge/Materials/M_AF_Character_Master",
-    }:
+    master_modes = {
+        AF_PROPS_MASTER: RENDER_MODE_MASKED,
+        PROPS_PAINTER_OPAQUE_MASTER: RENDER_MODE_OPAQUE,
+        "/AssetForge/Materials/M_AF_Opaque_PBR": RENDER_MODE_OPAQUE,
+        AF_ENVIRONMENT_MASTER: RENDER_MODE_MASKED,
+        AF_CHARACTER_BASIC: RENDER_MODE_OPAQUE,
+    }
+    if set(materials) != set(master_modes):
         issues.append("default material library must stay scoped to props, environment and character masters")
+    for path, mode in master_modes.items():
+        if path in materials and materials[path].get("render_mode") != mode:
+            issues.append("{0} must use {1} blending".format(materials[path]["name"], mode))
 
     if active_plan.get("functions"):
         issues.append("default material functions must not be generated until they are called by a master graph")

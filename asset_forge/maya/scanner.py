@@ -1,9 +1,14 @@
+# -*- coding: utf-8 -*-
 """Core Maya scene scanner for DCC AssetForge 0.1."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
+
+from collections import Counter
 
 from asset_forge.maya.cmds_bridge import get_cmds
-from asset_forge.maya.material_scanner import MayaMaterialScanner
+from asset_forge.maya.material_scanner import MayaMaterialScanner, valid_texture_count
+from asset_forge.shared.rule_validator import summarize_mesh_uvs
+from asset_forge.shared.mesh_geometry import inspect_mesh_triangles
 
 
 def _safe_list(value):
@@ -44,6 +49,15 @@ class MayaAssetScanner(object):
         identity = self._asset_identity_for_roots(roots)
         return self._scan_roots(roots, identity)
 
+    def scene_textures(self, asset_roots):
+        if not self.material_scanner:
+            return []
+        meshes = self._unique_nodes([mesh for root in asset_roots for mesh in self._find_meshes(root)])
+        return self.material_scanner.scan_meshes(meshes)["textures"]
+
+    def count_scene_textures(self, asset_roots):
+        return valid_texture_count(self.scene_textures(asset_roots))
+
     def rename_with_prefix(self, asset_roots, prefix="SM_"):
         renamed = []
         for root in list(asset_roots or []):
@@ -75,11 +89,10 @@ class MayaAssetScanner(object):
         meshes = self._unique_nodes([mesh for root in asset_roots for mesh in self._find_meshes(root)])
         transforms = self._mesh_transforms(meshes)
         descendants = self._unique_nodes([node for root in asset_roots for node in self._descendants(root)])
-        uv_sets = self._collect_uv_sets(meshes)
         material_data = self.material_scanner.scan_meshes(meshes) if self.material_scanner else {"materials": [], "textures": []}
         collision_data = self._collision_nodes(asset_roots + descendants)
 
-        return {
+        result = {
             "asset_root": asset_roots[0],
             "asset_roots": asset_roots,
             "asset_name": asset_name,
@@ -96,17 +109,61 @@ class MayaAssetScanner(object):
             "material_slots": self._count_material_slots(meshes),
             "materials": material_data.get("materials", []),
             "textures": material_data.get("textures", []),
-            "uv_sets": uv_sets,
-            "has_uv0": self._has_uv0(uv_sets),
-            "has_lightmap_uv": self._has_lightmap_uv(uv_sets),
+            "scene_texture_count": valid_texture_count(material_data.get("textures", [])),
             "frozen_transform": self._all_transforms_frozen(asset_roots + transforms),
             "empty_meshes": self._empty_meshes(meshes),
             "collision_nodes": collision_data["valid"],
             "invalid_collision_nodes": collision_data["invalid"],
             "hidden_objects": self._hidden_objects(asset_roots, meshes, transforms),
-            "history_nodes": self._history_nodes_many(asset_roots),
+            "history_nodes": self._history_nodes_many(asset_roots + meshes),
             "illegal_scale": self._has_illegal_scale(asset_roots + transforms),
         }
+        result.update(self._collect_uv_sets(meshes, set(collision_data["valid"])))
+        result["mesh_geometry"] = self._geometry_triangles(result["uv_coordinate_counts"])
+        result["naming_issues"] = self._naming_issues(asset_roots + transforms, identity["asset_name_source_path"])
+        assignment = self._material_assignment(result["uv_coordinate_counts"])
+        if assignment is not None:
+            result["material_assignment"] = assignment
+        return result
+
+    def _naming_issues(self, nodes, identity_path):
+        names = Counter(node.rsplit("|", 1)[-1] for node in dict.fromkeys(nodes))
+        invalid = [name for name in names if not name.replace("_", "a").isalnum() or name[0].isdigit()]
+        duplicates = {name for name, count in names.items() if count > 1}
+        if hasattr(self.cmds, "objExists"):
+            name = identity_path.rsplit("|", 1)[-1]
+            if len(self.cmds.ls(name, long=True, type="transform") or []) > 1:
+                duplicates.add(name)
+        return (["命名空间或非法字符：" + "、".join(sorted(invalid))] if invalid else []) + (
+            ["重名：" + "、".join(sorted(duplicates))] if duplicates else [])
+
+    def _material_assignment(self, meshes):
+        try:
+            from maya.api import OpenMaya as om
+        except ImportError:
+            return None
+        result = {}
+        default_nodes = set(self.cmds.ls(defaultNodes=True) or [])
+        for mesh in meshes:
+            try:
+                selection = om.MSelectionList()
+                selection.add(mesh)
+                path = selection.getDagPath(0)
+                fn = om.MFnMesh(path)
+                shaders, indices = fn.getConnectedShaders(path.instanceNumber())
+                groups = [om.MFnDependencyNode(shader).name() for shader in shaders]
+                invalid_groups = set()
+                for index, group in enumerate(groups):
+                    material = self.material_scanner._surface_material(group)
+                    if group == "initialShadingGroup" or not material or material in default_nodes:
+                        invalid_groups.add(index)
+                faces = [face for face in range(fn.numPolygons)
+                         if face >= len(indices) or indices[face] < 0 or indices[face] in invalid_groups]
+                if faces:
+                    result[mesh] = {"face_indices": faces}
+            except (RuntimeError, ValueError, IndexError):
+                result[mesh] = {"read_error": True}
+        return result
 
     def _find_meshes(self, asset_root):
         if self.cmds.nodeType(asset_root) == "mesh":
@@ -217,26 +274,66 @@ class MayaAssetScanner(object):
                     shading_groups.append(group)
         return len(shading_groups)
 
-    def _collect_uv_sets(self, meshes):
-        result = {}
+    def _geometry_triangles(self, meshes):
+        try:
+            from maya.api import OpenMaya as om
+        except ImportError:
+            return {}
+        results = {}
         for mesh in meshes:
             try:
-                result[mesh] = _safe_list(self.cmds.polyUVSet(mesh, query=True, allUVSets=True))
+                selection = om.MSelectionList()
+                selection.add(mesh)
+                fn = om.MFnMesh(selection.getDagPath(0))
+                points = [(p.x, p.y, p.z) for p in fn.getPoints(om.MSpace.kObject)]
+                face_sizes, face_ids = fn.getVertices()
+                counts, triangle_ids = fn.getTriangles()
+                def triangles():
+                    corner = 0
+                    first_vertex = 0
+                    for face, count in enumerate(counts):
+                        size = face_sizes[face]
+                        if size == 3 and count == 0:
+                            # Maya may omit a collapsed native triangle from its tessellation.
+                            yield (face, size, points[face_ids[first_vertex]], points[face_ids[first_vertex + 1]], points[face_ids[first_vertex + 2]])
+                        for local in range(count):
+                            yield (face, size, points[triangle_ids[corner]], points[triangle_ids[corner + 1]], points[triangle_ids[corner + 2]])
+                            corner += 3
+                        first_vertex += size
+                result = inspect_mesh_triangles(triangles())
+                # Only vertices sharing an exact position can belong to a zero-length edge.
+                zero_edges = []
+                if len(set(points)) != len(points):
+                    for edge in range(fn.numEdges):
+                        a, b = fn.getEdgeVertices(edge)
+                        if points[a] == points[b]:
+                            zero_edges.append(edge)
+                result["zero_length_edges"] = zero_edges
+                results[mesh] = result
+            except (RuntimeError, TypeError, IndexError, ValueError) as exc:
+                results[mesh] = {"read_error": str(exc)}
+        return results
+
+    def _collect_uv_sets(self, meshes, collision_nodes):
+        names = {}
+        counts = {}
+        for mesh in meshes:
+            try:
+                names[mesh] = _safe_list(self.cmds.polyUVSet(mesh, query=True, allUVSets=True))
             except RuntimeError:
-                result[mesh] = []
-        return result
-
-    def _has_uv0(self, uv_sets_by_mesh):
-        for uv_sets in uv_sets_by_mesh.values():
-            if uv_sets:
-                return True
-        return False
-
-    def _has_lightmap_uv(self, uv_sets_by_mesh):
-        for uv_sets in uv_sets_by_mesh.values():
-            if len(uv_sets) >= 2:
-                return True
-        return False
+                names[mesh] = []
+            if mesh in collision_nodes or mesh.rpartition("|")[0] in collision_nodes:
+                continue
+            if self.cmds.getAttr(mesh + ".intermediateObject"):
+                continue
+            counts[mesh] = []
+            for uv_set in names[mesh][:2]:
+                try:
+                    count = int(self.cmds.polyEvaluate(mesh, uvcoord=True, uvSetName=uv_set))
+                except (RuntimeError, TypeError, ValueError):
+                    count = None
+                counts[mesh].append(count)
+        return summarize_mesh_uvs(names, counts)
 
     def _is_frozen_transform(self, asset_root):
         if self.cmds.nodeType(asset_root) != "transform":
@@ -335,7 +432,8 @@ class MayaAssetScanner(object):
         result = []
         for node in history:
             node_type = self.cmds.nodeType(node)
-            if node_type in ("mesh", "transform", "shadingEngine"):
+            # Maya uses groupId to track component membership, including per-face materials.
+            if node_type in ("mesh", "transform", "shadingEngine", "groupId"):
                 continue
             if node not in result:
                 result.append(node)

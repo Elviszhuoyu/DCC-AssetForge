@@ -1,7 +1,12 @@
 #include "AssetForgeEditorModule.h"
+#include "SAssetForgeReview.h"
+
+#include "Widgets/Input/SComboButton.h"
 
 #include "Brushes/SlateImageBrush.h"
 #include "DesktopPlatformModule.h"
+#include "Editor.h"
+#include "Engine/StaticMesh.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Framework/Docking/TabManager.h"
@@ -9,17 +14,26 @@
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
 #include "Interfaces/IPluginManager.h"
 #include "IDesktopPlatform.h"
 #include "IPythonScriptPlugin.h"
+#include "Misc/EngineVersion.h"
 #include "Misc/FileHelper.h"
+#if WITH_DEV_AUTOMATION_TESTS
+#include "Misc/AutomationTest.h"
+#endif
+#include "Misc/PackageName.h"
 #include "Misc/Paths.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Styling/AppStyle.h"
 #include "Styling/SlateStyle.h"
 #include "Styling/SlateStyleRegistry.h"
+#include "Subsystems/AssetEditorSubsystem.h"
+#include "UObject/SoftObjectPath.h"
 #include "ToolMenus.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Images/SImage.h"
@@ -34,6 +48,9 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSplitter.h"
+#include "Widgets/Layout/SWidgetSwitcher.h"
+#include "Widgets/Layout/SWrapBox.h"
+#include "Styling/StyleColors.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/SListView.h"
@@ -46,17 +63,16 @@ namespace AssetForgeEditor
 {
 static const FName GateTabName(TEXT("AssetForge.GateWorkbench"));
 static const FName StyleSetName(TEXT("AssetForgeEditorStyle"));
-static const FName ToolbarIconName(TEXT("AssetForge.ToolbarIcon"));
-static const FName TabIconName(TEXT("AssetForge.TabIcon"));
-static const FName HeaderIconName(TEXT("AssetForge.HeaderIcon"));
-static const TCHAR* GateVersionLabel = TEXT("DCC AssetForge Gate 0.1.0");
-static const TCHAR* GateBuildLabel = TEXT("Build 2026-06-03-R7");
+static const FName WorkbenchIconName(TEXT("AssetForge.ReviewTabIcon"));
+static const TCHAR* GateVersionLabel = TEXT("AssetForge v0.2");
+static const TCHAR* ImportedSelectionMessage = TEXT("该包体已导入，可直接前往「入库批审」查验本次资产");
 static const TCHAR* DccPackageRootName = TEXT("dcc_packages");
 
 struct FAssetForgePackageItem
 {
     FString AssetName;
     FString SourceDcc;
+    FString MaterialBindings;
     FString TargetPath;
     FString SchemaVersion;
     FString ManifestPackageName;
@@ -71,11 +87,19 @@ struct FAssetForgePackageItem
     FString ReportDecision;
     FString ReportDecisionLabel;
     FString ReportNextAction;
+    FString ReportRiskCaption;
+    TArray<FString> OperatorWarnings;
+    TArray<FString> OperatorErrors;
+    TSharedPtr<FJsonObject> HandoffReceipt;
+    bool bReportViewLoaded = false;
+    bool bImported = false;
     bool bReportCanImportKnown = false;
     bool bReportCanImport = false;
     int32 ReportWarningCount = 0;
     int32 ReportErrorCount = 0;
     int32 MeshCount = 0;
+    int32 TriangleBudget = INDEX_NONE;
+    int32 MaterialSlotBudget = INDEX_NONE;
     int32 SourceMeshCount = 0;
     int32 FbxFileCount = 0;
     int32 TextureCount = 0;
@@ -96,27 +120,23 @@ struct FAssetForgePackageItem
 
     FString StatePrefix() const
     {
+        if ((bReportCanImportKnown && !bReportCanImport) || ReportErrorCount > 0)
+        {
+            return TEXT("[阻断]");
+        }
+        if (bImported)
+        {
+            return TEXT("[已导入]");
+        }
         if (!HasReport())
         {
             return TEXT("[待检查]");
         }
-        if (bReportCanImportKnown && bReportCanImport)
+        if (bReportCanImportKnown)
         {
-            return TEXT("[放行]");
+            return ReportWarningCount > 0 ? TEXT("[可导入 · 需复核]") : TEXT("[可导入]");
         }
-        if (bReportCanImportKnown && !bReportCanImport)
-        {
-            return TEXT("[阻断]");
-        }
-        if (ReportErrorCount > 0)
-        {
-            return TEXT("[阻断]");
-        }
-        if (ReportWarningCount > 0)
-        {
-            return TEXT("[警告]");
-        }
-        return TEXT("[已报告]");
+        return TEXT("[需复核]");
     }
 
     FString RiskSummary() const
@@ -124,6 +144,10 @@ struct FAssetForgePackageItem
         if (!HasReport())
         {
             return TEXT("风险：等待检查报告");
+        }
+        if (!ReportRiskCaption.IsEmpty())
+        {
+            return ReportRiskCaption;
         }
         return FString::Printf(TEXT("风险：警告 %d / 阻断 %d"), ReportWarningCount, ReportErrorCount);
     }
@@ -144,7 +168,7 @@ struct FAssetForgePackageItem
     {
         const FString DccLabel = SourceDcc.IsEmpty() ? TEXT("DCC 未记录") : SourceDcc.ToUpper();
         const FString TargetLabel = TargetPath.IsEmpty() ? TEXT("UE 路径未记录") : TargetPath;
-        return FString::Printf(TEXT("%s  |  %s  |  %s  |  更新 %s"), *DccLabel, *TargetLabel, *PackageIdentityLine(), *ModifiedTimeLabel());
+        return FString::Printf(TEXT("%s  ·  %s"), *DccLabel, *TargetLabel);
     }
 
     FString ListExpandedDetailsLabel() const
@@ -296,15 +320,6 @@ static FSlateFontInfo StrongFont()
     return FAppStyle::GetFontStyle("DetailsView.CategoryFontStyle");
 }
 
-static const FSlateBrush* AssetForgeBrush(const FName BrushName)
-{
-    if (const ISlateStyle* Style = FSlateStyleRegistry::FindSlateStyle(StyleSetName))
-    {
-        return Style->GetBrush(BrushName);
-    }
-    return FAppStyle::GetBrush("Icons.Import");
-}
-
 static TSharedRef<STextBlock> TextBlock(const TAttribute<FText>& Text, const FSlateColor& Color = FSlateColor::UseForeground())
 {
     return SNew(STextBlock)
@@ -337,7 +352,7 @@ static TSharedRef<SWidget> PropertyRow(const FText& Label, const TAttribute<FTex
             + SHorizontalBox::Slot()
             .FillWidth(0.68f)
             [
-                TextBlock(Value)
+                WrappedTextBlock(Value, Value)
             ]
         ];
 }
@@ -362,26 +377,13 @@ static TSharedRef<SWidget> PropertyRow(const FText& Label, const TSharedRef<SWid
         ];
 }
 
-static TSharedRef<SWidget> StatusPill(const TAttribute<FText>& Text, const FLinearColor& Color)
+static TSharedRef<SWidget> StatusPill(const TAttribute<FText>& Text, const FSlateColor& Color)
 {
     return SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
         .Padding(FMargin(10.0f, 4.0f))
         [
             TextBlock(Text, Color)
-        ];
-}
-
-static TSharedRef<SWidget> StatusPillDynamic(const TAttribute<FText>& Text, const TAttribute<FSlateColor>& Color)
-{
-    return SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
-        .Padding(FMargin(10.0f, 4.0f))
-        [
-            SNew(STextBlock)
-            .Text(Text)
-            .Font(DetailFont())
-            .ColorAndOpacity(Color)
         ];
 }
 
@@ -402,27 +404,27 @@ static TSharedRef<SWidget> SelectionDot(const TAttribute<bool>& bSelected)
             .ColorAndOpacity(TAttribute<FSlateColor>::CreateLambda([bSelected]()
             {
                 return bSelected.Get()
-                    ? FSlateColor(FLinearColor(0.70f, 0.90f, 0.82f, 1.0f))
-                    : FSlateColor(FLinearColor(0.50f, 0.56f, 0.60f, 1.0f));
+                    ? FStyleColors::Foreground
+                    : FSlateColor::UseSubduedForeground();
             }))
         ];
 }
 
-static FLinearColor PackageRiskColor(const FAssetForgePackageItem& Item)
+static FSlateColor PackageRiskColor(const FAssetForgePackageItem& Item)
 {
     if (!Item.HasReport())
     {
-        return FLinearColor(0.55f, 0.65f, 0.72f, 1.0f);
+        return FSlateColor::UseSubduedForeground();
     }
     if ((Item.bReportCanImportKnown && !Item.bReportCanImport) || Item.ReportErrorCount > 0)
     {
-        return FLinearColor(1.0f, 0.34f, 0.30f, 1.0f);
+        return FStyleColors::Error;
     }
-    if (Item.ReportWarningCount > 0 || !Item.bReportCanImportKnown)
+    if (!Item.bImported && (Item.ReportWarningCount > 0 || !Item.bReportCanImportKnown))
     {
-        return FLinearColor(1.0f, 0.72f, 0.28f, 1.0f);
+        return FStyleColors::Warning;
     }
-    return FLinearColor(0.40f, 0.88f, 0.56f, 1.0f);
+    return FStyleColors::Success;
 }
 
 static TSharedRef<SWidget> CompactButton(
@@ -462,40 +464,6 @@ static TSharedRef<SWidget> CompactButton(const FText& Text, const FName IconName
     return CompactButton(TAttribute<FText>(Text), IconName, OnClicked);
 }
 
-static TSharedRef<SWidget> PrimaryActionButton(
-    const TAttribute<FText>& Text,
-    const FName IconName,
-    FOnClicked OnClicked,
-    const TAttribute<bool>& IsEnabled,
-    const TAttribute<FText>& ToolTipText
-)
-{
-    return SNew(SButton)
-        .ContentPadding(FMargin(14.0f, 8.0f))
-        .ButtonColorAndOpacity(FLinearColor(0.12f, 0.42f, 0.32f, 1.0f))
-        .ForegroundColor(FSlateColor(FLinearColor(0.88f, 1.0f, 0.94f, 1.0f)))
-        .OnClicked(OnClicked)
-        .IsEnabled(IsEnabled)
-        .ToolTipText(ToolTipText)
-        [
-            SNew(SHorizontalBox)
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SImage)
-                .Image(FAppStyle::GetBrush(IconName))
-            ]
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(8.0f, 0.0f, 0.0f, 0.0f)
-            [
-                TextBlock(Text)
-            ]
-        ];
-}
-
 static FString PythonStringLiteral(FString Value)
 {
     Value.ReplaceInline(TEXT("\\"), TEXT("\\\\"));
@@ -505,7 +473,7 @@ static FString PythonStringLiteral(FString Value)
     return FString::Printf(TEXT("'%s'"), *Value);
 }
 
-static FString BuildGatePythonCommand(const FString& FunctionName, const FString& PackageDir, const FString& ImportOptionsJson = TEXT("{}"))
+static FString BuildWorkbenchPythonCommand(const FString& ActionScript)
 {
     FString PluginPythonRoot;
     if (const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("AssetForge")))
@@ -526,53 +494,79 @@ static FString BuildGatePythonCommand(const FString& FunctionName, const FString
         TEXT("for p in _af_roots:\n")
         TEXT("    if p and os.path.isdir(os.path.join(p, 'asset_forge')) and p not in sys.path:\n")
         TEXT("        sys.path.insert(0, p)\n")
-        TEXT("from asset_forge.unreal.editor_menu import %s as _asset_forge_gate_action\n")
-        TEXT("_asset_forge_import_options = json.loads(%s)\n")
-        TEXT("_asset_forge_report = _asset_forge_gate_action(%s, import_options=_asset_forge_import_options)\n")
-        TEXT("print('ASSET_FORGE_GATE_RESULT=' + json.dumps({'status': _asset_forge_report.get('status', ''), 'report_path': _asset_forge_report.get('report_path', ''), 'gate_passed': _asset_forge_report.get('gate_passed', None)}, ensure_ascii=False))\n"),
+        TEXT("%s\n")
+        TEXT("print('ASSET_FORGE_GATE_RESULT=' + json.dumps(_af_result, ensure_ascii=True))\n"),
         *PythonStringLiteral(PluginPythonRoot),
         *PythonStringLiteral(PluginPythonRoot),
-        *FunctionName,
-        *PythonStringLiteral(ImportOptionsJson),
-        *PythonStringLiteral(PackageDir)
+        *ActionScript
     );
     return FString::Printf(TEXT("exec(%s)"), *PythonStringLiteral(Script));
 }
 
-static FString ExecuteGatePythonCommand(const FString& FunctionName, const FString& PackageDir, const FString& ImportOptionsJson = TEXT("{}"))
+static FString BuildGatePythonAction(const FString& FunctionName, const FString& PackageDir,
+    const FString& ImportOptionsJson, const FString& ConfirmationToken, const FString& ReportPath)
+{
+    return FString::Printf(
+        TEXT("from asset_forge.unreal.editor_menu import %s as _asset_forge_gate_action\n")
+        TEXT("_asset_forge_import_options = json.loads(%s)\n")
+        TEXT("_af_token = %s\n")
+        TEXT("_af_kwargs = {'confirmation_token': _af_token} if _af_token else {}\n")
+        TEXT("_af_report_path = %s\n")
+        TEXT("if _af_report_path:\n")
+        TEXT("    _af_kwargs['report_path'] = _af_report_path\n")
+        TEXT("_asset_forge_report = _asset_forge_gate_action(%s, import_options=_asset_forge_import_options, **_af_kwargs)\n")
+        TEXT("_af_fields = ('status', 'message', 'report_path', 'gate_passed', 'can_import', 'operator_warnings', 'operator_errors', 'timings_ms', 'cache_hit', 'confirmation', 'import_succeeded', 'handoff_receipt')\n")
+        TEXT("_af_result = {key: _asset_forge_report[key] for key in _af_fields if key in _asset_forge_report}"),
+
+        *FunctionName,
+        *PythonStringLiteral(ImportOptionsJson),
+        *PythonStringLiteral(ConfirmationToken),
+        *PythonStringLiteral(ReportPath),
+        *PythonStringLiteral(PackageDir)
+    );
+}
+
+static TSharedPtr<FJsonObject> ExecuteWorkbenchPythonCommand(const FString& ActionScript, FString& OutError)
 {
     IPythonScriptPlugin* PythonPlugin = IPythonScriptPlugin::Get();
     if (!PythonPlugin || !PythonPlugin->IsPythonAvailable())
     {
-        return TEXT("UE Python 不可用，无法执行门禁动作。");
+        OutError = TEXT("UE Python 不可用，无法执行门禁动作。");
+        return nullptr;
     }
 
     FPythonCommandEx PythonCommand;
-    PythonCommand.Command = BuildGatePythonCommand(FunctionName, PackageDir, ImportOptionsJson);
+    PythonCommand.Command = BuildWorkbenchPythonCommand(ActionScript);
     PythonCommand.ExecutionMode = EPythonCommandExecutionMode::ExecuteFile;
     PythonCommand.FileExecutionScope = EPythonFileExecutionScope::Public;
-    const bool bSuccess = PythonPlugin->ExecPythonCommandEx(PythonCommand);
-
-    FString Output;
-    for (const FPythonLogOutputEntry& Entry : PythonCommand.LogOutput)
+    if (PythonPlugin->ExecPythonCommandEx(PythonCommand))
     {
-        if (!Output.IsEmpty())
+        for (const FPythonLogOutputEntry& Entry : PythonCommand.LogOutput)
         {
-            Output += TEXT("\n");
+            FString Json;
+            TSharedPtr<FJsonObject> Result;
+            if (Entry.Output.Split(TEXT("ASSET_FORGE_GATE_RESULT="), nullptr, &Json)
+                && FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), Result) && Result)
+            {
+                return Result;
+            }
         }
-        Output += Entry.Output;
     }
 
-    if (!bSuccess)
-    {
-        return FString::Printf(TEXT("门禁动作执行失败：%s"), Output.IsEmpty() ? *PythonCommand.CommandResult : *Output);
-    }
-    return Output.IsEmpty() ? TEXT("门禁动作已执行，查看 latest_unreal.log。") : Output;
+    OutError = TEXT("门禁动作未返回结果。请查看 Output Log，再重新检查包体。");
+    return nullptr;
 }
 
-static TSharedRef<SWidget> Section(const FText& Title, TSharedRef<SWidget> Body, bool InitiallyCollapsed = false)
+static TSharedPtr<FJsonObject> ExecuteGatePythonCommand(const FString& FunctionName, const FString& PackageDir,
+    const FString& ImportOptionsJson, const FString& ConfirmationToken, FString& OutError, const FString& ReportPath = FString())
 {
-    return SNew(SExpandableArea)
+    return ExecuteWorkbenchPythonCommand(
+        BuildGatePythonAction(FunctionName, PackageDir, ImportOptionsJson, ConfirmationToken, ReportPath), OutError);
+}
+
+static TSharedRef<SWidget> Section(const FText& Title, TSharedRef<SWidget> Body, bool InitiallyCollapsed = false, FName Tag = NAME_None)
+{
+    return SNew(SExpandableArea).Tag(Tag)
         .InitiallyCollapsed(InitiallyCollapsed)
         .HeaderPadding(FMargin(8.0f, 5.0f))
         .Padding(FMargin(0.0f, 4.0f, 0.0f, 8.0f))
@@ -758,6 +752,34 @@ static FString DecisionLabelFromCode(const FString& Decision, const FString& Sta
     return TEXT("已生成导入报告");
 }
 
+static void AttachOperatorNotices(FAssetForgePackageItem& Item, const TSharedPtr<FJsonObject>& Report)
+{
+    TArray<FString> Warnings, Errors;
+    if (Report->TryGetStringArrayField(TEXT("operator_warnings"), Warnings))
+    {
+        Item.OperatorWarnings = MoveTemp(Warnings);
+    }
+    if (Report->TryGetStringArrayField(TEXT("operator_errors"), Errors))
+    {
+        Item.OperatorErrors = MoveTemp(Errors);
+    }
+}
+
+static void AttachHandoffReceipt(FAssetForgePackageItem& Item, const TSharedPtr<FJsonObject>& Result)
+{
+    // Python validates the receipt against the current project, manifest and target.
+    const auto Receipt = JsonObjectField(Result, TEXT("handoff_receipt"));
+    FString ReceiptId;
+    TArray<FString> Meshes;
+    Item.HandoffReceipt.Reset();
+    if (Receipt && Receipt->TryGetStringField(TEXT("receipt"), ReceiptId) && !ReceiptId.IsEmpty()
+        && Receipt->TryGetStringArrayField(TEXT("meshes"), Meshes) && !Meshes.IsEmpty())
+    {
+        Item.HandoffReceipt = Receipt;
+        Item.bImported = true;
+    }
+}
+
 static void AttachReportDecision(FAssetForgePackageItem& Item, const TSharedPtr<FJsonObject>& Report)
 {
     if (!Report.IsValid())
@@ -792,11 +814,57 @@ static void AttachReportDecision(FAssetForgePackageItem& Item, const TSharedPtr<
     }
     Item.ReportWarningCount = ReportIntField(Summary, Report, TEXT("warning_count"), JsonArrayCount(Report, TEXT("warnings")));
     Item.ReportErrorCount = ReportIntField(Summary, Report, TEXT("error_count"), JsonArrayCount(Report, TEXT("errors")));
+    // The package summary counts checks. The flow summary counts messages across stages.
+    FString Stage;
+    Report->TryGetStringField(TEXT("stage"), Stage);
+    const bool bFlow = Stage == TEXT("package_acceptance_flow");
+    const auto PackageReport = bFlow ? JsonObjectField(Report, TEXT("package_acceptance")) : Report;
+    const auto Checks = JsonObjectField(PackageReport, TEXT("summary"));
+    AttachOperatorNotices(Item, Report);
+    const int32 WarningChecks = JsonIntField(Checks, TEXT("warning_count"), INDEX_NONE);
+    const int32 BlockingChecks = JsonIntField(Checks, TEXT("error_count"), INDEX_NONE);
+    Item.ReportRiskCaption.Reset();
+    if (WarningChecks >= 0 && BlockingChecks >= 0)
+    {
+        Item.ReportRiskCaption = FString::Printf(TEXT("包体检查：%d 项警告 / %d 项阻断"), WarningChecks, BlockingChecks);
+    }
+    else if (bFlow)
+    {
+        Item.ReportRiskCaption = FString::Printf(TEXT("流程记录：%d 条提醒 / %d 条阻断"), Item.ReportWarningCount, Item.ReportErrorCount);
+    }
     if (Item.ReportDecisionLabel.IsEmpty())
     {
         Item.ReportDecisionLabel = DecisionLabelFromCode(Item.ReportDecision, Status, Item.bReportCanImportKnown, Item.bReportCanImport);
     }
+    bool bGatePassed = false;
+    if (Report->TryGetBoolField(TEXT("gate_passed"), bGatePassed) && !bGatePassed)
+    {
+        Item.bReportCanImportKnown = true;
+        Item.bReportCanImport = false;
+        Item.ReportDecisionLabel = TEXT("阻断");
+    }
     Item.LastImportStatus = Item.ReportDecisionLabel;
+
+    bool bRunImport = false;
+    FString SavedProject, ImportStatus;
+    const auto ImportReport = JsonObjectField(Report, TEXT("import"));
+    if (bFlow && bGatePassed && Item.bReportCanImport && Item.ReportErrorCount == 0 && ImportReport
+        && Report->TryGetBoolField(TEXT("run_import"), bRunImport) && bRunImport
+        && Report->TryGetStringField(TEXT("workbench_project_file"), SavedProject) && !SavedProject.IsEmpty()
+        && FPaths::IsSamePath(FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath()), SavedProject)
+        && ImportReport->TryGetStringField(TEXT("status"), ImportStatus)
+        && ImportStatus == TEXT("success"))
+    {
+        TArray<FString> ImportedPaths;
+        if (ImportReport->TryGetStringArrayField(TEXT("imported_assets"), ImportedPaths) && !ImportedPaths.IsEmpty())
+        {
+            Item.bImported = !ImportedPaths.ContainsByPredicate([](const FString& ObjectPath)
+            {
+                const FString PackageName = FPackageName::ObjectPathToPackageName(ObjectPath);
+                return !FPackageName::IsValidLongPackageName(PackageName) || !FPackageName::DoesPackageExist(PackageName);
+            });
+        }
+    }
 }
 
 static FString ReportImportPermissionText(const FAssetForgePackageItem& Item)
@@ -1042,6 +1110,31 @@ static TSharedPtr<FAssetForgePackageItem> BuildPackageItemFromManifest(const FSt
     }
     Item->TextureCount = JsonArrayCount(Manifest, TEXT("textures"));
     Item->MaterialCount = JsonArrayCount(Manifest, TEXT("materials"));
+    const TArray<TSharedPtr<FJsonValue>>* Materials = nullptr;
+    if (Manifest->TryGetArrayField(TEXT("materials"), Materials))
+    {
+        TArray<FString> Lines;
+        for (const auto& Entry : *Materials)
+        {
+            const auto Material = Entry->AsObject();
+            FString Name;
+            if (!Material || !Material->TryGetStringField(TEXT("name"), Name)) continue;
+            const TArray<TSharedPtr<FJsonValue>>* Textures = nullptr;
+            TArray<FString> Bindings;
+            if (Material->TryGetArrayField(TEXT("textures"), Textures))
+            {
+                for (const auto& Value : *Textures)
+                {
+                    const auto Texture = Value->AsObject();
+                    FString File;
+                    if (Texture && (Texture->TryGetStringField(TEXT("package_path"), File) || Texture->TryGetStringField(TEXT("path"), File)))
+                        Bindings.AddUnique(FPaths::GetBaseFilename(File));
+                }
+            }
+            Lines.Add(Bindings.Num() ? Name + TEXT(" → ") + FString::Join(Bindings, TEXT("、")) : Name);
+        }
+        Item->MaterialBindings = FString::Join(Lines, TEXT("\n"));
+    }
     Item->MaterialSlotCount = JsonArrayCount(Manifest, TEXT("material_slots"));
     if (Item->MaterialCount == 0 && Item->MaterialSlotCount > 0)
     {
@@ -1052,6 +1145,9 @@ static TSharedPtr<FAssetForgePackageItem> BuildPackageItemFromManifest(const FSt
     const TSharedPtr<FJsonObject> Checks = JsonObjectField(Manifest, TEXT("checks"));
     const TSharedPtr<FJsonObject> MeshExistsCheck = JsonObjectField(Checks, TEXT("mesh_exists"));
     Item->SourceMeshCount = FMath::Max(Item->SourceMeshCount, JsonIntField(MeshExistsCheck, TEXT("value"), 0));
+    const auto AssetBudgets = JsonObjectField(Manifest, TEXT("asset_budgets"));
+    Item->TriangleBudget = JsonIntField(AssetBudgets, TEXT("triangles"), INDEX_NONE);
+    Item->MaterialSlotBudget = JsonIntField(AssetBudgets, TEXT("material_slots"), INDEX_NONE);
     Item->MeshCount = Item->SourceMeshDisplayCount();
     if (Item->MeshCount == 0 && Item->FbxFileCount > 0)
     {
@@ -1067,12 +1163,21 @@ static TSharedPtr<FAssetForgePackageItem> BuildPackageItemFromManifest(const FSt
         AttachExportCounts(*Item, ReadJsonObject(Item->PackageDir / ExportReports.Last()));
     }
 
-    TArray<FString> Reports;
-    IFileManager::Get().FindFiles(Reports, *(Item->PackageDir / TEXT("*import_report.json")), true, false);
-    if (Reports.Num() > 0)
+    // A dry-run import report describes one substep. The package flow owns the gate decision.
+    const FString FlowReport = Item->PackageDir / TEXT("AssetForgeReports/package_acceptance_flow_report.json");
+    if (FPaths::FileExists(FlowReport))
     {
+        Item->ImportReportPath = FlowReport;
+    }
+    else
+    {
+        TArray<FString> Reports;
+        IFileManager::Get().FindFiles(Reports, *(Item->PackageDir / TEXT("*import_report.json")), true, false);
         Reports.Sort();
-        Item->ImportReportPath = Item->PackageDir / Reports.Last();
+        if (!Reports.IsEmpty()) Item->ImportReportPath = Item->PackageDir / Reports.Last();
+    }
+    if (!Item->ImportReportPath.IsEmpty())
+    {
         Item->ReportTime = IFileManager::Get().GetTimeStamp(*Item->ImportReportPath);
         const TSharedPtr<FJsonObject> Report = ReadJsonObject(Item->ImportReportPath);
         if (Report.IsValid())
@@ -1086,7 +1191,53 @@ static TSharedPtr<FAssetForgePackageItem> BuildPackageItemFromManifest(const FSt
     return Item;
 }
 
-static void FindManifestsRecursive(const FString& Directory, int32 Depth, TArray<FString>& OutManifestPaths)
+
+#if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPackageGateReportTest, "AssetForge.Workbench.GateReportPrecedence",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FPackageGateReportTest::RunTest(const FString&)
+{
+    const FString Dir = FPaths::ProjectSavedDir() / TEXT("Automation/AssetForge") / FGuid::NewGuid().ToString();
+    const FString Reports = Dir / TEXT("AssetForgeReports");
+    if (!IFileManager::Get().MakeDirectory(*Reports, true)) return false;
+    const FString Manifest = Dir / TEXT("SM_Gate_manifest.json");
+    const FString Legacy = Dir / TEXT("SM_Gate_import_report.json");
+    const FString Flow = Reports / TEXT("package_acceptance_flow_report.json");
+    FFileHelper::SaveStringToFile(TEXT("{\"asset_name\":\"SM_Gate\"}"), *Manifest);
+    FFileHelper::SaveStringToFile(TEXT("{\"status\":\"skipped\",\"summary\":{\"can_import\":true},\"checks\":[{\"status\":\"warning\",\"label\":\"Raw legacy notice\"}]}"), *Legacy);
+    const auto Old = BuildPackageItemFromManifest(Manifest);
+    TestTrue(TEXT("Legacy packages use their sole report"), Old && Old->bReportCanImport && Old->ImportReportPath == Legacy);
+    TestTrue(TEXT("A discovery read does not display untranslated legacy notices"), Old && Old->OperatorWarnings.IsEmpty());
+    FFileHelper::SaveStringToFile(TEXT("{\"gate_passed\":false,\"summary\":{\"can_import\":false,\"error_count\":1},")
+        TEXT("\"operator_warnings\":[\"请复核贴图槽位\"],\"operator_errors\":[\"包体文件缺失\"]}"), *Flow);
+    const auto Blocked = BuildPackageItemFromManifest(Manifest);
+    TestTrue(TEXT("Failed flow takes precedence over permissive skipped substep"), Blocked && Blocked->ImportReportPath == Flow
+        && Blocked->bReportCanImportKnown && !Blocked->bReportCanImport && Blocked->ReportErrorCount == 1);
+    TestTrue(TEXT("Persisted operator arrays survive discovery"),
+        Blocked && Blocked->OperatorWarnings == TArray<FString>{TEXT("请复核贴图槽位")}
+            && Blocked->OperatorErrors == TArray<FString>{TEXT("包体文件缺失")});
+
+    const auto VerifiedReceipt = MakeShared<FJsonObject>();
+    VerifiedReceipt->SetStringField(TEXT("receipt"), TEXT("saved-receipt"));
+    VerifiedReceipt->SetArrayField(TEXT("meshes"), {MakeShared<FJsonValueString>(TEXT("/Game/AF/SM_Gate.SM_Gate"))});
+    const auto Response = MakeShared<FJsonObject>();
+    Response->SetObjectField(TEXT("handoff_receipt"), VerifiedReceipt);
+    FAssetForgePackageItem Imported;
+    AttachHandoffReceipt(Imported, Response);
+    TestTrue(TEXT("A verified backend receipt restores handoff"), Imported.bImported && Imported.HandoffReceipt == VerifiedReceipt);
+    AttachHandoffReceipt(Imported, MakeShared<FJsonObject>());
+    TestFalse(TEXT("A missing receipt revokes handoff"), Imported.HandoffReceipt.IsValid());
+    IFileManager::Get().Delete(*Manifest);
+    IFileManager::Get().Delete(*Legacy);
+    IFileManager::Get().Delete(*Flow);
+    IFileManager::Get().DeleteDirectory(*Reports);
+    IFileManager::Get().DeleteDirectory(*Dir);
+    return true;
+}
+#endif
+
+static void FindManifestsRecursive(const FString& Directory, int32 Depth, TSet<FString>& OutManifestPaths)
 {
     if (Depth > 5)
     {
@@ -1124,38 +1275,10 @@ public:
 
         ChildSlot
         [
-            SNew(SBorder)
-            .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-            .Padding(FMargin(12.0f))
-            [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    BuildHeader()
-                ]
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 8.0f)
-                [
-                    SNew(SSeparator)
-                ]
-                + SVerticalBox::Slot()
-                .FillHeight(1.0f)
-                [
-                    SNew(SSplitter)
-                    + SSplitter::Slot()
-                    .Value(0.34f)
-                    [
-                        BuildPackageColumn()
-                    ]
-                    + SSplitter::Slot()
-                    .Value(0.66f)
-                    [
-                        BuildReviewColumn()
-                    ]
-                ]
-            ]
+            SNew(SSplitter)
+            + SSplitter::Slot().Value(0.32f)
+            [SNew(SBox).IsEnabled_Lambda([this](){ return GateOperation == EGateOperation::Idle; })[BuildPackageColumn()]]
+            + SSplitter::Slot().Value(0.68f)[BuildReviewColumn()]
         ];
     }
 
@@ -1205,69 +1328,11 @@ private:
     FString GateNormalImportMethod = TEXT("import_normals_and_tangents");
     FString GateNormalGenerationMethod = TEXT("mikk_t_space");
     FString GateStaticMeshLodGroup = TEXT("project_default");
+    TSharedPtr<FJsonObject> WriteSummary;
+    FString ConfirmedOptions;
+    enum class EGateOperation { Idle, Check, DryRun, PrepareWrite, AwaitConfirm, Import };
+    EGateOperation GateOperation = EGateOperation::Idle;
     FString GateVertexColorImportOption = TEXT("replace");
-
-    TSharedRef<SWidget> BuildHeader()
-    {
-        return SNew(SVerticalBox)
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                SNew(SHorizontalBox)
-                + SHorizontalBox::Slot()
-                .AutoWidth()
-                .Padding(0.0f, 0.0f, 12.0f, 0.0f)
-                [
-                    SNew(SBox)
-                    .WidthOverride(56.0f)
-                    .HeightOverride(56.0f)
-                    [
-                        SNew(SImage)
-                        .Image(AssetForgeBrush(HeaderIconName))
-                    ]
-                ]
-                + SHorizontalBox::Slot()
-                .FillWidth(1.0f)
-                [
-                    SNew(SVerticalBox)
-                    + SVerticalBox::Slot().AutoHeight()
-                    [
-                        SNew(STextBlock)
-                        .Text(LOCTEXT("Title", "DCC AssetForge 导入门禁工作台"))
-                        .Font(FAppStyle::GetFontStyle("DetailsView.CategoryFontStyle"))
-                    ]
-                    + SVerticalBox::Slot().AutoHeight()
-                    [
-                        TextBlock(LOCTEXT("Subtitle", "扫描 DCC 导出的 AF 包体，先核对网格、贴图、材质实例和目标路径，再导入。"), FSlateColor::UseSubduedForeground())
-                    ]
-                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
-                    [
-                        TextBlock(TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetToolVersionText), FSlateColor(FLinearColor(0.55f, 0.65f, 0.72f, 1.0f)))
-                    ]
-                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
-                    [
-                        TextBlock(TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetLastRefreshText), FSlateColor::UseSubduedForeground())
-                    ]
-                ]
-                + SHorizontalBox::Slot()
-                .AutoWidth()
-                .VAlign(VAlign_Center)
-                [
-                    StatusPillDynamic(
-                        TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetStatusText),
-                        TAttribute<FSlateColor>::CreateSP(this, &SAssetForgeGatePanel::GetHeaderStatusColor)
-                    )
-                ]
-            ]
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(0.0f, 8.0f, 0.0f, 0.0f)
-            [
-                SNew(SSearchBox)
-                .HintText(LOCTEXT("SearchHint", "搜索包体名 / DCC / 目标路径 / 材质规则"))
-                .OnTextChanged(this, &SAssetForgeGatePanel::HandleSearchChanged)
-            ];
-    }
 
     TSharedRef<SWidget> BuildPackageColumn()
     {
@@ -1278,8 +1343,14 @@ private:
                 SNew(SVerticalBox)
                 + SVerticalBox::Slot().AutoHeight()
                 [
+                    SNew(SSearchBox).Tag(TEXT("Gate.Search"))
+                    .HintText(LOCTEXT("SearchHint", "搜索包体名 / DCC / 目标路径 / 材质规则"))
+                    .OnTextChanged(this, &SAssetForgeGatePanel::HandleSearchChanged)
+                ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0,6,0,0)
+                [
                     Section(
-                        LOCTEXT("ScanSection", "1 包体来源"),
+                        LOCTEXT("ScanSection", "包体来源"),
                         SNew(SVerticalBox)
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ScanSourceSummary", "扫描来源"), StaticCastSharedRef<SWidget>(WrappedTextBlock(TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetScanSourceSummaryText), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetScanRootsText))))]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ManualScanRoot", "已选目录"), StaticCastSharedRef<SWidget>(WrappedTextBlock(TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetManualPackageRootShortText), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetManualPackageRootTooltip))))]
@@ -1298,10 +1369,10 @@ private:
                         ]
                         + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
                         [
-                            SNew(SHorizontalBox)
-                            + SHorizontalBox::Slot().FillWidth(1.0f)[CompactButton(LOCTEXT("ChoosePackageRoot", "选择包体目录"), "Icons.FolderOpen", FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandleChoosePackageRootClicked))]
-                            + SHorizontalBox::Slot().FillWidth(1.0f).Padding(6.0f, 0.0f)[CompactButton(LOCTEXT("Refresh", "刷新"), "Icons.Refresh", FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandleRefreshClicked))]
-                            + SHorizontalBox::Slot().FillWidth(1.0f).Padding(6.0f, 0.0f)[CompactButton(LOCTEXT("ClearVisiblePackages", "清空列表"), "Icons.Delete", FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandleClearListClicked))]
+                            SNew(SWrapBox).UseAllottedSize(true).InnerSlotPadding(FVector2D(6, 4))
+                            + SWrapBox::Slot()[CompactButton(LOCTEXT("ChoosePackageRoot", "选择包体目录"), "Icons.FolderOpen", FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandleChoosePackageRootClicked))]
+                            + SWrapBox::Slot()[CompactButton(LOCTEXT("Refresh", "刷新"), "Icons.Refresh", FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandleRefreshClicked))]
+                            + SWrapBox::Slot()[CompactButton(LOCTEXT("ClearVisiblePackages", "清空列表"), "Icons.Delete", FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandleClearListClicked))]
                         ]
                     )
                 ]
@@ -1323,67 +1394,58 @@ private:
             + SScrollBox::Slot()
             [
                 SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,8)
+                [
+                    SNew(SWrapBox).UseAllottedSize(true).InnerSlotPadding(FVector2D(6,4))
+                    + SWrapBox::Slot()
+                    [SNew(SButton).Tag(TEXT("Gate.Check"))
+                        .Text_Lambda([this](){ return GateOperation == EGateOperation::Check
+                            ? LOCTEXT("CheckingPackage", "正在检查包体…") : LOCTEXT("CheckPackage", "检查包体"); })
+                        .IsEnabled(this,&SAssetForgeGatePanel::HasSelectedPackage)
+                        .ToolTipText(this,&SAssetForgeGatePanel::GetPreviewTooltipText)
+                        .OnClicked(this,&SAssetForgeGatePanel::HandlePreviewClicked)]
+                    + SWrapBox::Slot()
+                    [SNew(SButton).Tag(TEXT("Gate.Import")).ButtonStyle(FAppStyle::Get(),"PrimaryButton")
+                        .Text(this, &SAssetForgeGatePanel::GetImportButtonText)
+                        .IsEnabled(this,&SAssetForgeGatePanel::CanImportSelectedPackage)
+                        .ToolTipText(this,&SAssetForgeGatePanel::GetImportTooltipText)
+                        .OnClicked(this,&SAssetForgeGatePanel::HandleImportClicked)]
+                    + SWrapBox::Slot()
+                    [SNew(SButton).Tag(TEXT("Gate.Handoff")).ButtonStyle(FAppStyle::Get(),"PrimaryButton")
+                        .IsEnabled(this,&SAssetForgeGatePanel::CanReviewSelectedImport)
+                        .Text(LOCTEXT("ImportedReview", "前往「入库批审」查验本次资产 →"))
+                        .Visibility_Lambda([this](){ return CanReviewSelectedImport() && !GetCompletedImportCounts()
+                            ? EVisibility::Visible : EVisibility::Collapsed; })
+                        .OnClicked(this,&SAssetForgeGatePanel::HandleImportedReviewClicked)]
+                ]
+                + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,7)[BuildWriteConfirmation()]
+                + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,7)[BuildCompletedImport()]
                 + SVerticalBox::Slot().AutoHeight()
                 [
-                    Section(
-                        LOCTEXT("PackageSourceRecord", "1 来源记录"),
-                        SNew(SVerticalBox)
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("PackageUpdatedAt", "包体时间"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetPackageTimeText))]
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ReportUpdatedAt", "报告时间"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetReportTimeText))]
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ManifestPath", "Manifest"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetManifestPath))]
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("PackageNote", "备注"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetPackageNoteText))],
-                        true
-                    )
-                ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
-                [
-                    Section(
-                        LOCTEXT("WriteApprovalSection", "2 导入控制"),
-                        SNew(SVerticalBox)
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("GateMessage", "状态"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetGateMessage))]
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("NextAction", "下一步"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetNextActionText))]
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("WriteContentSummary", "写入内容"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetWriteContentSummaryText))]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
-                        [
-                            PrimaryActionButton(
-                                TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetPrimaryImportButtonText),
-                                "Icons.Import",
-                                FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandlePrimaryImportClicked),
-                                TAttribute<bool>::CreateSP(this, &SAssetForgeGatePanel::HasSelectedPackage),
-                                TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetPrimaryImportTooltipText)
-                            )
-                        ]
-                        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
-                        [
-                            SNew(SHorizontalBox)
-                            + SHorizontalBox::Slot().FillWidth(1.0f)[CompactButton(TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetPreviewButtonText), "Icons.Visibility", FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandlePreviewClicked), TAttribute<bool>::CreateSP(this, &SAssetForgeGatePanel::HasSelectedPackage), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetPreviewTooltipText))]
-                            + SHorizontalBox::Slot().FillWidth(1.0f).Padding(6.0f, 0.0f)[CompactButton(TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetImportButtonText), "Icons.Import", FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandleImportClicked), TAttribute<bool>::CreateSP(this, &SAssetForgeGatePanel::CanImportSelectedPackage), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetImportTooltipText))]
-                        ]
-                    )
-                ]
-                + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
-                [
-                    Section(
-                        LOCTEXT("PackageContentSection", "3 包体内容"),
-                        SNew(SVerticalBox)
+                    Section(LOCTEXT("PackageContentSection", "包体摘要"), SNew(SVerticalBox)
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("SelectedPackage", "选中包体"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedAssetName))]
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("SelectedPackageState", "当前状态"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedPackageStateText))]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("Dcc", "来源 DCC"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedSourceDcc))]
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("PackageNaming", "包体/版本"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedPackageNamingText))]
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ProjectPreset", "项目预设"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedProjectPresetText))]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("TargetPath", "UE 目标路径"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedTargetPath))]
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("PackageDir", "包体目录"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedPackageDir))]
+                        + SVerticalBox::Slot().AutoHeight()
+                        [SNew(SBox).Visibility_Lambda([this](){ return HasDeclaredAssetBudgets() ? EVisibility::Visible : EVisibility::Collapsed; })
+                            [PropertyRow(LOCTEXT("DeclaredAssetBudget", "包体预算"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetDeclaredAssetBudgets))]]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("Mesh", "网格"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetMeshSummary))]
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("Textures", "贴图"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetTextureSummary))]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("Materials", "材质实例"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetMaterialSummary))]
-                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("Schema", "Schema"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSchemaSummary))]
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("Textures", "贴图"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetTextureSummary))]
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("Bindings", "材质 / 贴图映射"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetMaterialBindings))]
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("SelectedPackageState", "风险状态"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedPackageStateText))]
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("GateMessage", "操作结果"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetGateMessage))]
+                        + SVerticalBox::Slot().AutoHeight()[BuildGateNotices()]
                     )
                 ]
                 + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
                 [
                     Section(
-                        LOCTEXT("ImportStrategySection", "4 导入策略"),
+                        LOCTEXT("ImportStrategySection", "导入策略设置"),
                         SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("WriteContentSummary", "写入内容"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetWriteContentSummaryText))]
+                        + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0,3)
+                        [CompactButton(TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetDryRunButtonText), "Icons.Search", FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandleDryRunClicked), TAttribute<bool>::CreateSP(this, &SAssetForgeGatePanel::HasSelectedPackage), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetDryRunTooltipText))]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ImportCombineMeshes", "Combine Meshes"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetCombineMeshesText))]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ImportNormalMethod", "法线导入"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetNormalImportText))]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ImportLodPolicy", "LOD 策略"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetLodPolicyText))]
@@ -1398,11 +1460,11 @@ private:
                         ]
                         + SVerticalBox::Slot().AutoHeight()
                         [
-                            PropertyRow(LOCTEXT("GateTransformGroup", "高级设置：变换 / 单位"), BuildTransformOptionRow())
+                            FullWidthPolicyRow(LOCTEXT("GateTransformGroup", "高级设置：变换 / 单位"), BuildTransformOptionRow())
                         ]
                         + SVerticalBox::Slot().AutoHeight()
                         [
-                            PropertyRow(LOCTEXT("GateTransformOffsetGroup", "导入偏移"), BuildTransformOffsetOptionRow())
+                            FullWidthPolicyRow(LOCTEXT("GateTransformOffsetGroup", "导入偏移"), BuildTransformOffsetOptionRow())
                         ]
                         + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
                         [
@@ -1436,13 +1498,28 @@ private:
                         [
                             PropertyRow(LOCTEXT("GateOutputBuildGroup", "高级设置：构建输出"), BuildOutputBuildOptionRow())
                         ],
-                        false
+                        true, TEXT("Gate.Fold.Policy")
+                    )
+                ]
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    Section(
+                        LOCTEXT("PackageSourceRecord", "来源记录"),
+                        SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("PackageUpdatedAt", "包体时间"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetPackageTimeText))]
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ReportUpdatedAt", "报告时间"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetReportTimeText))]
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ManifestPath", "Manifest"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetManifestPath))]
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("PackageNote", "备注"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetPackageNoteText))]
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("PackageNaming", "包体/版本"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedPackageNamingText))]
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ProjectPreset", "项目预设"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSelectedProjectPresetText))]
+                        + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("Schema", "Schema"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetSchemaSummary))],
+                        true
                     )
                 ]
                 + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
                 [
                     Section(
-                        LOCTEXT("HistorySection", "5 历史与报告"),
+                        LOCTEXT("HistorySection", "历史与报告"),
                         SNew(SVerticalBox)
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("ToolVersion", "工具版本"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetToolVersionText))]
                         + SVerticalBox::Slot().AutoHeight()[PropertyRow(LOCTEXT("LastRefresh", "最近刷新"), TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetLastRefreshText))]
@@ -1458,7 +1535,7 @@ private:
                             + SHorizontalBox::Slot().FillWidth(1.0f)
                             [
                                 CompactButton(
-                                    TAttribute<FText>(LOCTEXT("OpenReport", "打开报告")),
+                                    TAttribute<FText>(LOCTEXT("LocateReport", "定位完整报告")),
                                     "Icons.Visibility",
                                     FOnClicked::CreateSP(this, &SAssetForgeGatePanel::HandleOpenReportClicked),
                                     TAttribute<bool>::CreateSP(this, &SAssetForgeGatePanel::HasSelectedReport),
@@ -1475,14 +1552,205 @@ private:
                                     TAttribute<FText>(LOCTEXT("ExportDebugTooltip", "保存当前 Gate 状态、包体列表、选中包体和报告路径，便于交给 TA 或 AI 排查。"))
                                 )
                             ]
-                        ]
+                        ], true
                     )
                 ]
             ];
     }
 
+    FText GetImportButtonText() const
+    {
+        if (GateOperation == EGateOperation::AwaitConfirm)
+        {
+            return LOCTEXT("GateWaitingForConfirm", "等待确认…");
+        }
+        if (GateOperation == EGateOperation::Import)
+        {
+            return LOCTEXT("ImportingPackage", "正在导入资产…");
+        }
+        if (GateOperation == EGateOperation::PrepareWrite)
+        {
+            return LOCTEXT("PreparingGateWrite", "正在核对目标…");
+        }
+        return LOCTEXT("ConfirmImport", "确认导入");
+    }
+
+    FText GetWriteCounts() const
+    {
+        return FText::Format(LOCTEXT("GateConfirmCounts", "网格 {0} · 贴图 {1} · 材质实例 {2}"),
+            FText::AsNumber(JsonIntField(WriteSummary, TEXT("mesh_count"))),
+            FText::AsNumber(JsonIntField(WriteSummary, TEXT("texture_count"))),
+            FText::AsNumber(JsonIntField(WriteSummary, TEXT("material_count"))));
+    }
+
+    FText GetWriteTarget() const
+    {
+        FString Target;
+        if (WriteSummary)
+        {
+            WriteSummary->TryGetStringField(TEXT("target_path"), Target);
+        }
+        return FText::FromString(Target);
+    }
+
+    FText GetWriteConflicts() const
+    {
+        FString Policy;
+        if (WriteSummary)
+        {
+            WriteSummary->TryGetStringField(TEXT("policy_summary"), Policy);
+        }
+        return FText::Format(LOCTEXT("GateConfirmTargetAssets", "目标现有 {0} 项资产　{1}"),
+            FText::AsNumber(JsonIntField(WriteSummary, TEXT("existing_count"))), FText::FromString(Policy));
+    }
+
+    FText GetWriteRisk() const
+    {
+        return FText::Format(LOCTEXT("GateConfirmRisk", "{0} 阻断 · {1} 项非阻断提醒"),
+            FText::AsNumber(JsonIntField(WriteSummary, TEXT("error_count"))),
+            FText::AsNumber(JsonIntField(WriteSummary, TEXT("warning_count"))));
+    }
+
+    TSharedRef<SWidget> BuildWriteConfirmation()
+    {
+        const auto Target = TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetWriteTarget);
+        return SNew(SBorder).Tag(TEXT("Gate.ConfirmPanel"))
+            .Visibility_Lambda([this](){ return GateOperation == EGateOperation::AwaitConfirm
+                && WriteSummary.IsValid() ? EVisibility::Visible : EVisibility::Collapsed; })
+            .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder")).Padding(FMargin(12,9))
+            [SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight()
+                [SNew(STextBlock).Text(LOCTEXT("GateInlineConfirmTitle", "核对本次写入")).Font(StrongFont())]
+                + SVerticalBox::Slot().AutoHeight().Padding(0,5,0,2)
+                [WrappedTextBlock(TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetWriteCounts))]
+                + SVerticalBox::Slot().AutoHeight().Padding(0,2)
+                [SNew(STextBlock).Text(Target).ToolTipText(Target).Font(DetailFont()).OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                    .Clipping(EWidgetClipping::ClipToBounds)]
+                + SVerticalBox::Slot().AutoHeight().Padding(0,2)
+                [WrappedTextBlock(TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetWriteConflicts))]
+                + SVerticalBox::Slot().AutoHeight().Padding(0,2,0,6)
+                [WrappedTextBlock(TAttribute<FText>::CreateSP(this, &SAssetForgeGatePanel::GetWriteRisk))]
+                + SVerticalBox::Slot().AutoHeight()
+                [SNew(SWrapBox).UseAllottedSize(true).InnerSlotPadding(FVector2D(6,4))
+                    + SWrapBox::Slot()
+                    [SNew(SButton).Tag(TEXT("Gate.ConfirmWrite")).ButtonStyle(FAppStyle::Get(),"PrimaryButton")
+                        .Text(LOCTEXT("GateConfirmWrite", "确认写入"))
+                        .OnClicked(this, &SAssetForgeGatePanel::HandleConfirmWriteClicked)]
+                    + SWrapBox::Slot()
+                    [SNew(SButton).Tag(TEXT("Gate.CancelWrite")).Text(LOCTEXT("GateCancelWrite", "取消"))
+                        .OnClicked(this, &SAssetForgeGatePanel::HandleCancelWriteClicked)]]];
+    }
+
+    bool HasDeclaredAssetBudgets() const
+    {
+        return SelectedPackage && SelectedPackage->TriangleBudget > 0 && SelectedPackage->MaterialSlotBudget > 0;
+    }
+
+    FText GetDeclaredAssetBudgets() const
+    {
+        return HasDeclaredAssetBudgets()
+            ? FText::Format(LOCTEXT("DeclaredAssetBudgetValues", "{0} 三角面 / {1} 个材质槽"),
+                FText::AsNumber(SelectedPackage->TriangleBudget), FText::AsNumber(SelectedPackage->MaterialSlotBudget))
+            : FText::GetEmpty();
+    }
+
+    TSharedPtr<FJsonObject> GetCompletedImportCounts() const
+    {
+        return CanReviewSelectedImport() ? JsonObjectField(SelectedPackage->HandoffReceipt, TEXT("result_counts")) : nullptr;
+    }
+
+    TSharedRef<SWidget> BuildCompletedImport()
+    {
+        return SNew(SBorder).Tag(TEXT("Gate.ImportReceipt"))
+            .Visibility_Lambda([this](){ return GetCompletedImportCounts() ? EVisibility::Visible : EVisibility::Collapsed; })
+            .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder")).Padding(FMargin(12,9))
+            [SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight()
+                [SNew(STextBlock).Text(LOCTEXT("GateImportCompleted", "✓ 导入完成")).Font(StrongFont()).ColorAndOpacity(FStyleColors::Success)]
+                + SVerticalBox::Slot().AutoHeight().Padding(0,5,0,2)
+                [WrappedTextBlock(TAttribute<FText>::CreateLambda([this]()
+                {
+                    const auto Counts = GetCompletedImportCounts();
+                    return FText::Format(LOCTEXT("GateImportedCounts", "网格 {0} · 贴图 {1} · 材质实例 {2}"),
+                        FText::AsNumber(JsonIntField(Counts, TEXT("mesh_count"))),
+                        FText::AsNumber(JsonIntField(Counts, TEXT("texture_count"))),
+                        FText::AsNumber(JsonIntField(Counts, TEXT("material_count"))));
+                }))]
+                + SVerticalBox::Slot().AutoHeight().Padding(0,2,0,6)
+                [WrappedTextBlock(TAttribute<FText>::CreateLambda([this]()
+                {
+                    FString Target;
+                    if (SelectedPackage && SelectedPackage->HandoffReceipt)
+                    {
+                        SelectedPackage->HandoffReceipt->TryGetStringField(TEXT("target_path"), Target);
+                    }
+                    return FText::FromString(Target);
+                }))]
+                + SVerticalBox::Slot().AutoHeight()
+                [SNew(SWrapBox).UseAllottedSize(true).InnerSlotPadding(FVector2D(6,4))
+                    + SWrapBox::Slot()
+                    [SNew(SButton).Tag(TEXT("Gate.ReceiptHandoff")).ButtonStyle(FAppStyle::Get(),"PrimaryButton")
+                        .Text(LOCTEXT("ImportedReview", "前往「入库批审」查验本次资产 →"))
+                        .OnClicked(this, &SAssetForgeGatePanel::HandleImportedReviewClicked)]
+                    + SWrapBox::Slot()
+                    [SNew(SButton).Tag(TEXT("Gate.OpenImportedMesh"))
+                        .Text(LOCTEXT("GateOpenImportedMesh", "打开静态网格"))
+                        .OnClicked(this, &SAssetForgeGatePanel::HandleOpenImportedMeshClicked)]]];
+    }
+
+    TArray<FString> const& GetGateNotices(bool bErrors) const
+    {
+        static const TArray<FString> Empty;
+        if (!SelectedPackage)
+        {
+            return Empty;
+        }
+        return bErrors ? SelectedPackage->OperatorErrors : SelectedPackage->OperatorWarnings;
+    }
+
+    TSharedRef<SWidget> GateNoticeText(const FText& Label, bool bErrors)
+    {
+        return SNew(SVerticalBox)
+            .Visibility_Lambda([this, bErrors](){ return GetGateNotices(bErrors).IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
+            + SVerticalBox::Slot().AutoHeight().Padding(0,4,0,2)
+            [TextBlock(Label, bErrors ? FStyleColors::Error : FStyleColors::Warning)]
+            + SVerticalBox::Slot().AutoHeight()
+            [WrappedTextBlock(TAttribute<FText>::CreateLambda([this, bErrors]()
+            {
+                const auto& Notices = GetGateNotices(bErrors);
+                return Notices.IsEmpty() ? FText::GetEmpty()
+                    : FText::FromString(TEXT("• ") + FString::Join(Notices, TEXT("\n• ")));
+            }))];
+    }
+
+    TSharedRef<SWidget> BuildGateNotices()
+    {
+        return SNew(SVerticalBox).Tag(TEXT("Gate.CheckNotices"))
+            .Visibility_Lambda([this](){ return HasSelectedReport() ? EVisibility::Visible : EVisibility::Collapsed; })
+            + SVerticalBox::Slot().AutoHeight().Padding(8,0)
+            [GateNoticeText(LOCTEXT("GateBlockingNotices", "需修复"), true)]
+            + SVerticalBox::Slot().AutoHeight().Padding(8,0)
+            [GateNoticeText(LOCTEXT("GateReviewNotices", "非阻断提醒"), false)]
+            + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(8,5,0,5)
+            [SNew(SButton).Tag(TEXT("Gate.FullReport")).ButtonStyle(FAppStyle::Get(),"SimpleButton")
+                .IsEnabled_Lambda([this](){ return HasSelectedReport(); })
+                .Text(LOCTEXT("LocateReport", "定位完整报告"))
+                .ToolTipText(this, &SAssetForgeGatePanel::GetOpenReportTooltipText)
+                .OnClicked(this, &SAssetForgeGatePanel::HandleOpenReportClicked)];
+    }
+
+    TSharedRef<SWidget> FullWidthPolicyRow(const FText& Label, const TSharedRef<SWidget>& Control)
+    {
+        return SNew(SBorder).BorderImage(FAppStyle::GetBrush("DetailsView.GridLine")).Padding(FMargin(8,5))
+            [SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,4)[TextBlock(Label,FSlateColor::UseSubduedForeground())]
+                + SVerticalBox::Slot().AutoHeight()[Control]];
+    }
+
     TSharedRef<ITableRow> MakePackageRow(TSharedPtr<FAssetForgePackageItem> Item, const TSharedRef<STableViewBase>& OwnerTable)
     {
+        const FText AssetName = Item.IsValid() ? FText::FromString(Item->AssetName) : FText::GetEmpty();
+        const FText PackageMeta = Item.IsValid() ? FText::FromString(Item->ListCompactMetaLabel()) : FText::GetEmpty();
         const TAttribute<bool> bSelected = TAttribute<bool>::CreateLambda([this, Item]()
         {
             if (!Item.IsValid())
@@ -1517,39 +1785,36 @@ private:
                             ]
                         ]
                         + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(4.0f, 0.0f, 8.0f, 0.0f)
-                        [
-                            StatusPill(
-                                TAttribute<FText>(FText::FromString(Item.IsValid() ? Item->StatePrefix().Replace(TEXT("["), TEXT("")).Replace(TEXT("]"), TEXT("")) : TEXT("未选择"))),
-                                Item.IsValid() ? PackageRiskColor(*Item) : FLinearColor(0.55f, 0.65f, 0.72f, 1.0f)
-                            )
-                        ]
-                        + SHorizontalBox::Slot()
                         .FillWidth(1.0f)
                         .VAlign(VAlign_Center)
                         [
-                            SNew(SButton)
+                            SNew(SButton).Tag(FName(*(TEXT("Gate.Package.") + Item->PackageDir)))
                             .ButtonStyle(FAppStyle::Get(), "SimpleButton")
                             .ContentPadding(FMargin(0.0f))
-                            .ToolTipText(LOCTEXT("SelectPackageBody", "选择包体；右侧会显示来源记录、包内资产和导入策略"))
+                            .ToolTipText(FText::Format(LOCTEXT("SelectPackageDetails", "{0}\n{1}\n选择包体；右侧会显示来源记录、包内资产和导入策略"), AssetName, PackageMeta))
                             .OnClicked(this, &SAssetForgeGatePanel::HandlePackageRowSelect, Item)
                             [
                                 SNew(SVerticalBox)
                                 + SVerticalBox::Slot().AutoHeight()
                                 [
-                                    TextBlock(
-                                        FText::FromString(Item.IsValid() ? Item->AssetName : TEXT("")),
-                                        Item.IsValid() ? FSlateColor(PackageRiskColor(*Item)) : FSlateColor::UseForeground()
+                                    SNew(STextBlock).Text(AssetName)
+                                    .TextStyle(FAppStyle::Get(), "NormalText")
+                                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                                    .Clipping(EWidgetClipping::ClipToBounds)
+                                ]
+                                + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0,2,0,0)
+                                [
+                                    StatusPill(
+                                        TAttribute<FText>(FText::FromString(Item->StatePrefix().Replace(TEXT("["), TEXT("")).Replace(TEXT("]"), TEXT("")))),
+                                        PackageRiskColor(*Item)
                                     )
                                 ]
                                 + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
                                 [
-                                    TextBlock(
-                                        FText::FromString(Item.IsValid() ? Item->ListCompactMetaLabel() : TEXT("")),
-                                        FSlateColor::UseSubduedForeground()
-                                    )
+                                    SNew(STextBlock).Text(PackageMeta).Font(DetailFont())
+                                    .ColorAndOpacity(FSlateColor::UseSubduedForeground())
+                                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                                    .Clipping(EWidgetClipping::ClipToBounds)
                                 ]
                             ]
                         ]
@@ -1561,13 +1826,16 @@ private:
     void OnPackageSelected(TSharedPtr<FAssetForgePackageItem> Item, ESelectInfo::Type SelectInfo)
     {
         SelectedPackage = Item;
+        LoadSelectedReportDetails();
         if (PackageListView.IsValid())
         {
             PackageListView->RequestListRefresh();
         }
-        GateMessage = Item.IsValid()
-            ? FString::Printf(TEXT("已选择 %s。右侧已显示来源记录、包内资产和导入策略；下一步建议先检查。"), *Item->AssetName)
-            : TEXT("请先在左侧选择一个 AF 包体。");
+        GateMessage = CanReviewSelectedImport()
+            ? FString(ImportedSelectionMessage)
+            : (Item.IsValid()
+                ? FString::Printf(TEXT("已选择 %s。右侧已显示来源记录、包内资产和导入策略；下一步建议先检查。"), *Item->AssetName)
+                : TEXT("请先在左侧选择一个 AF 包体。"));
     }
 
     FReply HandlePackageRowSelect(TSharedPtr<FAssetForgePackageItem> Item)
@@ -1576,14 +1844,34 @@ private:
         {
             return FReply::Handled();
         }
-        SelectedPackage = Item;
-        GateMessage = FString::Printf(TEXT("已选择 %s。右侧来源记录和导入策略已刷新。"), *Item->AssetName);
+        OnPackageSelected(Item, ESelectInfo::OnMouseClick);
         if (PackageListView.IsValid())
         {
             PackageListView->SetSelection(Item);
-            PackageListView->RequestListRefresh();
         }
         return FReply::Handled();
+    }
+
+    void LoadSelectedReportDetails(bool bRevalidate = false)
+    {
+        if (!HasSelectedPackage() || !HasSelectedReport() || (!bRevalidate && SelectedPackage->bReportViewLoaded))
+        {
+            return;
+        }
+        FAssetForgePackageItem& Item = *SelectedPackage;
+        FString Error;
+        const auto Result = ExecuteGatePythonCommand(TEXT("workbench_read_reports"), Item.PackageDir,
+            TEXT("{}"), FString(), Error, Item.ImportReportPath);
+        Item.bReportViewLoaded = Result.IsValid();
+        if (Result)
+        {
+            AttachOperatorNotices(Item, Result);
+            AttachHandoffReceipt(Item, Result);
+        }
+        else if (bRevalidate)
+        {
+            Item.HandoffReceipt.Reset();
+        }
     }
 
     FReply HandleRefreshClicked()
@@ -1652,21 +1940,6 @@ private:
         return FReply::Handled();
     }
 
-    FReply HandleCleanupClicked()
-    {
-        const FString TargetPackageDir = SelectedPackage.IsValid() ? SelectedPackage->PackageDir : FString();
-        GateMessage = FString::Printf(
-            TEXT("清理预览（dry-run，不会删除任何资产）：\n%s"),
-            *ExecuteGatePythonCommand(TEXT("preview_generated_props_cleanup"), TargetPackageDir, BuildGateImportOptionsJson())
-        );
-        RefreshPackages();
-        if (PackageListView.IsValid())
-        {
-            PackageListView->RequestListRefresh();
-        }
-        return FReply::Handled();
-    }
-
     void HandleSearchChanged(const FText& NewText)
     {
         SearchText = NewText.ToString();
@@ -1697,88 +1970,248 @@ private:
         }
     }
 
-    FReply HandlePrimaryImportClicked()
-    {
-        if (!SelectedPackage.IsValid())
-        {
-            GateMessage = TEXT("未选择包体。请先在左侧选择一个 AF 包体。");
-            return FReply::Handled();
-        }
-
-        const FString PackageDir = SelectedPackage->PackageDir;
-        const FString PreviewMessage = ExecuteGatePythonCommand(TEXT("preview_gate_for_package_dir"), PackageDir, BuildGateImportOptionsJson());
-        RefreshPackagesAndRestoreSelection(PackageDir);
-
-        if (!CanImportSelectedPackage())
-        {
-            GateMessage = FString::Printf(TEXT("检查已完成，但当前包体未放行；未写入 UE 资产。\n%s"), *PreviewMessage);
-            return FReply::Handled();
-        }
-
-        const FString ImportMessage = ExecuteGatePythonCommand(TEXT("import_approved_package_dir"), PackageDir, BuildGateImportOptionsJson());
-        RefreshPackagesAndRestoreSelection(PackageDir);
-        GateMessage = FString::Printf(TEXT("检查通过，已导入当前包体。\n检查：%s\n导入：%s"), *PreviewMessage, *ImportMessage);
-        return FReply::Handled();
-    }
-
     FReply HandlePreviewClicked()
     {
-        if (!SelectedPackage.IsValid())
+        if (!HasSelectedPackage())
         {
             GateMessage = TEXT("未选择包体，无法检查。请先在左侧包体列表选中一项。");
             return FReply::Handled();
         }
-        const FString PackageDir = SelectedPackage->PackageDir;
-        GateMessage = ExecuteGatePythonCommand(TEXT("preview_gate_for_package_dir"), PackageDir, BuildGateImportOptionsJson());
-        RefreshPackagesAndRestoreSelection(PackageDir);
-        return FReply::Handled();
+        return QueueGateOperation(EGateOperation::Check);
     }
 
     FReply HandleDryRunClicked()
     {
-        if (!SelectedPackage.IsValid())
-        {
-            GateMessage = TEXT("未选择包体，无法执行不写入验证。请先在左侧包体列表选中一项。");
-            return FReply::Handled();
-        }
-        const FString PackageDir = SelectedPackage->PackageDir;
-        GateMessage = ExecuteGatePythonCommand(TEXT("dry_run_gate_for_package_dir"), PackageDir, BuildGateImportOptionsJson());
-        RefreshPackagesAndRestoreSelection(PackageDir);
-        return FReply::Handled();
+        return HasSelectedPackage() ? QueueGateOperation(EGateOperation::DryRun) : FReply::Handled();
     }
 
     FReply HandleImportClicked()
     {
         if (!CanImportSelectedPackage())
         {
-            GateMessage = TEXT("当前包体未放行，未写入 UE。请先执行检查，或使用主按钮自动检查后导入。");
+            GateMessage = TEXT("当前包体未放行，未写入 UE。请先执行检查。");
             return FReply::Handled();
         }
-        const FString PackageDir = SelectedPackage->PackageDir;
-        GateMessage = ExecuteGatePythonCommand(TEXT("import_approved_package_dir"), PackageDir, BuildGateImportOptionsJson());
-        RefreshPackagesAndRestoreSelection(PackageDir);
+        return QueueGateOperation(EGateOperation::PrepareWrite);
+    }
+
+    FReply HandleConfirmWriteClicked()
+    {
+        if (GateOperation != EGateOperation::AwaitConfirm || !WriteSummary.IsValid() || !SelectedPackage.IsValid())
+        {
+            return FReply::Handled();
+        }
+        return QueueGateOperation(EGateOperation::Import);
+    }
+
+    FReply HandleCancelWriteClicked()
+    {
+        WriteSummary.Reset();
+        ConfirmedOptions.Reset();
+        GateOperation = EGateOperation::Idle;
+        GateMessage = TEXT("已取消确认，本次未写入 UE。");
         return FReply::Handled();
     }
 
-    void RefreshPackagesAndRestoreSelection(const FString& PackageDir)
+    FReply QueueGateOperation(EGateOperation Operation)
     {
-        RefreshPackages();
-        if (!PackageDir.IsEmpty())
+        const bool bImport = Operation == EGateOperation::Import;
+        const bool bPrepare = Operation == EGateOperation::PrepareWrite;
+        const FString PackageDir = SelectedPackage->PackageDir;
+        const FString Options = bImport ? ConfirmedOptions : BuildGateImportOptionsJson();
+        FString Token;
+        if (bImport)
         {
-            TSharedPtr<FAssetForgePackageItem> MatchedSelection = FindFilteredPackageByDir(PackageDir);
-            if (MatchedSelection.IsValid())
-            {
-                SelectedPackage = MatchedSelection;
-            }
+            WriteSummary->TryGetStringField(TEXT("token"), Token);
+            SelectedPackage->HandoffReceipt.Reset();
+            SelectedPackage->bReportViewLoaded = false;
+            SelectedPackage->bImported = false;
         }
-        if (PackageListView.IsValid())
+        const TCHAR* FunctionName = bImport ? TEXT("workbench_apply_package")
+            : bPrepare ? TEXT("workbench_prepare_package")
+            : Operation == EGateOperation::DryRun ? TEXT("workbench_dry_run_package") : TEXT("workbench_check_package");
+        GateOperation = Operation;
+        GateMessage = bImport ? TEXT("正在导入资产…")
+            : bPrepare ? TEXT("正在核对目标…")
+            : Operation == EGateOperation::DryRun ? TEXT("正在验证，不写入资产…") : TEXT("正在检查包体…");
+        const double ClickStart = FPlatformTime::Seconds();
+
+        // Let Slate render the new operation state before running editor-thread Python.
+        RegisterActiveTimer(0.12f, FWidgetActiveTimerDelegate::CreateLambda(
+            [this, bImport, bPrepare, PackageDir, Options, Token, FunctionName, ClickStart](double, float)
+            {
+                const double RpcStart = FPlatformTime::Seconds();
+                FString Message;
+                const auto Result = ExecuteGatePythonCommand(FunctionName, PackageDir, Options, Token, Message);
+                const double RpcEnd = FPlatformTime::Seconds();
+                WriteSummary.Reset();
+                ConfirmedOptions.Reset();
+                GateOperation = EGateOperation::Idle;
+                if (Result)
+                {
+                    Result->TryGetStringField(TEXT("message"), Message);
+                    if (bPrepare)
+                    {
+                        bool bCacheHit = false;
+                        if (!Result->TryGetBoolField(TEXT("cache_hit"), bCacheHit) || !bCacheHit)
+                        {
+                            RefreshSelectedPackageReport(PackageDir, Result);
+                        }
+                        const auto Confirmation = JsonObjectField(Result, TEXT("confirmation"));
+                        FString ReadyToken;
+                        bool bCanImport = false;
+                        if (Confirmation && Confirmation->TryGetStringField(TEXT("token"), ReadyToken) && !ReadyToken.IsEmpty()
+                            && Result->TryGetBoolField(TEXT("can_import"), bCanImport) && bCanImport
+                            && JsonIntField(Confirmation, TEXT("error_count"), INDEX_NONE) == 0)
+                        {
+                            WriteSummary = Confirmation;
+                            ConfirmedOptions = Options;
+                            GateOperation = EGateOperation::AwaitConfirm;
+                        }
+                    }
+                    else
+                    {
+                        RefreshSelectedPackageReport(PackageDir, Result);
+                        bool bImported = false;
+                        if (bImport && Result->TryGetBoolField(TEXT("import_succeeded"), bImported) && bImported && Message.IsEmpty())
+                        {
+                            Message = TEXT("导入完成。");
+                        }
+                    }
+                    if (Message.IsEmpty())
+                    {
+                        bool bPassed = false;
+                        Result->TryGetBoolField(TEXT("can_import"), bPassed);
+                        if (!bPassed)
+                        {
+                            Message = TEXT("当前未获放行，请查看下方原因。");
+                        }
+                        else if (GateOperation == EGateOperation::AwaitConfirm)
+                        {
+                            Message = TEXT("已核对目标，等待确认写入。");
+                        }
+                        else
+                        {
+                            Message = TEXT("检查完成，当前包体可以导入。");
+                        }
+                    }
+                }
+                GateMessage = MoveTemp(Message);
+                FString PhaseTimings;
+                if (const auto Timing = JsonObjectField(Result, TEXT("timings_ms")))
+                {
+                    FJsonSerializer::Serialize(Timing.ToSharedRef(), TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&PhaseTimings));
+                }
+                const double Ready = FPlatformTime::Seconds();
+                UE_LOG(LogAssetForgeEditor, Display, TEXT("AssetForgeGateTiming action=%s rpc_ms=%.1f selected_update_ms=%.1f total_ms=%.1f python_ms=%s"),
+                    FunctionName, (RpcEnd - RpcStart) * 1000.0, (Ready - RpcEnd) * 1000.0,
+                    (Ready - ClickStart) * 1000.0, *PhaseTimings);
+                return EActiveTimerReturnType::Stop;
+            }));
+        return FReply::Handled();
+    }
+
+    void RefreshSelectedPackageReport(const FString& PackageDir, const TSharedPtr<FJsonObject>& Result)
+    {
+        if (!SelectedPackage || SelectedPackage->PackageDir != PackageDir)
         {
-            PackageListView->RequestListRefresh();
-            if (SelectedPackage.IsValid())
-            {
-                PackageListView->SetSelection(SelectedPackage);
-            }
+            return;
         }
+        if (const auto Fresh = BuildPackageItemFromManifest(SelectedPackage->ManifestPath))
+        {
+            if (Fresh->ModifiedTime == SelectedPackage->ModifiedTime)
+            {
+                Fresh->HandoffReceipt = SelectedPackage->HandoffReceipt;
+                Fresh->bReportViewLoaded = SelectedPackage->bReportViewLoaded;
+            }
+            *SelectedPackage = MoveTemp(*Fresh);
+        }
+        if (Result->HasField(TEXT("handoff_receipt")))
+        {
+            AttachHandoffReceipt(*SelectedPackage, Result);
+            SelectedPackage->bReportViewLoaded = true;
+        }
+        else if (SelectedPackage->HandoffReceipt)
+        {
+            SelectedPackage->bImported = true;
+        }
+        bool bCanImport = false;
+        if (Result->TryGetBoolField(TEXT("can_import"), bCanImport))
+        {
+            SelectedPackage->bReportCanImportKnown = true;
+            SelectedPackage->bReportCanImport = bCanImport;
+        }
+        bool bImportSucceeded = false;
+        if (Result->TryGetBoolField(TEXT("import_succeeded"), bImportSucceeded) && bImportSucceeded)
+        {
+            SelectedPackage->bImported = true;
+        }
+        AttachOperatorNotices(*SelectedPackage, Result);
+        if (PackageListView)
+        {
+            PackageListView->RebuildList();
+        }
+    }
+
+    bool CanReviewSelectedImport() const
+    {
+        return CanImportSelectedPackage() && SelectedPackage->bImported && SelectedPackage->HandoffReceipt.IsValid();
+    }
+
+    FReply HandleImportedReviewClicked()
+    {
+        if (!CanReviewSelectedImport())
+        {
+            return FReply::Handled();
+        }
+        LoadSelectedReportDetails(true);
+        if (!CanReviewSelectedImport())
+        {
+            GateMessage = TEXT("无法核实本次导入记录，请刷新列表，或在入库批审中手动选择资产。");
+            return FReply::Handled();
+        }
+        FString ReceiptJson;
+        if (FJsonSerializer::Serialize(SelectedPackage->HandoffReceipt.ToSharedRef(), TJsonWriterFactory<>::Create(&ReceiptJson)))
+        {
+            AssetForgeReview::OpenImported(ReceiptJson);
+        }
+        return FReply::Handled();
+    }
+
+    FReply HandleOpenImportedMeshClicked()
+    {
+        if (!CanReviewSelectedImport())
+        {
+            return FReply::Handled();
+        }
+        TArray<FString> OriginalPaths;
+        SelectedPackage->HandoffReceipt->TryGetStringArrayField(TEXT("meshes"), OriginalPaths);
+        LoadSelectedReportDetails(true);
+        TArray<FString> Paths;
+        if (!CanReviewSelectedImport()
+            || !SelectedPackage->HandoffReceipt->TryGetStringArrayField(TEXT("meshes"), Paths)
+            || Paths.IsEmpty() || Paths != OriginalPaths)
+        {
+            GateMessage = TEXT("本次导入的网格记录已变化，请刷新后重新核对。");
+            return FReply::Handled();
+        }
+
+        TArray<UObject*> Assets;
+        for (const FString& Path : Paths)
+        {
+            UStaticMesh* Mesh = Cast<UStaticMesh>(FSoftObjectPath(Path).TryLoad());
+            if (!Mesh || !Mesh->GetPathName().Equals(Path, ESearchCase::IgnoreCase))
+            {
+                GateMessage = TEXT("无法打开本次静态网格，请在内容浏览器核对导入目标。");
+                return FReply::Handled();
+            }
+            Assets.Add(Mesh);
+        }
+        UAssetEditorSubsystem* AssetEditor = GEditor ? GEditor->GetEditorSubsystem<UAssetEditorSubsystem>() : nullptr;
+        GateMessage = AssetEditor && AssetEditor->OpenEditorForAssets(Assets)
+            ? TEXT("已打开本次导入的静态网格。")
+            : TEXT("无法打开静态网格编辑器，请在内容浏览器核对导入目标。");
+        return FReply::Handled();
     }
 
     FReply HandleOpenReportClicked()
@@ -1788,13 +2221,13 @@ private:
             GateMessage = TEXT("当前包体还没有可打开的报告；请先执行检查。");
             return FReply::Handled();
         }
-        if (!FPaths::FileExists(SelectedPackage->ImportReportPath))
+        const FString ReportFile = FPaths::ConvertRelativePathToFull(SelectedPackage->ImportReportPath);
+        if (!FPaths::FileExists(ReportFile))
         {
-            GateMessage = FString::Printf(TEXT("报告文件不存在：%s"), *SelectedPackage->ImportReportPath);
+            GateMessage = TEXT("报告文件已移走或删除，请重新检查包体生成报告。");
             return FReply::Handled();
         }
-        FPlatformProcess::LaunchFileInDefaultExternalApplication(*SelectedPackage->ImportReportPath);
-        GateMessage = FString::Printf(TEXT("已打开报告：%s"), *SelectedPackage->ImportReportPath);
+        FPlatformProcess::ExploreFolder(*ReportFile);
         return FReply::Handled();
     }
 
@@ -1818,7 +2251,7 @@ private:
     FString BuildDebugExportText() const
     {
         TArray<FString> Lines;
-        Lines.Add(FString::Printf(TEXT("%s | %s"), GateVersionLabel, GateBuildLabel));
+        Lines.Add(FString(GateVersionLabel));
         Lines.Add(FString::Printf(TEXT("generated_at: %s"), *FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"))));
         Lines.Add(FString::Printf(TEXT("last_refresh: %s"), *GetLastRefreshText().ToString()));
         Lines.Add(FString::Printf(TEXT("status: %s"), *GetStatusText().ToString()));
@@ -1901,7 +2334,7 @@ private:
         Packages.Reset();
         History.Reset();
 
-        TArray<FString> Manifests;
+        TSet<FString> Manifests;
         for (const FString& Root : ScanRoots)
         {
             FindManifestsRecursive(Root, 0, Manifests);
@@ -1948,11 +2381,22 @@ private:
                 PackageListView->ClearSelection();
             }
         }
-        GateMessage = SelectedPackage.IsValid()
-            ? FString::Printf(TEXT("已扫描到 %d 个 AF 包体，并恢复选中 %s。请先检查，再按报告结果导入。"), Packages.Num(), *SelectedPackage->AssetName)
-            : (FilteredPackages.Num() > 0
+        LoadSelectedReportDetails();
+        if (CanReviewSelectedImport())
+        {
+            GateMessage = ImportedSelectionMessage;
+        }
+        else if (SelectedPackage)
+        {
+            GateMessage = FString::Printf(TEXT("已扫描到 %d 个 AF 包体，并恢复选中 %s。请先检查，再按报告结果导入。"),
+                Packages.Num(), *SelectedPackage->AssetName);
+        }
+        else
+        {
+            GateMessage = FilteredPackages.Num() > 0
                 ? FString::Printf(TEXT("已扫描到 %d 个 AF 包体；请在左侧明确选择一个包体后再检查或导入。"), Packages.Num())
-                : TEXT("未扫描到 AF 包体：请确认 Maya 导出已完成，或设置 ASSET_FORGE_EXPORT_ROOT 指向导出目录。"));
+                : TEXT("未扫描到 AF 包体：请确认 Maya 导出已完成，或设置 ASSET_FORGE_EXPORT_ROOT 指向导出目录。");
+        }
     }
 
     TSharedPtr<FAssetForgePackageItem> FindFilteredPackageByDir(const FString& PackageDir) const
@@ -2044,22 +2488,9 @@ private:
         );
     }
 
-    FSlateColor GetHeaderStatusColor() const
-    {
-        if (SelectedPackage.IsValid())
-        {
-            return FSlateColor(PackageRiskColor(*SelectedPackage));
-        }
-        if (Packages.Num() > 0 && FilteredPackages.Num() == 0)
-        {
-            return FSlateColor(FLinearColor(1.0f, 0.72f, 0.28f, 1.0f));
-        }
-        return FSlateColor(FLinearColor(0.55f, 0.65f, 0.72f, 1.0f));
-    }
-
     FText GetToolVersionText() const
     {
-        return FText::FromString(FString::Printf(TEXT("%s | %s"), GateVersionLabel, GateBuildLabel));
+        return FText::FromString(FString(GateVersionLabel));
     }
 
     FText GetLastRefreshText() const
@@ -2331,11 +2762,11 @@ private:
 
     TSharedRef<SWidget> BuildBasicImportSummaryRow()
     {
-        return SNew(SBox)
-            .MinDesiredWidth(520.0f)
-            [
-                TextBlock(LOCTEXT("GateBasicImportSummary", "默认导入 Static Mesh；FBX 自动材质/贴图保持关闭，由 DCC AssetForge 统一创建材质实例、导入贴图并绑定 slot。"), FSlateColor::UseSubduedForeground())
-            ];
+        return SNew(STextBlock)
+            .Text(LOCTEXT("GateBasicImportSummary", "导入静态网格。AssetForge 根据下方选项导入贴图、创建材质实例并绑定材质槽。FBX 的自动材质和贴图导入保持关闭。"))
+            .Font(DetailFont())
+            .ColorAndOpacity(FSlateColor::UseSubduedForeground())
+            .AutoWrapText(true);
     }
 
     TSharedRef<SWidget> BuildContentImportOptionRow()
@@ -2349,32 +2780,49 @@ private:
 
     TSharedRef<SWidget> BuildTransformOptionRow()
     {
-        return SNew(SHorizontalBox)
-            + SHorizontalBox::Slot().AutoWidth()[SNew(SCheckBox).IsChecked(TAttribute<ECheckBoxState>::CreateSP(this, &SAssetForgeGatePanel::IsGateConvertSceneChecked)).OnCheckStateChanged(this, &SAssetForgeGatePanel::OnGateConvertSceneChanged).IsEnabled(TAttribute<bool>::CreateSP(this, &SAssetForgeGatePanel::HasSelectedPackage))]
-            + SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 18.0f, 0.0f)[TextBlock(LOCTEXT("GateConvertScene", "转换场景"))]
-            + SHorizontalBox::Slot().AutoWidth()[SNew(SCheckBox).IsChecked(TAttribute<ECheckBoxState>::CreateSP(this, &SAssetForgeGatePanel::IsGateForceFrontXAxisChecked)).OnCheckStateChanged(this, &SAssetForgeGatePanel::OnGateForceFrontXAxisChanged).IsEnabled(TAttribute<bool>::CreateSP(this, &SAssetForgeGatePanel::HasSelectedPackage))]
-            + SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 18.0f, 0.0f)[TextBlock(LOCTEXT("GateForceFrontXAxis", "强制 X 前向"))]
-            + SHorizontalBox::Slot().AutoWidth()[SNew(SCheckBox).IsChecked(TAttribute<ECheckBoxState>::CreateSP(this, &SAssetForgeGatePanel::IsGateConvertSceneUnitChecked)).OnCheckStateChanged(this, &SAssetForgeGatePanel::OnGateConvertSceneUnitChanged).IsEnabled(TAttribute<bool>::CreateSP(this, &SAssetForgeGatePanel::HasSelectedPackage))]
-            + SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 18.0f, 0.0f)[TextBlock(LOCTEXT("GateConvertSceneUnit", "转换单位"))]
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 4.0f, 0.0f).VAlign(VAlign_Center)[TextBlock(LOCTEXT("GateImportUniformScaleInline", "统一缩放"))]
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 18.0f, 0.0f)[BuildImportUniformScaleWidget()]
-            + SHorizontalBox::Slot().AutoWidth()[SNew(SCheckBox).IsChecked(TAttribute<ECheckBoxState>::CreateSP(this, &SAssetForgeGatePanel::IsGateTransformVertexToAbsoluteChecked)).OnCheckStateChanged(this, &SAssetForgeGatePanel::OnGateTransformVertexToAbsoluteChanged).IsEnabled(TAttribute<bool>::CreateSP(this, &SAssetForgeGatePanel::HasSelectedPackage))]
-            + SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 18.0f, 0.0f)[TextBlock(LOCTEXT("GateTransformVertexToAbsolute", "顶点转绝对坐标"))]
-            + SHorizontalBox::Slot().AutoWidth()[SNew(SCheckBox).IsChecked(TAttribute<ECheckBoxState>::CreateSP(this, &SAssetForgeGatePanel::IsGateBakePivotInVertexChecked)).OnCheckStateChanged(this, &SAssetForgeGatePanel::OnGateBakePivotInVertexChanged).IsEnabled(TAttribute<bool>::CreateSP(this, &SAssetForgeGatePanel::HasSelectedPackage))]
-            + SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f)[TextBlock(LOCTEXT("GateBakePivotInVertex", "烘焙 Pivot"))];
+        return SNew(SWrapBox).Tag(TEXT("Gate.Policy.Transform")).UseAllottedSize(true).InnerSlotPadding(FVector2D(13,5))
+            + SWrapBox::Slot()
+            [SNew(SCheckBox).IsChecked(this, &SAssetForgeGatePanel::IsGateConvertSceneChecked)
+                .OnCheckStateChanged(this, &SAssetForgeGatePanel::OnGateConvertSceneChanged)
+                .IsEnabled(this, &SAssetForgeGatePanel::HasSelectedPackage)[TextBlock(LOCTEXT("GateConvertScene", "转换场景"))]]
+            + SWrapBox::Slot()
+            [SNew(SCheckBox).IsChecked(this, &SAssetForgeGatePanel::IsGateForceFrontXAxisChecked)
+                .OnCheckStateChanged(this, &SAssetForgeGatePanel::OnGateForceFrontXAxisChanged)
+                .IsEnabled(this, &SAssetForgeGatePanel::HasSelectedPackage)[TextBlock(LOCTEXT("GateForceFrontXAxis", "强制 X 前向"))]]
+            + SWrapBox::Slot()
+            [SNew(SCheckBox).IsChecked(this, &SAssetForgeGatePanel::IsGateConvertSceneUnitChecked)
+                .OnCheckStateChanged(this, &SAssetForgeGatePanel::OnGateConvertSceneUnitChanged)
+                .IsEnabled(this, &SAssetForgeGatePanel::HasSelectedPackage)[TextBlock(LOCTEXT("GateConvertSceneUnit", "转换单位"))]]
+            + SWrapBox::Slot()
+            [SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().Padding(0,0,5,0).VAlign(VAlign_Center)
+                [TextBlock(LOCTEXT("GateImportUniformScaleInline", "统一缩放"))]
+                + SHorizontalBox::Slot().AutoWidth()[BuildImportUniformScaleWidget()]]
+            + SWrapBox::Slot()
+            [SNew(SCheckBox).IsChecked(this, &SAssetForgeGatePanel::IsGateTransformVertexToAbsoluteChecked)
+                .OnCheckStateChanged(this, &SAssetForgeGatePanel::OnGateTransformVertexToAbsoluteChanged)
+                .IsEnabled(this, &SAssetForgeGatePanel::HasSelectedPackage)[TextBlock(LOCTEXT("GateTransformVertexToAbsolute", "顶点转绝对坐标"))]]
+            + SWrapBox::Slot()
+            [SNew(SCheckBox).IsChecked(this, &SAssetForgeGatePanel::IsGateBakePivotInVertexChecked)
+                .OnCheckStateChanged(this, &SAssetForgeGatePanel::OnGateBakePivotInVertexChanged)
+                .IsEnabled(this, &SAssetForgeGatePanel::HasSelectedPackage)[TextBlock(LOCTEXT("GateBakePivotInVertex", "烘焙 Pivot"))]];
     }
 
     TSharedRef<SWidget> BuildTransformOffsetOptionRow()
     {
-        return SNew(SHorizontalBox)
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[TextBlock(LOCTEXT("GateImportTranslationLabel", "平移 XYZ"))]
-            + SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 4.0f, 0.0f)[BuildTransformNumberEntry(0, true)]
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 4.0f, 0.0f)[BuildTransformNumberEntry(1, true)]
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 16.0f, 0.0f)[BuildTransformNumberEntry(2, true)]
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[TextBlock(LOCTEXT("GateImportRotationLabel", "旋转 P/Y/R"))]
-            + SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 4.0f, 0.0f)[BuildTransformNumberEntry(0, false)]
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 4.0f, 0.0f)[BuildTransformNumberEntry(1, false)]
-            + SHorizontalBox::Slot().AutoWidth()[BuildTransformNumberEntry(2, false)];
+        auto Channels = [this](const FText& Label, bool bTranslation)
+        {
+            return SNew(SVerticalBox)
+                + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,2)[TextBlock(Label)]
+                + SVerticalBox::Slot().AutoHeight()
+                [SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().Padding(0,0,4,0)[BuildTransformNumberEntry(0, bTranslation)]
+                    + SHorizontalBox::Slot().AutoWidth().Padding(0,0,4,0)[BuildTransformNumberEntry(1, bTranslation)]
+                    + SHorizontalBox::Slot().AutoWidth()[BuildTransformNumberEntry(2, bTranslation)]];
+        };
+        return SNew(SWrapBox).Tag(TEXT("Gate.Policy.Offset")).UseAllottedSize(true).InnerSlotPadding(FVector2D(14,4))
+            + SWrapBox::Slot()[Channels(LOCTEXT("GateImportTranslationLabel", "平移 XYZ"), true)]
+            + SWrapBox::Slot()[Channels(LOCTEXT("GateImportRotationLabel", "旋转 P/Y/R"), false)];
     }
 
     TSharedRef<SWidget> BuildTransformNumberEntry(const int32 Channel, const bool bTranslation)
@@ -2477,11 +2925,11 @@ private:
     FText GetLodGroupOptionText() const { return GateOptionLabel(GateStaticMeshLodGroup); }
     FText GetVertexColorOptionText() const { return GateOptionLabel(GateVertexColorImportOption); }
 
-    bool HasSelectedPackage() const { return SelectedPackage.IsValid(); }
+    bool HasSelectedPackage() const { return GateOperation == EGateOperation::Idle && SelectedPackage.IsValid(); }
     bool HasSelectedReport() const { return SelectedPackage.IsValid() && !SelectedPackage->ImportReportPath.IsEmpty(); }
     bool CanImportSelectedPackage() const
     {
-        return SelectedPackage.IsValid()
+        return HasSelectedPackage()
             && SelectedPackage->HasReport()
             && SelectedPackage->bReportCanImportKnown
             && SelectedPackage->bReportCanImport
@@ -2652,6 +3100,7 @@ private:
     FText GetReportTimeText() const { return FText::FromString(SelectedPackage.IsValid() ? SelectedPackage->ReportTimeLabel() : TEXT("未选择包体")); }
     FText GetPackageNoteText() const { return FText::FromString(SelectedPackage.IsValid() ? SelectedPackage->OperatorNote() : TEXT("备注：选择包体后显示来源、风险和下一步。")); }
     FText GetMeshSummary() const { return FText::FromString(SelectedPackage.IsValid() ? SelectedPackage->MeshSummaryLine() : TEXT("未检查")); }
+    FText GetMaterialBindings() const { return FText::FromString(SelectedPackage && !SelectedPackage->MaterialBindings.IsEmpty() ? SelectedPackage->MaterialBindings : TEXT("未记录映射")); }
     FText GetTextureSummary() const { return FText::FromString(SelectedPackage.IsValid() ? FString::Printf(TEXT("%d 张贴图"), SelectedPackage->TextureCount) : TEXT("未检查")); }
     FText GetMaterialSummary() const { return FText::FromString(SelectedPackage.IsValid() ? SelectedPackage->MaterialSummaryLine() : TEXT("未检查")); }
     FText GetSchemaSummary() const { return FText::FromString(SelectedPackage.IsValid() && !SelectedPackage->SchemaVersion.IsEmpty() ? SelectedPackage->SchemaVersion : TEXT("未记录")); }
@@ -2674,14 +3123,8 @@ private:
     FText GetNanitePolicyText() const { return FText::FromString(SelectedPackage.IsValid() && !SelectedPackage->NanitePolicy.IsEmpty() ? SelectedPackage->NanitePolicy : TEXT("未记录 / 使用项目默认")); }
     FText GetGateMessage() const
     {
-        if (SelectedPackage.IsValid() && !SelectedPackage->ImportReportPath.IsEmpty())
-        {
-            return FText::FromString(FString::Printf(TEXT("检查报告：%s"), *ReportDecisionLine(*SelectedPackage)));
-        }
         return FText::FromString(GateMessage);
     }
-    FText GetApprovalIntentText() const { return SelectedPackage.IsValid() ? LOCTEXT("ApprovalIntentSelected", "仅处理当前选中包体；不会自动导入“最近导出包”，也不会影响列表中的其他包体。") : LOCTEXT("ApprovalIntentEmpty", "选择包体后才会进入导入流程；当前不会执行任何导入动作。"); }
-    FText GetApprovalStageText() const { return SelectedPackage.IsValid() ? LOCTEXT("ApprovalStageSelected", "主操作会先生成检查报告；报告放行后才正式写入 UE。仅检查可用于复核，不会创建资产。") : LOCTEXT("ApprovalStageEmpty", "未选择包体时检查与导入都保持禁用。"); }
     FText GetWriteContentSummaryText() const
     {
         if (!SelectedPackage.IsValid())
@@ -2743,17 +3186,17 @@ private:
             }
             return LOCTEXT("NextActionReportReview", "报告已生成但未记录导入许可；请复核报告后再决定是否导入。");
         }
-        return LOCTEXT("NextActionSelected", "点击“检查并导入选中包体”；系统会先检查，只有报告放行才写入 UE。");
+        return LOCTEXT("NextActionSelected", "请先检查包体，报告放行后可确认导入。");
     }
-    FText GetPrimaryImportButtonText() const { return SelectedPackage.IsValid() ? LOCTEXT("PrimaryImportSelected", "检查并导入选中包体") : LOCTEXT("PrimaryImportNeedsPackage", "先选择包体"); }
-    FText GetPreviewButtonText() const { return SelectedPackage.IsValid() ? LOCTEXT("PreviewSelectedPackage", "仅检查") : LOCTEXT("PreviewNeedsPackage", "先选择包体"); }
     FText GetDryRunButtonText() const { return SelectedPackage.IsValid() ? LOCTEXT("DryRunSelectedPackage", "不写入验证") : LOCTEXT("DryRunNeedsPackage", "先选择包体"); }
-    FText GetImportButtonText() const { return SelectedPackage.IsValid() ? LOCTEXT("ImportSelectedPackage", "仅导入已放行") : LOCTEXT("ImportNeedsPackage", "等待包体选择"); }
-    FText GetPrimaryImportTooltipText() const { return SelectedPackage.IsValid() ? LOCTEXT("PrimaryImportTooltipSelected", "先生成检查报告；如果报告允许导入，再正式写入当前选中包体。未放行时不会写入 UE 资产。") : LOCTEXT("PrimaryImportTooltipEmpty", "左侧选择一个 AF 包体后才能执行。"); }
     FText GetPreviewTooltipText() const { return SelectedPackage.IsValid() ? LOCTEXT("PreviewTooltipSelected", "检查包体结构、风险和目标路径，生成检查报告；不创建 UE 资产。") : LOCTEXT("PreviewTooltipEmpty", "左侧选择 AF 包体后才能生成检查报告。"); }
     FText GetDryRunTooltipText() const { return SelectedPackage.IsValid() ? LOCTEXT("DryRunTooltipSelected", "按当前导入选项验证一次；检查 FBX、贴图、材质实例和目标路径，但不创建 UE 资产。") : LOCTEXT("DryRunTooltipEmpty", "左侧选择 AF 包体后才能验证。"); }
     FText GetImportTooltipText() const
     {
+        if (GateOperation != EGateOperation::Idle)
+        {
+            return FText::GetEmpty();
+        }
         if (!SelectedPackage.IsValid())
         {
             return LOCTEXT("ImportTooltipEmpty", "选择包体并完成检查后再导入。");
@@ -2764,11 +3207,11 @@ private:
         }
         if (!CanImportSelectedPackage())
         {
-            return LOCTEXT("ImportTooltipBlocked", "当前报告未放行或仍有错误，导入已禁用。");
+            return LOCTEXT("ImportTooltipBlocked", "请在包体摘要中处理阻断项，再重新检查。");
         }
-        return LOCTEXT("ImportTooltipSelected", "报告已放行；只导入当前选中包体。");
+        return LOCTEXT("ImportTooltipSelected", "先核对目标和写入影响，再确认导入当前包体。");
     }
-    FText GetOpenReportTooltipText() const { return HasSelectedReport() ? LOCTEXT("OpenReportTooltipReady", "用系统默认程序打开当前包体的检查报告。") : LOCTEXT("OpenReportTooltipEmpty", "当前包体还没有报告；先执行检查。"); }
+    FText GetOpenReportTooltipText() const { return HasSelectedReport() ? LOCTEXT("OpenReportTooltipReady", "在文件管理器中选中当前包体的报告文件。") : LOCTEXT("OpenReportTooltipEmpty", "当前包体还没有报告；先执行检查。"); }
     FText GetHistorySummary() const
     {
         if (SelectedPackage.IsValid() && !SelectedPackage->ImportReportPath.IsEmpty())
@@ -2816,19 +3259,373 @@ private:
         return LOCTEXT("ReportRiskEmpty", "暂无报告；先检查后显示警告与阻断计数");
     }
 };
+
+class SWorkbench : public SCompoundWidget
+{
+public:
+    SLATE_BEGIN_ARGS(SWorkbench) {}
+    SLATE_END_ARGS()
+
+    void Construct(const FArguments&)
+    {
+        ChildSlot[SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(8,6)
+            [SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1).HAlign(HAlign_Left)
+                [SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().Padding(0,0,4,0)
+                    [ModeButton(0, TEXT("Workbench.Mode.Import"), "Icons.Import",
+                        LOCTEXT("ImportPage", "包体导入"), LOCTEXT("ImportScope", "DCC → UE"),
+                        LOCTEXT("ImportModeTip", "从 DCC 导出包检查并导入资产"))]
+                    + SHorizontalBox::Slot().AutoWidth()
+                    [ModeButton(1, TEXT("Workbench.Mode.Review"), "Icons.Search",
+                        LOCTEXT("ReviewPage", "入库批审"), LOCTEXT("ReviewScope", "UE 存量体检"),
+                        LOCTEXT("ReviewModeTip", "检查工程内的网格、材质和贴图"))]]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8,0,2,0)
+                [SNew(STextBlock).Text(FText::FromString(GateVersionLabel)).TextStyle(FAppStyle::Get(),"SmallText.Subdued")]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4,0,0,0)
+                [SNew(SComboButton).Tag(TEXT("Workbench.Settings"))
+                    .ButtonStyle(&FAppStyle::Get().GetWidgetStyle<FButtonStyle>("SimpleButton"))
+                    .HasDownArrow(false).MenuPlacement(MenuPlacement_ComboBoxRight).ContentPadding(FMargin(6))
+                    .ToolTipText(LOCTEXT("WorkbenchSettings", "AssetForge 设置"))
+                    .OnGetMenuContent(this, &SWorkbench::BuildSettingsMenu)
+                    .ButtonContent()
+                    [SNew(SBox).WidthOverride(18).HeightOverride(18)
+                        [SNew(SImage).Image(FAppStyle::GetBrush("Icons.Settings")).ColorAndOpacity(FSlateColor::UseForeground())]]]]
+            + SVerticalBox::Slot().AutoHeight()[SNew(SSeparator)]
+            + SVerticalBox::Slot().FillHeight(1).Padding(6)
+            [SAssignNew(Pages,SWidgetSwitcher)
+                + SWidgetSwitcher::Slot()[SNew(SAssetForgeGatePanel)]
+                + SWidgetSwitcher::Slot()[SAssignNew(ReviewHost,SBox)]]];
+    }
+
+    void Show(int32 Page)
+    {
+        if (Page == 1 && !ReviewPanel.IsValid())
+        {
+            ReviewPanel = AssetForgeReview::CreatePanel();
+            ReviewHost->SetContent(ReviewPanel.ToSharedRef());
+        }
+        Pages->SetActiveWidgetIndex(Page);
+    }
+private:
+    int32 ActivePage() const { return Pages ? Pages->GetActiveWidgetIndex() : 0; }
+
+    struct FCacheDirectory
+    {
+        FString Path;
+        FText Size;
+        bool bExists = false;
+    };
+
+    void RefreshCacheStatus(bool bClear)
+    {
+        CacheDirectories.Reset();
+        FString Error;
+        const auto Result = ExecuteWorkbenchPythonCommand(FString::Printf(
+            TEXT("from asset_forge.shared.workbench_cache import manage_cache\n")
+            TEXT("_af_result = manage_cache('unreal', clear=%s)"), bClear ? TEXT("True") : TEXT("False")), Error);
+        bCacheHasHistory = false;
+        double TotalBytes = 0, EligibleBytes = 0, RemovedBytes = 0;
+        if (!Result || !Result->TryGetNumberField(TEXT("bytes"), TotalBytes)
+            || !Result->TryGetNumberField(TEXT("eligible_bytes"), EligibleBytes))
+        {
+            CacheSizeText = LOCTEXT("CacheSizeUnavailable", "暂时无法统计 AssetForge 缓存。");
+            CacheFeedback = bClear ? LOCTEXT("CacheClearUnavailable", "清理状态未返回，请重新打开设置查看。") : FText::GetEmpty();
+            return;
+        }
+        bCacheHasHistory = JsonIntField(Result, TEXT("eligible_files")) > 0;
+        CacheSizeText = FText::Format(LOCTEXT("CacheSizeStatus", "当前大小 {0} · 可清理 {1}"),
+            FText::AsMemory(static_cast<uint64>(TotalBytes)), FText::AsMemory(static_cast<uint64>(EligibleBytes)));
+        const TArray<TSharedPtr<FJsonValue>>* Directories = nullptr;
+        if (Result->TryGetArrayField(TEXT("directories"), Directories))
+        {
+            for (const auto& Value : *Directories)
+            {
+                if (!Value || Value->Type != EJson::Object)
+                {
+                    continue;
+                }
+                const auto Entry = Value->AsObject();
+                FString DirectoryId;
+                FCacheDirectory Directory;
+                double DirectoryBytes = 0, DirectoryEligibleBytes = 0;
+                if (!Entry || !Entry->TryGetStringField(TEXT("id"), DirectoryId)
+                    || (DirectoryId != TEXT("logs") && DirectoryId != TEXT("reports"))
+                    || !Entry->TryGetStringField(TEXT("path"), Directory.Path)
+                    || Directory.Path.IsEmpty() || FPaths::IsRelative(Directory.Path)
+                    || !Entry->TryGetBoolField(TEXT("exists"), Directory.bExists)
+                    || !Entry->TryGetNumberField(TEXT("bytes"), DirectoryBytes)
+                    || !Entry->TryGetNumberField(TEXT("eligible_bytes"), DirectoryEligibleBytes))
+                {
+                    continue;
+                }
+                Directory.Size = FText::Format(LOCTEXT("CacheDirectorySize", "当前 {0} · 可清理 {1}"),
+                    FText::AsMemory(static_cast<uint64>(DirectoryBytes)), FText::AsMemory(static_cast<uint64>(DirectoryEligibleBytes)));
+                CacheDirectories.Add(DirectoryId, MoveTemp(Directory));
+            }
+        }
+        if (bClear)
+        {
+            Result->TryGetNumberField(TEXT("removed_bytes"), RemovedBytes);
+            const int32 RemovedFiles = JsonIntField(Result, TEXT("removed_files"));
+            const int32 FailedFiles = JsonIntField(Result, TEXT("failed_files"));
+            const FText Size = FText::AsMemory(static_cast<uint64>(RemovedBytes));
+            CacheFeedback = FailedFiles > 0
+                ? FText::Format(LOCTEXT("CacheClearPartial", "已清理 {0} 个文件（{1}）。{2} 个文件未能清理。"), RemovedFiles, Size, FailedFiles)
+                : FText::Format(LOCTEXT("CacheClearDone", "已清理 {0} 个文件（{1}）。"), RemovedFiles, Size);
+        }
+    }
+
+    FReply OpenCacheDirectory(const FString& DirectoryId)
+    {
+        FCacheDirectory* Directory = CacheDirectories.Find(DirectoryId);
+        if (Directory && Directory->bExists)
+        {
+            if (FPaths::DirectoryExists(Directory->Path))
+            {
+                FPlatformProcess::ExploreFolder(*Directory->Path);
+            }
+            else
+            {
+                Directory->bExists = false;
+                CacheFeedback = LOCTEXT("CacheDirectoryUnavailable", "目录已移动或不可用，请重新打开设置查看。");
+            }
+        }
+        return FReply::Handled();
+    }
+
+    TSharedRef<SWidget> BuildCacheDirectoryRow(const FString& DirectoryId, FName OpenTag, const FText& Label)
+    {
+        return SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0,1)
+            [SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1).VAlign(VAlign_Center)
+                [SNew(STextBlock).Text(Label)]
+                + SHorizontalBox::Slot().AutoWidth()
+                [SNew(SButton).Tag(OpenTag)
+                    .Text(LOCTEXT("OpenCacheFolder", "打开目录"))
+                    .IsEnabled_Lambda([this, DirectoryId]()
+                    {
+                        const auto* Directory = CacheDirectories.Find(DirectoryId);
+                        return Directory && Directory->bExists;
+                    })
+                    .OnClicked_Lambda([this, DirectoryId](){ return OpenCacheDirectory(DirectoryId); })]]
+            + SVerticalBox::Slot().AutoHeight().Padding(0,2)
+            [SNew(STextBlock).AutoWrapText(true).WrappingPolicy(ETextWrappingPolicy::AllowPerCharacterWrapping)
+                .ColorAndOpacity(FSlateColor::UseSubduedForeground())
+                .Text_Lambda([this, DirectoryId]()
+                {
+                    const auto* Directory = CacheDirectories.Find(DirectoryId);
+                    return Directory ? FText::FromString(Directory->Path) : LOCTEXT("CacheDirectoryUnknown", "暂时无法获取目录路径");
+                })]
+            + SVerticalBox::Slot().AutoHeight()
+            [SNew(STextBlock).Text_Lambda([this, DirectoryId]()
+            {
+                const auto* Directory = CacheDirectories.Find(DirectoryId);
+                if (!Directory)
+                {
+                    return FText::GetEmpty();
+                }
+                return Directory->bExists ? Directory->Size : LOCTEXT("CacheDirectoryMissing", "目录尚未创建或不可用");
+            })];
+    }
+
+    static FText ReadAboutLicenseName()
+    {
+        FString Document;
+        if (const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("AssetForge")))
+        {
+            const FString PluginRoot = Plugin->GetBaseDir();
+            if (!FFileHelper::LoadFileToString(Document, *(PluginRoot / TEXT("LICENSE"))))
+            {
+                const FString SourceRoot = FPaths::Combine(PluginRoot, TEXT(".."), TEXT(".."));
+                if (FPaths::FileExists(SourceRoot / TEXT("asset_forge/__init__.py")))
+                {
+                    FFileHelper::LoadFileToString(Document, *(SourceRoot / TEXT("LICENSE")));
+                }
+            }
+        }
+        FString Name;
+        if (!Document.Split(TEXT("\n"), &Name, nullptr))
+        {
+            Name = Document;
+        }
+        Name.TrimStartAndEndInline();
+        return Name.IsEmpty() ? LOCTEXT("WorkbenchLicenseUnavailable", "未找到许可文件") : FText::FromString(Name);
+    }
+
+    TSharedRef<SWidget> BuildSettingsMenu()
+    {
+        bCacheClearArmed = false;
+        CacheFeedback = FText::GetEmpty();
+        RefreshCacheStatus(false);
+        const FSlateFontInfo Heading = FAppStyle::GetFontStyle("PropertyWindow.BoldFont");
+        return SNew(SBox).WidthOverride(400)
+            [SNew(SBorder).BorderImage(FAppStyle::GetBrush("Menu.Background")).Padding(FMargin(12,10))
+                [SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,5)
+                    [SNew(STextBlock).Text(LOCTEXT("WorkbenchPreferences", "通用偏好")).Font(Heading)]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [WrappedTextBlock(LOCTEXT("WorkbenchFeedbackPreference", "检查结果和导入提醒显示在工作台内。存量检查的平台与材质偏好可在「入库批审」的「批审规则」中调整。"))]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0,9)
+                    [SNew(SSeparator)]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,5)
+                    [SNew(STextBlock).Text(LOCTEXT("WorkbenchCache", "清理缓存")).Font(Heading)]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [SNew(STextBlock).Tag(TEXT("Workbench.Cache.Size")).Text_Lambda([this](){ return CacheSizeText; })]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0,5,0,0)
+                    [BuildCacheDirectoryRow(TEXT("logs"), TEXT("Workbench.Cache.Open.Logs"), LOCTEXT("CacheOperationLogs", "操作日志"))]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0,5,0,0)
+                    [BuildCacheDirectoryRow(TEXT("reports"), TEXT("Workbench.Cache.Open.Reports"), LOCTEXT("CacheWorkbenchReports", "工作台报告缓存"))]
+                    + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0,6,0,0)
+                    [SNew(SButton).Tag(TEXT("Workbench.Cache.Clear"))
+                        .Text(LOCTEXT("CacheClearHistory", "清理历史缓存与日志"))
+                        .IsEnabled_Lambda([this](){ return bCacheHasHistory && !bCacheClearArmed; })
+                        .OnClicked_Lambda([this](){ CacheFeedback = FText::GetEmpty(); bCacheClearArmed = true; return FReply::Handled(); })]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [SNew(SVerticalBox)
+                        .Visibility_Lambda([this](){ return bCacheClearArmed ? EVisibility::Visible : EVisibility::Collapsed; })
+                        + SVerticalBox::Slot().AutoHeight().Padding(0,6,0,4)
+                        [WrappedTextBlock(LOCTEXT("CacheClearConfirmation", "清理 AssetForge 的历史缓存与日志？包体、报告和工程资产将保留。"))]
+                        + SVerticalBox::Slot().AutoHeight()
+                        [SNew(SHorizontalBox)
+                            + SHorizontalBox::Slot().AutoWidth().Padding(0,0,6,0)
+                            [SNew(SButton).Tag(TEXT("Workbench.Cache.Confirm"))
+                                .Text(LOCTEXT("CacheConfirmClear", "确认清理"))
+                                .OnClicked_Lambda([this]()
+                                {
+                                    if (bCacheClearArmed)
+                                    {
+                                        bCacheClearArmed = false;
+                                        RefreshCacheStatus(true);
+                                    }
+                                    return FReply::Handled();
+                                })]
+                            + SHorizontalBox::Slot().AutoWidth()
+                            [SNew(SButton).Tag(TEXT("Workbench.Cache.Cancel"))
+                                .Text(LOCTEXT("CacheCancelClear", "取消"))
+                                .OnClicked_Lambda([this](){ bCacheClearArmed = false; return FReply::Handled(); })]]]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [WrappedTextBlock(TAttribute<FText>::CreateLambda([this](){ return CacheFeedback; }))]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0,9)
+                    [SNew(SSeparator)]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0,0,0,5)
+                    [SNew(STextBlock).Text(LOCTEXT("WorkbenchAbout", "关于与更新")).Font(Heading)]
+                    + SVerticalBox::Slot().AutoHeight()
+                    [SNew(STextBlock).Text(LOCTEXT("WorkbenchAboutVersion", "DCC AssetForge v0.2.0"))]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0,3,0,0)
+                    [SNew(STextBlock).Text(FText::Format(LOCTEXT("WorkbenchEngineVersion", "当前 Unreal Engine {0}"),
+                        FText::FromString(FEngineVersion::Current().ToString(EVersionComponent::Patch))))]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0,3,0,0)
+                    [SNew(STextBlock).Text(LOCTEXT("WorkbenchAboutDeveloper", "开发者：卓雨 (Elviszhuoyu)"))
+                        .ColorAndOpacity(FSlateColor::UseSubduedForeground())]
+                    + SVerticalBox::Slot().AutoHeight().Padding(0,3,0,0)
+                    [SNew(STextBlock).Text(FText::Format(LOCTEXT("WorkbenchAboutLicense", "著作权与许可：© 2026 Elviszhuoyu · {0}"), ReadAboutLicenseName()))
+                        .ColorAndOpacity(FSlateColor::UseSubduedForeground())]
+                    + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0,6,0,0)
+                    [SNew(SButton).Tag(TEXT("Workbench.About.Releases"))
+                        .Text(LOCTEXT("WorkbenchReleaseNotes", "前往 GitHub Releases 检查更新"))
+                        .OnClicked_Lambda([]()
+                        {
+                            FPlatformProcess::LaunchURL(TEXT("https://github.com/Elviszhuoyu/DCC-AssetForge/releases"), nullptr, nullptr);
+                            return FReply::Handled();
+                        })]
+                    + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0,6,0,0)
+                    [SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().Padding(0,0,6,0)
+                        [SNew(SButton).Tag(TEXT("Workbench.About.Project"))
+                            .Text(LOCTEXT("WorkbenchProjectHomepage", "项目主页"))
+                            .OnClicked_Lambda([]()
+                            {
+                                FPlatformProcess::LaunchURL(TEXT("https://github.com/Elviszhuoyu/DCC-AssetForge"), nullptr, nullptr);
+                                return FReply::Handled();
+                            })]
+                        + SHorizontalBox::Slot().AutoWidth()
+                        [SNew(SButton).Tag(TEXT("Workbench.About.Author"))
+                            .Text(LOCTEXT("WorkbenchAuthorHomepage", "作者主页"))
+                            .OnClicked_Lambda([]()
+                            {
+                                FPlatformProcess::LaunchURL(TEXT("https://work.zhuoyulabs.com"), nullptr, nullptr);
+                                return FReply::Handled();
+                            })]]]];
+    }
+
+    TSharedRef<SWidget> ModeButton(int32 Page, FName ModeTag, FName Icon, const FText& Title, const FText& Scope, const FText& Tip)
+    {
+        return SNew(SButton).Tag(ModeTag).ButtonStyle(FAppStyle::Get(), "SimpleButton").ContentPadding(0)
+            .ToolTipText(Tip)
+            .OnClicked_Lambda([this, Page](){ Show(Page); return FReply::Handled(); })
+            [ModeLabel(Page, Icon, Title, Scope)];
+    }
+
+    TSharedRef<SWidget> ModeLabel(int32 Page, FName Icon, const FText& Title, const FText& Scope)
+    {
+        FSlateFontInfo TitleFont = FAppStyle::GetFontStyle("PropertyWindow.BoldFont");
+        TitleFont.Size = 13;
+        return SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(10,6,8,4)
+            [SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0,0,8,0)
+                [SNew(SBox).WidthOverride(18).HeightOverride(18)
+                    [SNew(SImage).Image(FAppStyle::GetBrush(Icon)).ColorAndOpacity(FSlateColor::UseForeground())]]
+                + SHorizontalBox::Slot().FillWidth(1)
+                [SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(Title).Font(TitleFont)]
+                    + SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(Scope).TextStyle(FAppStyle::Get(),"SmallText.Subdued")]]]
+            + SVerticalBox::Slot().AutoHeight()
+            [SNew(SBox).HeightOverride(3)
+                [SNew(SBorder).BorderImage(FAppStyle::GetBrush("WhiteBrush")).Padding(0)
+                    .BorderBackgroundColor(FStyleColors::Primary)
+                    .Visibility_Lambda([this,Page](){ return ActivePage() == Page ? EVisibility::HitTestInvisible : EVisibility::Hidden; })]];
+    }
+
+    TSharedPtr<SWidgetSwitcher> Pages;
+    TSharedPtr<SBox> ReviewHost;
+    TSharedPtr<SWidget> ReviewPanel;
+    TMap<FString, FCacheDirectory> CacheDirectories;
+    FText CacheSizeText;
+    FText CacheFeedback;
+    bool bCacheHasHistory = false;
+    bool bCacheClearArmed = false;
+};
+static TWeakPtr<SWorkbench> CurrentWorkbench;
+}
+
+namespace AssetForgeReview
+{
+void Open(const TArray<FString>& Args)
+{
+    FGlobalTabmanager::Get()->TryInvokeTab(AssetForgeEditor::GateTabName);
+    if (const auto Panel = AssetForgeEditor::CurrentWorkbench.Pin())
+    {
+        Panel->Show(1);
+        if (Args.Num() && (Args[0] == TEXT("scan") || Args[0] == TEXT("folders"))) Run(Args[0], FString());
+    }
+}
+
+void OpenImported(const FString& Receipt)
+{
+    if (Receipt.IsEmpty()) return;
+    Open({});
+    Run(TEXT("imported"), Receipt);
+}
 }
 
 void FAssetForgeEditorModule::StartupModule()
 {
     RegisterStyle();
+    FGlobalTabmanager::Get()->AddLegacyTabType(TEXT("AssetForge.AssetReview"), AssetForgeEditor::GateTabName);
+    ReviewConsoleCommand = IConsoleManager::Get().RegisterConsoleCommand(TEXT("AssetForge.Review"), TEXT("Open the AssetForge asset review page."),
+        FConsoleCommandWithArgsDelegate::CreateStatic(&AssetForgeReview::Open), ECVF_Default);
 
     const FSlateIcon GateIcon = StyleSet.IsValid()
-        ? FSlateIcon(StyleSet->GetStyleSetName(), AssetForgeEditor::TabIconName)
+        ? FSlateIcon(StyleSet->GetStyleSetName(), AssetForgeEditor::WorkbenchIconName)
         : FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Import");
 
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(AssetForgeEditor::GateTabName, FOnSpawnTab::CreateRaw(this, &FAssetForgeEditorModule::SpawnGateTab))
-        .SetDisplayName(LOCTEXT("GateTabDisplayName", "DCC AssetForge 导入门禁"))
-        .SetTooltipText(LOCTEXT("GateTabTooltip", "打开 DCC AssetForge 导出包扫描、检查和导入历史工作台。"))
+        .SetDisplayName(LOCTEXT("GateTabDisplayName", "AssetForge 工作台"))
+        .SetTooltipText(LOCTEXT("GateTabTooltip", "打开包体导入和入库批审工作台。"))
         .SetIcon(GateIcon);
 
     IConsoleManager::Get().UnregisterConsoleObject(TEXT("AssetForge.OpenGate"), false);
@@ -2851,6 +3648,7 @@ void FAssetForgeEditorModule::ShutdownModule()
         GateConsoleCommand = nullptr;
     }
     UnregisterMenus();
+    if (ReviewConsoleCommand) IConsoleManager::Get().UnregisterConsoleObject(ReviewConsoleCommand);
     FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(AssetForgeEditor::GateTabName);
     UnregisterStyle();
 }
@@ -2871,9 +3669,8 @@ void FAssetForgeEditorModule::RegisterStyle()
 
     StyleSet = MakeShared<FSlateStyleSet>(AssetForgeEditor::StyleSetName);
     StyleSet->SetContentRoot(FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources")));
-    StyleSet->Set(AssetForgeEditor::ToolbarIconName, new FSlateImageBrush(StyleSet->RootToContentDir(TEXT("IconToolbar"), TEXT(".png")), FVector2D(40.0f, 40.0f)));
-    StyleSet->Set(AssetForgeEditor::TabIconName, new FSlateImageBrush(StyleSet->RootToContentDir(TEXT("IconToolbar"), TEXT(".png")), FVector2D(20.0f, 20.0f)));
-    StyleSet->Set(AssetForgeEditor::HeaderIconName, new FSlateImageBrush(StyleSet->RootToContentDir(TEXT("IconHeader"), TEXT(".png")), FVector2D(56.0f, 56.0f)));
+    StyleSet->Set(AssetForgeEditor::WorkbenchIconName, new FSlateImageBrush(
+        StyleSet->RootToContentDir(TEXT("Workbench/brand/af_shelf"), TEXT(".png")), FVector2D(20,20)));
     FSlateStyleRegistry::RegisterSlateStyle(*StyleSet);
 }
 
@@ -2892,15 +3689,15 @@ void FAssetForgeEditorModule::RegisterMenus()
 {
     FToolMenuOwnerScoped OwnerScoped(this);
     const FSlateIcon GateIcon = StyleSet.IsValid()
-        ? FSlateIcon(StyleSet->GetStyleSetName(), AssetForgeEditor::ToolbarIconName)
+        ? FSlateIcon(StyleSet->GetStyleSetName(), AssetForgeEditor::WorkbenchIconName)
         : FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Import");
 
     UToolMenu* ToolsMenu = UToolMenus::Get()->ExtendMenu("LevelEditor.MainMenu.Tools");
     FToolMenuSection& MenuSection = ToolsMenu->FindOrAddSection("AssetForge");
     MenuSection.AddMenuEntry(
         "AssetForge.OpenGateWorkbench.Tools",
-        LOCTEXT("OpenGateMenu", "DCC AssetForge 导入门禁工作台"),
-        LOCTEXT("OpenGateMenuTooltip", "打开 DCC AssetForge 导出包扫描、检查和导入历史工作台。"),
+        LOCTEXT("OpenGateMenu", "AssetForge 工作台"),
+        LOCTEXT("OpenGateMenuTooltip", "打开包体导入和入库批审工作台。"),
         GateIcon,
         FUIAction(FExecuteAction::CreateRaw(this, &FAssetForgeEditorModule::OpenGateWorkbench))
     );
@@ -2909,8 +3706,8 @@ void FAssetForgeEditorModule::RegisterMenus()
     FToolMenuSection& WindowSection = WindowMenu->FindOrAddSection("AssetForge");
     WindowSection.AddMenuEntry(
         "AssetForge.OpenGateWorkbench.Window",
-        LOCTEXT("OpenGateWindowMenu", "DCC AssetForge 导入门禁工作台"),
-        LOCTEXT("OpenGateWindowMenuTooltip", "打开 DCC AssetForge 导出包扫描、检查和导入历史工作台。"),
+        LOCTEXT("OpenGateWindowMenu", "AssetForge 工作台"),
+        LOCTEXT("OpenGateWindowMenuTooltip", "打开包体导入和入库批审工作台。"),
         GateIcon,
         FUIAction(FExecuteAction::CreateRaw(this, &FAssetForgeEditorModule::OpenGateWorkbench))
     );
@@ -2920,8 +3717,8 @@ void FAssetForgeEditorModule::RegisterMenus()
     ToolbarSection.AddEntry(FToolMenuEntry::InitToolBarButton(
         "AssetForge.OpenGateWorkbench.Toolbar",
         FUIAction(FExecuteAction::CreateRaw(this, &FAssetForgeEditorModule::OpenGateWorkbench)),
-        LOCTEXT("OpenGateToolbar", "AF 门禁"),
-        LOCTEXT("OpenGateToolbarTooltip", "打开 DCC AssetForge 导入门禁工作台。"),
+        LOCTEXT("OpenGateToolbar", "AssetForge 工作台"),
+        LOCTEXT("OpenGateToolbarTooltip", "打开包体导入和入库批审工作台。"),
         GateIcon
     ));
 }
@@ -2939,7 +3736,6 @@ void FAssetForgeEditorModule::OpenGateWorkbench()
     const TSharedPtr<SDockTab> GateTab = FGlobalTabmanager::Get()->TryInvokeTab(AssetForgeEditor::GateTabName);
     if (GateTab.IsValid())
     {
-        UE_LOG(LogAssetForgeEditor, Display, TEXT("DCC AssetForge gate workbench opened."));
         return;
     }
 
@@ -2948,11 +3744,9 @@ void FAssetForgeEditorModule::OpenGateWorkbench()
 
 TSharedRef<SDockTab> FAssetForgeEditorModule::SpawnGateTab(const FSpawnTabArgs& Args)
 {
-    return SNew(SDockTab)
-        .TabRole(ETabRole::NomadTab)
-        [
-            SNew(AssetForgeEditor::SAssetForgeGatePanel)
-        ];
+    const auto Workbench = SNew(AssetForgeEditor::SWorkbench);
+    AssetForgeEditor::CurrentWorkbench = Workbench;
+    return AssetForgeReview::CreateTab(Workbench);
 }
 
 IMPLEMENT_MODULE(FAssetForgeEditorModule, AssetForgeEditor)

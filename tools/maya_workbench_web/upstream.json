@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/shadcn-ui/ui",
+  "tag": "shadcn@2.3.0",
+  "commit": "c8c4027b6b192822ea2952b225ee4760cddedf0d",
+  "files": {
+    "components/button.tsx": "apps/www/registry/new-york/ui/button.tsx",
+    "components/badge.tsx": "apps/www/registry/new-york/ui/badge.tsx",
+    "components/select.tsx": "apps/www/registry/new-york/ui/select.tsx",
+    "components/LICENSE": "LICENSE.md"
+  },
+  "utility": "The cn helper is copied from apps/www/lib/utils.ts; its unrelated site URL and date helpers are omitted."
+}

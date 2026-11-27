@@ -6,6 +6,7 @@ import unittest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GATE_SOURCE = REPO_ROOT / "Plugins" / "AssetForge" / "Source" / "AssetForgeEditor" / "Private" / "AssetForgeEditorModule.cpp"
+REVIEW_SOURCE = GATE_SOURCE.with_name("SAssetForgeReview.cpp")
 COMMENT_SOURCE = REPO_ROOT / "Plugins" / "AssetForge" / "Source" / "AssetForgeEditor" / "Private" / "AssetForgeEditorMaterialCommentLibrary.cpp"
 
 
@@ -25,15 +26,98 @@ class UnrealEditorGateCppTest(unittest.TestCase):
         self.assertIn("RegisterConsoleCommand", source)
         self.assertIn("UnregisterConsoleObject", source)
         self.assertIn('UnregisterConsoleObject(TEXT("AssetForge.OpenGate"), false)', source)
-        self.assertIn("DCC AssetForge 导入门禁", source)
+        self.assertIn("AssetForge 工作台", source)
+        self.assertIn('TEXT("Workbench.Mode.Import")', source)
+        self.assertIn('TEXT("Workbench.Mode.Review")', source)
+        self.assertIn("AssetForge.Review", source)
+        self.assertIn("SWidgetSwitcher", source)
+
+    def test_mode_labels_share_the_active_page_and_keep_both_scopes_visible(self):
+        shell = self.source.split("class SWorkbench : ", 1)[1].split("static TWeakPtr<SWorkbench>", 1)[0]
+        for title in ("包体导入", "入库批审", "DCC → UE", "UE 存量体检"):
+            self.assertIn('"' + title + '"', shell)
+        self.assertIn(".OnClicked_Lambda([this, Page](){ Show(Page);", shell)
+        self.assertNotIn("OnValueChanged", shell)
+        open_workbench = self.source.split("void FAssetForgeEditorModule::OpenGateWorkbench()", 1)[1]
+        self.assertNotIn("Show(0)", open_workbench)
+        self.assertIn("ActivePage() == Page", shell)
+        self.assertIn("FStyleColors::Primary", shell)
+        self.assertIn("Pages->SetActiveWidgetIndex(Page)", shell)
+
+    def test_batch_confirm_consumes_click_and_defers_python_until_busy_is_visible(self):
+        review = REVIEW_SOURCE.read_text(encoding="utf-8")
+        self.assertIn('TEXT("apply"),{},TEXT("Icons.Check")', review)
+        self.assertIn("Run(Action,Argument); return FReply::Handled();", review)
+        self.assertNotIn("OpenGateWorkbench", review)
+        self.assertNotIn("SetActiveWidgetIndex", review)
+        run = review.split("    void Run(", 1)[1].split("    void Execute(", 1)[0]
+        self.assertIn("if (!PendingAction.IsEmpty()) return;", run)
+        self.assertLess(run.index("PendingAction = Action"), run.index("RegisterActiveTimer"))
+        self.assertLess(run.index("Feedback->SetText"), run.index("RegisterActiveTimer"))
+        self.assertLess(run.index("RegisterActiveTimer"), run.index("Execute(Action, Argument);", run.index("RegisterActiveTimer")))
+        self.assertIn('FName(TEXT("Passed"))', review)
+        self.assertIn('Items(State,TEXT("passed"))', review)
+
+    def test_review_toolbar_has_discoverable_stock_rules(self):
+        review = REVIEW_SOURCE.read_text(encoding="utf-8")
+        self.assertIn('.Tag(TEXT("Review.Rules"))', review)
+        self.assertIn('TEXT("批审规则")', review)
+        self.assertIn("下次存量检查的目标平台", review)
+        self.assertIn("下次存量检查的材质规则", review)
+        self.assertIn('Str(*Policy,TEXT("limits"))', review)
+
+    def test_overlapping_roots_share_a_set_of_full_manifest_paths(self):
+        self.assertIn("int32 Depth, TSet<FString>& OutManifestPaths", self.source)
+        self.assertIn("OutManifestPaths.Add(Directory / Manifest)", self.source)
+        self.assertIn("TSet<FString> Manifests;\n        for (const FString& Root : ScanRoots)", self.source)
+        self.assertIn("FindManifestsRecursive(Root, 0, Manifests)", self.source)
 
     def test_gate_uses_semantic_editor_controls(self):
         source = self.source
 
         for control in ["SSearchBox", "SListView", "SCheckBox", "SExpandableArea"]:
             self.assertIn(control, source)
-        for section in ["包体来源", "导入策略", "导入控制", "历史与报告"]:
+        for section in ["包体来源", "导入策略", "包体摘要", "历史与报告"]:
             self.assertIn(section, source)
+
+    def test_workbench_settings_uses_the_top_bar_and_confirms_cache_cleanup(self):
+        workbench = self.source.split("class SWorkbench : public SCompoundWidget", 1)[1]
+        top_bar = workbench.split("void Construct(", 1)[1].split("void Show(", 1)[0]
+        self.assertLess(top_bar.index("GateVersionLabel"), top_bar.index('Tag(TEXT("Workbench.Settings"))'))
+        for label in ("通用偏好", "清理缓存", "清理历史缓存与日志", "关于", "DCC AssetForge v0.2.0", "前往 GitHub Releases 检查更新"):
+            self.assertIn(label, workbench)
+        self.assertIn("FEngineVersion::Current()", workbench)
+        self.assertIn("https://github.com/Elviszhuoyu/DCC-AssetForge/releases", workbench)
+        self.assertIn("manage_cache('unreal', clear=%s)", workbench)
+        self.assertIn("RefreshCacheStatus(false)", workbench)
+        direct, confirm = workbench.split('Tag(TEXT("Workbench.Cache.Confirm"))', 1)
+        confirm, cancel = confirm.split('Tag(TEXT("Workbench.Cache.Cancel"))', 1)
+        self.assertNotIn("RefreshCacheStatus(true)", direct)
+        self.assertNotIn("RefreshCacheStatus(true)", cancel)
+        self.assertLess(confirm.index("if (bCacheClearArmed)"), confirm.index("RefreshCacheStatus(true)"))
+
+    def test_workbench_cache_lists_each_backend_directory_and_only_opens_existing_folders(self):
+        workbench = self.source.split("class SWorkbench : public SCompoundWidget", 1)[1]
+        self.assertIn('TryGetArrayField(TEXT("directories")', workbench)
+        self.assertIn('TryGetStringField(TEXT("path"), Directory.Path)', workbench)
+        self.assertIn('TryGetBoolField(TEXT("exists"), Directory.bExists)', workbench)
+        self.assertIn("FPaths::IsRelative(Directory.Path)", workbench)
+        self.assertIn("目录尚未创建或不可用", workbench)
+        self.assertIn('BuildCacheDirectoryRow(TEXT("logs"), TEXT("Workbench.Cache.Open.Logs")', workbench)
+        self.assertIn('BuildCacheDirectoryRow(TEXT("reports"), TEXT("Workbench.Cache.Open.Reports")', workbench)
+        opener = workbench.split("FReply OpenCacheDirectory(", 1)[1].split("TSharedRef<SWidget> BuildCacheDirectoryRow", 1)[0]
+        self.assertIn("CacheDirectories.Find(DirectoryId)", opener)
+        self.assertIn("Directory && Directory->bExists", opener)
+        self.assertLess(opener.index("FPaths::DirectoryExists(Directory->Path)"), opener.index("FPlatformProcess::ExploreFolder(*Directory->Path)"))
+        self.assertNotIn("LaunchFileInDefaultExternalApplication", opener)
+
+    def test_imported_reopen_copy_matches_the_verified_review_action(self):
+        source = self.source
+        selection = source.split("void OnPackageSelected(", 1)[1].split("void LoadSelectedReportDetails(", 1)[0]
+        refresh = source.split("void RefreshPackages()", 1)[1].split("TSharedPtr<FAssetForgePackageItem> FindFilteredPackageByDir", 1)[0]
+        self.assertIn("该包体已导入，可直接前往「入库批审」查验本次资产", source)
+        self.assertLess(selection.index("LoadSelectedReportDetails();"), selection.index("CanReviewSelectedImport()"))
+        self.assertIn("CanReviewSelectedImport()", refresh)
 
     def test_gate_report_path_has_open_action(self):
         source = self.source
@@ -41,8 +125,12 @@ class UnrealEditorGateCppTest(unittest.TestCase):
         self.assertIn("GetReportPath", source)
         self.assertIn("HandleOpenReportClicked", source)
         self.assertIn("HasSelectedReport", source)
-        self.assertIn("打开报告", source)
-        self.assertIn("LaunchFileInDefaultExternalApplication", source)
+        self.assertEqual(source.count('"定位完整报告"'), 2)
+        handler = source.split("FReply HandleOpenReportClicked()", 1)[1].split("FReply HandleExportDebugClicked()", 1)[0]
+        self.assertIn("FPaths::ConvertRelativePathToFull", handler)
+        self.assertIn("FPaths::FileExists(ReportFile)", handler)
+        self.assertIn("FPlatformProcess::ExploreFolder(*ReportFile)", handler)
+        self.assertNotIn("LaunchFileInDefaultExternalApplication", handler)
 
     def test_gate_history_clear_is_explicit_and_non_destructive(self):
         source = self.source
@@ -78,11 +166,13 @@ class UnrealEditorGateCppTest(unittest.TestCase):
         source = self.source
 
         ordered_labels = [
-            'LOCTEXT("PackageSourceRecord", "1 来源记录")',
-            'LOCTEXT("WriteApprovalSection", "2 导入控制")',
-            'LOCTEXT("PackageContentSection", "3 包体内容")',
-            'LOCTEXT("ImportStrategySection", "4 导入策略")',
-            'LOCTEXT("HistorySection", "5 历史与报告")',
+            'LOCTEXT("CheckPackage", "检查包体")',
+            'SNew(SButton).Tag(TEXT("Gate.Import"))',
+            'BuildWriteConfirmation()]',
+            'LOCTEXT("PackageContentSection", "包体摘要")',
+            'LOCTEXT("ImportStrategySection", "导入策略设置")',
+            'LOCTEXT("PackageSourceRecord", "来源记录")',
+            'LOCTEXT("HistorySection", "历史与报告")',
         ]
         positions = [source.index(label) for label in ordered_labels]
 
@@ -116,20 +206,20 @@ class UnrealEditorGateCppTest(unittest.TestCase):
 
         for text in ["来源记录", "包体时间", "报告时间", "Manifest", "备注"]:
             self.assertIn(text, source)
-        self.assertIn("DCC AssetForge Gate 0.1.0", source)
-        self.assertIn("Build 2026-06-03-R7", source)
+        self.assertIn("AssetForge v0.2", source)
+        self.assertIn("Gate.Fold.Policy", source)
         self.assertIn("PackageRiskColor", source)
         self.assertIn("ModifiedTimeLabel", source)
         self.assertIn("ReportTimeLabel", source)
         self.assertIn("GetToolVersionText", source)
         self.assertIn("GetLastRefreshText", source)
         self.assertIn("GetPackageNoteText", source)
-        self.assertIn("GetHeaderStatusColor", source)
-        self.assertIn("StatusPillDynamic", source)
+        self.assertIn("FStyleColors::Warning", source)
+        self.assertIn("FStyleColors::Error", source)
         self.assertIn("PackageCountsLabel", source)
         self.assertIn("放行 %d / 警告 %d / 阻断 %d / 待检查 %d", source)
-        self.assertIn("FLinearColor(0.55f, 0.65f, 0.72f, 1.0f)", source)
-        self.assertIn("true", source[source.index("PackageSourceRecord"):source.index("WriteApprovalSection")])
+        self.assertIn("FStyleColors::Success", source)
+        self.assertIn("true", source[source.index("PackageSourceRecord"):source.index("HistorySection")])
         self.assertIn("FDateTime::UtcNow()", source)
         self.assertIn("LocalOffset", source)
 
@@ -211,42 +301,46 @@ class UnrealEditorGateCppTest(unittest.TestCase):
     def test_gate_button_copy_uses_actionable_import_language(self):
         source = self.source
 
-        self.assertIn("检查并导入选中包体", source)
-        self.assertIn("仅检查", source)
+        self.assertIn("前往「入库批审」查验本次资产 →", source)
+        self.assertIn("定位完整报告", source)
+        self.assertIn("非阻断提醒", source)
+        self.assertIn('true, TEXT("Gate.Fold.Policy")', source)
         self.assertIn("不写入验证", source)
-        self.assertIn("仅导入已放行", source)
-        self.assertIn("PrimaryActionButton", source)
-        self.assertIn("HandlePrimaryImportClicked", source)
-        self.assertIn("dry_run_gate_for_package_dir", source)
-        self.assertIn("import_approved_package_dir", source)
+        self.assertIn("workbench_dry_run_package", source)
+        self.assertIn("workbench_apply_package", source)
+        self.assertNotIn("import_approved_package_dir", source)
         self.assertIn("EPythonCommandExecutionMode::ExecuteFile", source)
         self.assertNotIn("EPythonCommandExecutionMode::ExecuteStatement", source)
         self.assertIn("return FString::Printf(TEXT(\"exec(%s)\"), *PythonStringLiteral(Script));", source)
-        primary_handler = source[source.index("FReply HandlePrimaryImportClicked") : source.index("FReply HandlePreviewClicked")]
-        preview_handler = source[source.index("FReply HandlePreviewClicked") : source.index("FReply HandleDryRunClicked")]
-        dry_run_handler = source[source.index("FReply HandleDryRunClicked") : source.index("FReply HandleImportClicked")]
-        self.assertIn('ExecuteGatePythonCommand(TEXT("preview_gate_for_package_dir"), PackageDir, BuildGateImportOptionsJson())', primary_handler)
-        self.assertIn('ExecuteGatePythonCommand(TEXT("import_approved_package_dir"), PackageDir, BuildGateImportOptionsJson())', primary_handler)
-        self.assertIn("RefreshPackagesAndRestoreSelection(PackageDir)", primary_handler)
-        self.assertIn('ExecuteGatePythonCommand(TEXT("preview_gate_for_package_dir"), PackageDir, BuildGateImportOptionsJson())', preview_handler)
-        self.assertIn("RefreshPackagesAndRestoreSelection(PackageDir)", preview_handler)
-        self.assertIn('ExecuteGatePythonCommand(TEXT("dry_run_gate_for_package_dir"), PackageDir, BuildGateImportOptionsJson())', dry_run_handler)
-        self.assertIn("RefreshPackagesAndRestoreSelection(PackageDir)", dry_run_handler)
+        preview_handler = source.split("FReply HandlePreviewClicked()", 1)[1].split("FReply HandleDryRunClicked()", 1)[0]
+        import_handler = source.split("FReply HandleImportClicked()", 1)[1].split("FReply HandleConfirmWriteClicked()", 1)[0]
+        dry_run_handler = source.split("FReply HandleDryRunClicked()", 1)[1].split("FReply HandleImportClicked()", 1)[0]
+        self.assertIn("QueueGateOperation(EGateOperation::Check)", preview_handler)
+        self.assertIn("QueueGateOperation(EGateOperation::PrepareWrite)", import_handler)
+        self.assertNotIn("QueueGateOperation(EGateOperation::Import)", import_handler)
+        self.assertIn("QueueGateOperation(EGateOperation::DryRun)", dry_run_handler)
         self.assertIn("CanImportSelectedPackage", source)
-        self.assertIn("当前报告未放行或仍有错误，导入已禁用。", source)
+        tooltip = source.split("FText GetImportTooltipText() const", 1)[1].split("FText GetOpenReportTooltipText()", 1)[0]
+        self.assertLess(tooltip.index("GateOperation != EGateOperation::Idle"), tooltip.index("!CanImportSelectedPackage()"))
+        self.assertIn("return FText::GetEmpty();", tooltip)
+        self.assertIn("请在包体摘要中处理阻断项，再重新检查。", tooltip)
         self.assertIn("当前包体未放行，未写入 UE", source)
         self.assertIn("GetWriteContentSummaryText", source)
         self.assertIn("写入内容", source)
-        self.assertIn("主操作会先生成检查报告；报告放行后才正式写入 UE。仅检查可用于复核，不会创建资产。", source)
         self.assertIn("只写入当前选中包体；Static Mesh 始终导入；%s；%s；UE FBX 自动材质/贴图导入保持关闭。", source)
         self.assertIn("基础导入", source)
-        self.assertIn("默认导入 Static Mesh", source)
+        basic_import = source.split("TSharedRef<SWidget> BuildBasicImportSummaryRow()", 1)[1].split(
+            "TSharedRef<SWidget> BuildContentImportOptionRow()", 1
+        )[0]
+        self.assertIn("导入静态网格", basic_import)
+        self.assertIn(".AutoWrapText(true)", basic_import)
         self.assertIn("材质贴图", source)
         self.assertIn("创建材质实例", source)
         self.assertIn("导入贴图资产", source)
         self.assertIn("高级设置：变换 / 单位", source)
         self.assertIn("高级设置：构建输出", source)
-        self.assertIn("2 导入控制", source)
+        self.assertIn("CanImportSelectedPackage()", import_handler)
+        self.assertNotIn("workbench_apply_package", preview_handler)
         self.assertIn("bool bGateImportMaterials = true;", source)
         self.assertIn("bool bGateImportTextures = true;", source)
         self.assertIn('Options->SetBoolField(TEXT("fbx_import_materials"), false);', source)
@@ -267,6 +361,99 @@ class UnrealEditorGateCppTest(unittest.TestCase):
         self.assertNotIn("写入层", source)
         self.assertNotIn("默认选中 %s", source)
         self.assertIn("请在左侧明确选择一个包体", source)
+
+    def test_gate_keeps_the_write_step_inline_and_updates_only_the_selected_report(self):
+        source = self.source
+        for value in ("Gate.ConfirmPanel", "Gate.ConfirmWrite", "Gate.CancelWrite", "Gate.Handoff",
+                      "Gate.FullReport", "等待确认…", "正在导入资产…", "确认写入", "operator_warnings", "operator_errors",
+                      "policy_summary", "existing_count", "warning_count", "report_path"):
+            self.assertIn(value, source)
+        confirm = source.split("FReply HandleConfirmWriteClicked()", 1)[1].split("FReply HandleCancelWriteClicked()", 1)[0]
+        cancel = source.split("FReply HandleCancelWriteClicked()", 1)[1].split("FReply QueueGateOperation", 1)[0]
+        queue = source.split("FReply QueueGateOperation", 1)[1].split("FReply HandleOpenReportClicked()", 1)[0]
+        self.assertIn("QueueGateOperation(EGateOperation::Import)", confirm)
+        self.assertIn("GateOperation != EGateOperation::AwaitConfirm", confirm)
+        self.assertNotIn("QueueGateOperation", cancel)
+        self.assertIn("bImport ? ConfirmedOptions : BuildGateImportOptionsJson()", queue)
+        self.assertIn("import_succeeded", queue)
+        self.assertIn("RefreshSelectedPackageReport(PackageDir, Result)", queue)
+        self.assertNotIn("RefreshPackages()", queue)
+        self.assertLess(queue.index("GateMessage = bImport"), queue.index("RegisterActiveTimer"))
+        self.assertLess(queue.index("RegisterActiveTimer"), queue.index("ExecuteGatePythonCommand"))
+        self.assertIn("AssetForgeGateTiming action=%s", queue)
+
+    def test_gate_uses_the_backend_notice_projection_for_the_selected_report(self):
+        source = self.source
+        report = source.split("static void AttachReportDecision", 1)[1].split("static FString ReportImportPermissionText", 1)[0]
+        discovery = source.split("void RefreshPackages()", 1)[1].split("TSharedPtr<FAssetForgePackageItem> FindFilteredPackageByDir", 1)[0]
+        selection = source.split("void OnPackageSelected(", 1)[1].split("FReply HandleRefreshClicked()", 1)[0]
+        self.assertIn("AttachOperatorNotices(Item, Report)", report)
+        self.assertNotIn('TEXT("messages")', report)
+        self.assertIn('TEXT("workbench_read_reports")', source)
+        self.assertIn("_af_kwargs['report_path'] = _af_report_path", source)
+        self.assertIn("LoadSelectedReportDetails()", selection)
+        self.assertNotIn("ExecuteGatePythonCommand", discovery)
+
+    def test_completed_receipt_reuses_write_position_and_opens_recorded_static_meshes(self):
+        source = self.source
+        column = source.split("TSharedRef<SWidget> BuildReviewColumn()", 1)[1].split("BuildGateNotices()", 1)[0]
+        self.assertLess(column.index("BuildWriteConfirmation()"), column.index("BuildCompletedImport()"))
+        self.assertLess(column.index("BuildCompletedImport()"), column.index("包体摘要"))
+        completion = source.split("TSharedRef<SWidget> BuildCompletedImport()", 1)[1].split("GetGateNotices(", 1)[0]
+        self.assertIn("✓ 导入完成", completion)
+        self.assertIn("HandleImportedReviewClicked", completion)
+        self.assertIn("打开静态网格", completion)
+        self.assertIn("SWrapBox", completion)
+        handler = source.split("FReply HandleOpenImportedMeshClicked()", 1)[1].split("FReply HandleOpenReportClicked()", 1)[0]
+        self.assertIn("LoadSelectedReportDetails(true)", handler)
+        self.assertIn("OpenEditorForAssets(Assets)", handler)
+        self.assertIn("Paths != OriginalPaths", handler)
+        self.assertNotIn("QueueGateOperation", handler)
+
+    def test_review_uses_a_focused_native_content_browser_and_visible_effective_budget(self):
+        review = REVIEW_SOURCE.read_text(encoding="utf-8")
+        self.assertIn("在内容浏览器定位", review)
+        header = review.split("TSharedRef<SWidget> AssetHeader(", 1)[1].split("FReply LocateInContentBrowser(", 1)[0]
+        self.assertIn("Review.LocateSelected", header)
+        self.assertIn("return LocateInContentBrowser(Path)", header)
+        self.assertIn("auto Actions = SNew(SWrapBox)", header)
+        self.assertIn("GetAssetByObjectPath", review)
+        self.assertIn("SyncBrowserToAssets(TArray<FAssetData>{Asset}, false, true)", review)
+        self.assertIn("已在内容浏览器定位", review)
+        locate = review.split("FReply LocateInContentBrowser(", 1)[1].split("TSharedRef<SWidget> IssueList(", 1)[0]
+        self.assertIn("FSlateNotificationManager::Get().AddNotification(Notice)", locate)
+        self.assertIn("Notice.ExpireDuration = 3.0f", locate)
+        for name in ("budget_summary", "budget_source", "rules_triangles", "rules_material_slots"):
+            self.assertIn(name, review)
+        current = review.split("void AddBatchBudgetFields(", 1)[1].split("TOptional<int32> StockBudgetValue(", 1)[0]
+        for value in ("batch_budget", "本批次预算", "应用并复验本批次", "Review.BatchBudget.Triangles",
+                      "Review.BatchBudget.MaterialSlots", "rules_batch_budget"):
+            self.assertIn(value, current)
+        self.assertEqual(current.count('Run(TEXT("rules_batch_budget"), Budgets)'), 1)
+
+    def test_gate_uses_the_durable_project_receipt_for_imported_review(self):
+        source = self.source
+        queue = source.split("FReply QueueGateOperation", 1)[1].split("void RefreshSelectedPackageReport", 1)[0]
+        handoff = source.split("bool CanReviewSelectedImport() const", 1)[1].split("FReply HandleOpenReportClicked()", 1)[0]
+        self.assertIn("handoff_receipt", source)
+        self.assertIn('ExecuteGatePythonCommand(TEXT("workbench_read_reports"), Item.PackageDir', source)
+        self.assertIn("AttachHandoffReceipt(*SelectedPackage, Result)", source)
+        self.assertIn("CanImportSelectedPackage()", handoff)
+        self.assertIn("LoadSelectedReportDetails(true)", handoff)
+        self.assertIn("AssetForgeReview::OpenImported", handoff)
+        self.assertNotIn("FGuid::NewGuid()", queue)
+        self.assertNotIn("ImportReceipts.Contains", source)
+
+    def test_gate_transform_units_and_offsets_use_full_width_wrapping(self):
+        source = self.source
+        for control in ("BuildTransformOptionRow", "BuildTransformOffsetOptionRow"):
+            section = source.split("TSharedRef<SWidget> " + control + "()", 1)[1].split("TSharedRef<SWidget> ", 1)[0]
+            self.assertIn("SNew(SWrapBox)", section)
+            self.assertIn("UseAllottedSize(true)", section)
+        self.assertIn('FullWidthPolicyRow(LOCTEXT("GateTransformGroup"', source)
+        self.assertIn('FullWidthPolicyRow(LOCTEXT("GateTransformOffsetGroup"', source)
+        self.assertIn("顶点转绝对坐标", source)
+        self.assertIn("旋转 P/Y/R", source)
 
     def test_gate_passes_import_options_to_python(self):
         source = self.source

@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
 """Stable material to texture set binding contract for Maya export packages."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import re
 
@@ -38,13 +39,23 @@ def create_material_texture_bindings(scan_result, target_path=""):
                 "ue_material_instance_path": instance.get("path", ""),
             }
         )
+        if "candidates" in entry:
+            rows[-1]["candidates"] = list(entry["candidates"])
     return {"bindings": rows, "risks": material_texture_binding_risks(rows)}
 
 
 def material_texture_binding_risks(bindings):
     risks = []
     for item in bindings or []:
-        if item.get("status") == "unmatched_material":
+        if item.get("status") in ("ambiguous_material_texture_set", "invalid_material_texture_set"):
+            candidates = item["candidates"]
+            reason = "匹配到多个贴图集" if item["status"] == "ambiguous_material_texture_set" else "指定的贴图集已不可用"
+            risks.append({
+                "id": item["status"], "severity": "error", "material_name": item["material_name"],
+                "slot_name": item["slot_name"], "candidates": candidates,
+                "message": "{0} {1}。当前候选：{2}".format(item["material_name"], reason, ", ".join(candidates) or "无"),
+            })
+        elif item.get("status") == "unmatched_material":
             risks.append(
                 {
                     "id": "unmatched_material",

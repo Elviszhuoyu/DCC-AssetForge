@@ -43,6 +43,7 @@ def collect_material_evidence(report_path, output_path=None, cold_start_readback
         material_sampler_policy_validation=import_report.get("material_sampler_policy_validation", {}),
         compile_log_evidence=import_report.get("material_compile_log_evidence", {}),
         real_ue_material_graph=import_report.get("real_ue_material_graph", {}),
+        material_texture_binding_validation=import_report.get("material_texture_binding_validation", {}),
     )
     import_report["summary"] = summarize_pipeline(import_report=import_report)
     attach_acceptance_summary(import_report, import_report["summary"])

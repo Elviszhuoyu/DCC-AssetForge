@@ -4,6 +4,9 @@ from __future__ import absolute_import
 
 
 SURFACE_PBR_FAMILY = "MM_Surface_PBR"
+from asset_forge.shared.material_profile_schema import PROPS_PAINTER_OPAQUE_MASTER
+
+
 AF_PROPS_MASTER = "/AssetForge/Materials/M_AF_Props_Master"
 AF_HARDSURFACE_MASTER = AF_PROPS_MASTER
 AF_ENVIRONMENT_MASTER = "/AssetForge/Materials/M_AF_Environment_Master"
@@ -529,13 +532,22 @@ def detect_material_features(textures, profile=None):
     return sorted(features)
 
 
-def resolve_material_variant(profile, textures):
+def resolve_material_variant(profile, textures, slot_variant=None):
     """Select a prebuilt material variant from detected features."""
     profile = profile or {}
     features = detect_material_features(textures, profile)
+    if slot_variant:
+        return {
+            "selected_master_family": profile.get("master_family", SURFACE_PBR_FAMILY),
+            "selected_material_variant": profile["material_variants"][slot_variant],
+            "variant_key": slot_variant,
+            "detected_features": features,
+            "variant_reason": "Explicit project material slot route: {0}".format(slot_variant),
+        }
     feature_set = set(features)
     variants = dict(DEFAULT_VARIANTS)
-    variants.update(profile.get("material_variants", {}) or {})
+    project_variants = profile.get("material_variants", {}) or {}
+    variants.update(project_variants)
 
     family = (profile.get("asset_family") or "").lower()
     if "decal" in feature_set and _profile_allows_special_variant(profile, "decal"):
@@ -548,7 +560,7 @@ def resolve_material_variant(profile, textures):
         key = "world_aligned"
     elif "opacity" in feature_set and profile.get("render_mode") == "translucent":
         key = "translucent"
-    elif "opacity_mask" in feature_set:
+    elif "opacity_mask" in feature_set and profile.get("master_material") != PROPS_PAINTER_OPAQUE_MASTER:
         key = "masked"
     elif "emissive" in feature_set:
         key = "emissive"
@@ -564,7 +576,7 @@ def resolve_material_variant(profile, textures):
         if vt_key in variants:
             key = vt_key
 
-    selected = variants.get(key) or profile.get("master_material", AF_HARDSURFACE_MASTER)
+    selected = project_variants.get(key) or profile.get("master_material") or variants.get(key) or AF_HARDSURFACE_MASTER
     return {
         "selected_master_family": profile.get("master_family", SURFACE_PBR_FAMILY),
         "selected_material_variant": selected,

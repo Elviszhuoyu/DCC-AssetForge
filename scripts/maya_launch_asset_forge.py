@@ -207,34 +207,38 @@ def bootstrap(repo_root=None, open_ui=True, quiet=False):
     }
 
 
+def restore_saved_workspace():
+    """Populate the control Maya already restored, including shelf-only installations."""
+    _prepend_sys_path(_repo_root_from_context())
+    from asset_forge.maya import ui
+    restore = getattr(ui, "defer_workspace_restore", ui.restore_workspace)
+    return restore()
+
+
 def launch():
     """Maya-friendly alias used by paste snippets."""
     return bootstrap(open_ui=True)
 
 
-def install_ui_shelf_button(repo_root=None, shelf_name=UI_SHELF_NAME):
+def install_ui_shelf_button(repo_root=None, shelf_name=UI_SHELF_NAME, existing_button=""):
     """Install the main DCC AssetForge Maya workbench shelf button."""
     active_root = os.path.abspath(repo_root or _repo_root_from_context())
     import maya.cmds as cmds
 
     shelf = _ensure_shelf(cmds, shelf_name)
-    if cmds.shelfButton(UI_SHELF_BUTTON, exists=True):
-        cmds.deleteUI(UI_SHELF_BUTTON)
     command = _ui_shelf_command(active_root)
     icon_path = _asset_forge_icon_path(active_root)
-    button = cmds.shelfButton(
-        UI_SHELF_BUTTON,
-        parent=shelf,
-        label="DCC AssetForge",
-        annotation="Open the DCC AssetForge Maya workbench from the current repository",
-        image=icon_path,
-        image1=icon_path,
-        imageOverlayLabel="",
-        overlayLabelColor=(0.82, 0.96, 0.88),
-        overlayLabelBackColor=(0.03, 0.09, 0.07, 0.75),
-        command=command,
-        sourceType="python",
-    )
+    properties = dict(label="DCC AssetForge", annotation="打开 DCC AssetForge 工作台",
+                      image=icon_path, image1=icon_path, imageOverlayLabel="",
+                      overlayLabelColor=(0.82, 0.96, 0.88), overlayLabelBackColor=(0.03, 0.09, 0.07, 0.75),
+                      command=command, sourceType="python")
+    if existing_button:
+        cmds.shelfButton(existing_button, edit=True, **properties)
+        button = existing_button
+    else:
+        if cmds.shelfButton(UI_SHELF_BUTTON, exists=True):
+            cmds.deleteUI(UI_SHELF_BUTTON)
+        button = cmds.shelfButton(UI_SHELF_BUTTON, parent=shelf, **properties)
     return {
         "status": "success",
         "shelf": shelf,
@@ -258,29 +262,18 @@ def _ensure_shelf(cmds, shelf_name):
 
 
 def _asset_forge_icon_path(repo_root):
-    candidates = [
-        os.path.join(repo_root, "Plugins", "AssetForge", "Resources", "IconMayaShelf.png"),
-        os.path.join(repo_root, "Plugins", "AssetForge", "Resources", "IconToolbar.png"),
-        os.path.join(repo_root, "Plugins", "AssetForge", "Resources", "IconHeader.png"),
-        os.path.join(repo_root, "Plugins", "AssetForge", "Resources", "Icon128.png"),
-    ]
-    for path in candidates:
-        if os.path.exists(path):
-            return path.replace("\\", "/")
-    return "commandButton.png"
+    path = os.path.join(repo_root, "Plugins", "AssetForge", "Resources", "Workbench", "brand", "af_shelf.png")
+    return path.replace("\\", "/") if os.path.isfile(path) else "commandButton.png"
 
 
 def _ui_shelf_command(repo_root):
     bootstrap = os.path.join(repo_root, "scripts", "maya_launch_asset_forge.py").replace("\\", "/")
-    return "\n".join(
-        [
-            "_bootstrap = r'''{0}'''".format(bootstrap),
-            "ASSET_FORGE_BOOTSTRAP_PATH = _bootstrap",
-            "ASSET_FORGE_REPO_ROOT = r'''{0}'''".format(repo_root.replace("\\", "/")),
-            "exec(compile(open(_bootstrap, 'rb').read(), _bootstrap, 'exec'), globals())",
-            "bootstrap(repo_root=ASSET_FORGE_REPO_ROOT, open_ui=True)",
-        ]
-    )
+    # Maya executes shelf commands in __main__; run_path gives the launcher its own globals.
+    return (
+        "__import__('runpy').run_path(\n"
+        "    {0!r}, init_globals={{'ASSET_FORGE_REPO_ROOT': {1!r}}}\n"
+        ")['bootstrap'](open_ui=True)"
+    ).format(bootstrap, repo_root.replace("\\", "/"))
 
 
 def _check_log_root(repo_root):

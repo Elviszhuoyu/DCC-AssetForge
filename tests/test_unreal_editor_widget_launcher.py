@@ -37,6 +37,24 @@ class UnrealEditorWidgetLauncherTest(unittest.TestCase):
         self.assertTrue(plan["widget_asset_report"]["created"])
         self.assertFalse(plan["fallback_available"])
 
+    def test_native_launch_uses_the_unified_tab_without_generating_a_widget(self):
+        from unittest.mock import Mock
+
+        fake = FakeUnreal(existing_assets=[])
+        fake.AssetForgeEditorMaterialCommentLibrary = object()
+        fake.SystemLibrary = Mock()
+        fake.subsystem.does_tab_exist = Mock(return_value=True)
+        launcher = UnrealEditorWidgetLauncher(fake)
+        launcher._ensure_widget_asset = Mock(side_effect=AssertionError("unexpected EUW creation"))
+        self.assertEqual(launcher.launch_plan()["tab_id"], "AssetForge.GateWorkbench")
+        fake.SystemLibrary.execute_console_command.assert_not_called()
+        result = launcher.launch()
+        self.assertEqual(result["status"], "launched")
+        fake.SystemLibrary.execute_console_command.assert_called_once_with(None, "AssetForge.OpenGate")
+        fake.subsystem.does_tab_exist.assert_called_once_with("AssetForge.GateWorkbench")
+        fake.subsystem.does_tab_exist.return_value = False
+        self.assertEqual(launcher.launch()["status"], "error")
+
     def test_launch_uses_editor_utility_subsystem_when_available(self):
         fake_unreal = FakeUnreal(existing_assets=["/AssetForge/Editor/EUW_AssetForgeGate"])
         launcher = UnrealEditorWidgetLauncher(fake_unreal)

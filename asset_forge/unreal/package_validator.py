@@ -4,7 +4,7 @@ from __future__ import absolute_import
 
 import os
 
-from asset_forge.shared.constants import CHECK_STATUS_PASS, CHECK_STATUS_WARNING
+from asset_forge.shared.constants import CHECK_STATUS_ERROR, CHECK_STATUS_PASS, CHECK_STATUS_WARNING
 
 
 class UnrealPackageValidator(object):
@@ -16,15 +16,15 @@ class UnrealPackageValidator(object):
             self._fbx_check(manifest.get("fbx_path", "")),
             self._texture_check(texture_summary),
         ]
-        warnings = [item for item in checks if item["status"] == CHECK_STATUS_WARNING]
+        statuses = [item["status"] for item in checks]
         return {
-            "status": CHECK_STATUS_WARNING if warnings else CHECK_STATUS_PASS,
+            "status": CHECK_STATUS_ERROR if CHECK_STATUS_ERROR in statuses else (CHECK_STATUS_WARNING if CHECK_STATUS_WARNING in statuses else CHECK_STATUS_PASS),
             "checks": checks,
             "textures": texture_summary,
         }
 
     def _fbx_check(self, fbx_path):
-        if fbx_path and os.path.exists(fbx_path):
+        if fbx_path and os.path.isfile(fbx_path):
             return {
                 "id": "fbx_path",
                 "label": "FBX 文件",
@@ -34,8 +34,8 @@ class UnrealPackageValidator(object):
         return {
             "id": "fbx_path",
             "label": "FBX 文件",
-            "status": CHECK_STATUS_WARNING,
-            "message": "FBX 路径为空或文件不可用",
+            "status": CHECK_STATUS_ERROR,
+            "message": "FBX 文件缺失或路径不是文件。请重新导出包，或恢复 manifest.fbx_path 对应的 FBX。",
         }
 
     def _texture_check(self, summary):

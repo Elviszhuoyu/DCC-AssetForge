@@ -545,7 +545,7 @@ def main(argv=None):
     _print_json(report)
     _print_cli_report_guidance(report, mode_flags)
     _log_report_operation(report, original_argv, mode_flags, args)
-    exit_code = 2 if (strict or block_warnings or require_import) and not report.get("gate_passed", True) else 0
+    exit_code = 2 if report.get("gate_passed") is False else 0
     _log_cli(
         "unreal_cli_success",
         "success" if exit_code == 0 else "gate_failed",

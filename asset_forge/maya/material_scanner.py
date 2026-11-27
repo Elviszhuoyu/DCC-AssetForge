@@ -1,6 +1,9 @@
+# -*- coding: utf-8 -*-
 """Maya material and texture reference scanner."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
+
+import os
 
 from asset_forge.maya.cmds_bridge import get_cmds
 from asset_forge.shared.path_utils import normalize_path
@@ -8,6 +11,11 @@ from asset_forge.shared.path_utils import normalize_path
 
 def _safe_list(value):
     return value or []
+
+
+def valid_texture_count(textures):
+    paths = (texture.get("path") for texture in textures)
+    return len({os.path.normcase(os.path.realpath(path)) for path in paths if path and os.path.isfile(path)})
 
 
 class MayaMaterialScanner(object):
@@ -84,7 +92,10 @@ class MayaMaterialScanner(object):
 
     def _file_texture_path(self, file_node):
         try:
-            return self.cmds.getAttr(file_node + ".fileTextureName")
+            path = self.cmds.getAttr(file_node + ".fileTextureName")
+            if path and not os.path.isabs(path) and hasattr(self.cmds, "workspace"):
+                path = self.cmds.workspace(expandName=path) or path
+            return path
         except RuntimeError:
             return ""
 

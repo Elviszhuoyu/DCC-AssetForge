@@ -5,8 +5,11 @@
 #include "MaterialGraph/MaterialGraph.h"
 #include "MaterialGraph/MaterialGraphNode_Comment.h"
 #include "MaterialGraph/MaterialGraphSchema.h"
+#include "MaterialShared.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionComment.h"
+#include "RHI.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "UObject/UObjectIterator.h"
 #endif
 
@@ -407,7 +410,9 @@ int32 UAssetForgeEditorMaterialCommentLibrary::RepairAssetForgeCommentBlocks(UMa
 #endif
 }
 
-FString UAssetForgeEditorMaterialCommentLibrary::DescribeAssetForgeCommentBlocks(UMaterial* Material)
+namespace
+{
+FString DescribeAFCommentBlocks(UMaterial* Material, bool bRebuildGraph)
 {
 #if WITH_EDITOR
 	if (!Material)
@@ -415,7 +420,11 @@ FString UAssetForgeEditorMaterialCommentLibrary::DescribeAssetForgeCommentBlocks
 		return TEXT("missing material");
 	}
 
-	RebuildAFMaterialGraph(Material);
+	if (bRebuildGraph)
+	{
+		RebuildAFMaterialGraph(Material);
+	}
+	const UMaterialGraph* MaterialGraph = Material->MaterialGraph;
 
 	TArray<FString> Lines;
 	TMap<FString, int32> CommentKeyCounts;
@@ -443,7 +452,7 @@ FString UAssetForgeEditorMaterialCommentLibrary::DescribeAssetForgeCommentBlocks
 
 	int32 LinkedGraphCommentCount = 0;
 	int32 OrphanGraphCommentCount = 0;
-	if (UMaterialGraph* MaterialGraph = FindAFMaterialGraph(Material, nullptr))
+	if (MaterialGraph)
 	{
 		for (UEdGraphNode* Node : MaterialGraph->Nodes)
 		{
@@ -487,14 +496,48 @@ FString UAssetForgeEditorMaterialCommentLibrary::DescribeAssetForgeCommentBlocks
 		DuplicateCommentCount += FMath::Max(0, Pair.Value - 1);
 	}
 
-	Lines.Insert(FString::Printf(TEXT("SUMMARY expected_af_comments=%d|expression_comments=%d|linked_graph_comments=%d|orphan_graph_comments=%d|duplicate_comments=%d"),
+	Lines.Insert(FString::Printf(TEXT("SUMMARY expected_af_comments=%d|expression_comments=%d|linked_graph_comments=%d|orphan_graph_comments=%d|duplicate_comments=%d|graph_readback_available=%d"),
 		UE_ARRAY_COUNT(AFCommentSpecs),
 		ExpressionCommentCount,
 		LinkedGraphCommentCount,
 		OrphanGraphCommentCount,
-		DuplicateCommentCount), 0);
+		DuplicateCommentCount,
+		MaterialGraph != nullptr), 0);
 	return FString::Join(Lines, TEXT("\n"));
 #else
 	return TEXT("editor only");
 #endif
+}
+}
+
+FString UAssetForgeEditorMaterialCommentLibrary::DescribeAssetForgeCommentBlocks(UMaterial* Material)
+{
+	return DescribeAFCommentBlocks(Material, true);
+}
+
+FString UAssetForgeEditorMaterialCommentLibrary::ReadAssetForgeCommentBlocks(UMaterial* Material)
+{
+	return DescribeAFCommentBlocks(Material, false);
+}
+
+bool UAssetForgeEditorMaterialCommentLibrary::TryReadAssetForgeMaterialCompileErrors(const UMaterialInterface* Material, TArray<FString>& OutErrors)
+{
+	OutErrors.Reset();
+#if WITH_EDITOR
+	if (Material)
+	{
+#if ENGINE_MAJOR_VERSION > 5 || ENGINE_MINOR_VERSION >= 7
+		const FMaterialResource* Resource = Material->GetMaterialResource(GMaxRHIShaderPlatform);
+#else
+		const FMaterialResource* Resource = Material->GetMaterialResource(GMaxRHIFeatureLevel);
+#endif
+		if (Resource)
+		{
+			// Inspect the cached resource without starting or finishing shader compilation.
+			OutErrors = Resource->GetCompileErrors();
+			return !OutErrors.IsEmpty() || Resource->HasValidGameThreadShaderMap();
+		}
+	}
+#endif
+	return false;
 }

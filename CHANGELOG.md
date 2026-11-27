@@ -8,6 +8,13 @@ The project follows semantic versioning for released repository versions. JSON p
 
 No unreleased changes are currently documented.
 
+## [0.2.0] — 2026-11-28
+
+- Added a Windows installer, including engine-level and project-level Unreal installation.
+- Added the Maya inspection and texture-matching workbench and the Unreal batch-review workflow.
+- Added exact-build Windows UE 5.8.4 and 5.6.1 plugin binaries. Other supported build paths are documented in the release notes.
+- Fixed Unreal package checks for plugins installed into the engine Marketplace directory.
+
 ## [0.1.0] — 2026-08-11
 
 ### Added
@@ -26,5 +33,6 @@ No unreleased changes are currently documented.
 - Offline tests are required for this preparation pass.
 - Fresh Maya, Blender, and Unreal host validation remains pending and must not be inferred from CI.
 
-[Unreleased]: https://github.com/Elviszhuoyu/DCC-AssetForge/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Elviszhuoyu/DCC-AssetForge/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Elviszhuoyu/DCC-AssetForge/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Elviszhuoyu/DCC-AssetForge/releases/tag/v0.1.0

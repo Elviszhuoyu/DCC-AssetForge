@@ -18,6 +18,7 @@ from asset_forge.shared.material_profile_schema import (
     material_profile_names,
     read_material_profiles,
     resolve_material_profile,
+    resolve_material_profile,
     validate_material_profile,
     validate_material_profiles,
     validate_material_profiles_report,
@@ -44,10 +45,10 @@ class MaterialProfileSchemaTest(unittest.TestCase):
 
         self.assertEqual(profile["asset_family"], ASSET_TYPE_PROPS)
         self.assertEqual(profile["render_mode"], RENDER_MODE_OPAQUE)
-        self.assertEqual(profile["master_material"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(profile["master_material"], "/AssetForge/Materials/M_AF_Props_Opaque_Master")
         self.assertEqual(profile["master_family"], "MM_Surface_PBR")
-        self.assertEqual(profile["material_variants"]["opaque"], "/AssetForge/Materials/M_AF_Props_Master")
-        self.assertEqual(profile["material_variants"]["dirty_wear_vt"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(profile["material_variants"]["opaque"], "/AssetForge/Materials/M_AF_Props_Opaque_Master")
+        self.assertEqual(profile["material_variants"]["dirty_wear_vt"], "/AssetForge/Materials/M_AF_Props_Opaque_Master")
         self.assertEqual(profile["parameter_api_mapping"]["BaseColor"], "Base Color")
         self.assertTrue(profile["supports"]["emissive"])
         self.assertFalse(profile["supports"]["opacity_mask"])
@@ -57,6 +58,9 @@ class MaterialProfileSchemaTest(unittest.TestCase):
         self.assertIn("height", rules_by_usage)
         self.assertNotIn("EmissiveIntensity", profile["scalar_parameters"])
         self.assertNotIn("EmissiveTint", profile["vector_parameters"])
+        self.assertTrue(rules_by_usage["packed_arm"]["required"])
+        self.assertEqual(rules_by_usage["packed_arm"]["missing_severity"], "warning")
+        self.assertEqual(rules_by_usage["normal"]["normal_format"], "directx")
         self.assertEqual(rules_by_usage["packed_arm"]["channels"]["r"], "ao")
         self.assertEqual(rules_by_usage["packed_arm"]["channels"]["g"], "roughness")
         self.assertEqual(rules_by_usage["packed_arm"]["channels"]["b"], "metallic")
@@ -68,6 +72,24 @@ class MaterialProfileSchemaTest(unittest.TestCase):
         self.assertEqual(profile["scalar_parameters"]["RoughnessMax"], 0.95)
         self.assertIn("dirty_wear", profile["material_variants"])
         self.assertEqual(profile["parameter_api_mapping"]["ImperfectionMask"], "Imperfection Mask")
+
+    def test_legacy_painter_snapshot_upgrades_arm_without_reparenting_or_mutation(self):
+        profile = get_default_material_profile("Props_Opaque_PainterUE_ARM")
+        profile["master_material"] = "/AssetForge/Materials/M_AF_Props_Master"
+        arm = next(rule for rule in profile["texture_rules"] if rule["usage"] == "packed_arm")
+        arm["required"] = False
+        del arm["missing_severity"]
+
+        resolved = resolve_material_profile(profile)
+
+        resolved_arm = next(rule for rule in resolved["texture_rules"] if rule["usage"] == "packed_arm")
+        self.assertTrue(resolved_arm["required"])
+        self.assertEqual(resolved_arm["missing_severity"], "warning")
+        self.assertEqual(resolved["master_material"], profile["master_material"])
+        self.assertFalse(arm["required"])
+
+        arm["suffixes"] = ["_CustomMask"]
+        self.assertIs(resolve_material_profile(profile), profile)
 
     def test_masked_profiles_allow_base_color_alpha_without_separate_mask(self):
         props = get_default_material_profile("Props_Masked_PainterUE_ARM")
@@ -154,7 +176,7 @@ class MaterialProfileSchemaTest(unittest.TestCase):
 
         self.assertEqual(validate_material_profiles(loaded), [])
         self.assertEqual(loaded["profiles"][0]["name"], "Props_Opaque_PainterUE_ARM")
-        self.assertEqual(opaque["master_material"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(opaque["master_material"], "/AssetForge/Materials/M_AF_Props_Opaque_Master")
         self.assertEqual(opaque["master_family"], "MM_Surface_PBR")
         self.assertIn("imperfection_mask", rules_by_usage)
         self.assertEqual(rules_by_usage["imperfection_mask"]["parameter"], "ImperfectionMask")

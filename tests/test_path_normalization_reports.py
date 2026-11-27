@@ -51,7 +51,7 @@ class PathNormalizationReportsTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0)
         report = json.loads(result.stdout)
-        self.assertIn("在真实 UE 5.6", report["next_action"])
+        self.assertIn("在目标 UE 工程中使用 --run-import", report["next_action"])
 
 
 if __name__ == "__main__":

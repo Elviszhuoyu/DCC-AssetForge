@@ -113,6 +113,13 @@ def _suggestion_for_check(check_id, check, scan_result):
             "will_modify_disk": False,
             "message": "Freeze translate/rotate/scale on export roots and mesh transforms.",
         }
+    if check_id in ("zero_area_triangles", "zero_length_edges"):
+        return {
+            "id": check_id, "action": "review_source_faces" if check_id == "zero_area_triangles" else "review_source_edges",
+            "target": ", ".join(check.get("affected_meshes", [])),
+            "will_modify_scene": False, "will_modify_disk": False,
+            "message": check.get("next_action", ""),
+        }
     if check_id == "hidden_objects":
         return {
             "id": check_id,
@@ -144,7 +151,7 @@ def _suggestion_for_check(check_id, check, scan_result):
         return {
             "id": check_id,
             "action": "review_lightmap_uv",
-            "target": scan_result.get("asset_root", ""),
+            "target": ", ".join(check.get("affected_meshes", [])) or scan_result.get("asset_root", ""),
             "will_modify_scene": False,
             "will_modify_disk": False,
             "message": "Add or confirm a secondary UV set when static lighting is required.",
@@ -153,7 +160,7 @@ def _suggestion_for_check(check_id, check, scan_result):
         return {
             "id": check_id,
             "action": "create_uv0",
-            "target": scan_result.get("asset_root", ""),
+            "target": ", ".join(check.get("affected_meshes", [])) or scan_result.get("asset_root", ""),
             "will_modify_scene": True,
             "will_modify_disk": False,
             "message": "Create a base UV set before export.",

@@ -21,5 +21,6 @@ private:
     TSharedRef<class SDockTab> SpawnGateTab(const class FSpawnTabArgs& Args);
 
     TSharedPtr<FSlateStyleSet> StyleSet;
+    IConsoleObject* ReviewConsoleCommand = nullptr;
     IConsoleObject* GateConsoleCommand = nullptr;
 };

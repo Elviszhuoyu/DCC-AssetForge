@@ -4,7 +4,7 @@
 from __future__ import absolute_import
 
 
-def build_material_texture_set_mapping(materials, textures, folder_scan=None, asset_name="", allow_shared_texture_sets=False):
+def build_material_texture_set_mapping(materials, textures, folder_scan=None, asset_name="", allow_shared_texture_sets=False, material_texture_set_overrides=None):
     material_entries = [dict(material, textures=[]) for material in (materials or [])]
     if not material_entries:
         material_entries.append({"name": "M_{0}".format(asset_name or "Asset"), "textures": []})
@@ -16,15 +16,34 @@ def build_material_texture_set_mapping(materials, textures, folder_scan=None, as
 
     selected_sets = selected_texture_set_infos(folder_scan or {}, textures_by_set)
     assigned_sets = set()
+    overrides = material_texture_set_overrides or {}
     mapping = []
 
     for material in material_entries:
-        binding = match_material_to_texture_set(material.get("name", ""), selected_sets, assigned_sets, allow_assigned=allow_shared_texture_sets)
+        name = material.get("name", "")
+        if name in overrides:
+            chosen = texture_set_info(selected_sets, overrides[name])
+            if chosen:
+                binding = dict(chosen, binding_source="manual_override")
+            else:
+                binding = {"binding_source": "invalid_material_texture_set", "candidates": sorted(i["set_name"] for i in selected_sets)}
+        else:
+            binding = match_material_to_texture_set(name, selected_sets, assigned_sets, allow_assigned=allow_shared_texture_sets)
+        if not binding and len(material_entries) == 1 and len(selected_sets) > 1:
+            candidates = _competing_texture_sets(textures_by_set)
+            if candidates:
+                binding = {"binding_source": "ambiguous_material_texture_set", "candidates": candidates}
+        if binding and "candidates" in binding:
+            row = material_texture_set_entry(material, binding, [], binding["binding_source"])
+            row["candidates"] = binding["candidates"]
+            mapping.append(row)
+            continue
         if not binding and len(material_entries) == 1 and len(selected_sets) == 1:
             binding = dict(selected_sets[0], binding_source="single_material_fallback")
         if binding:
             set_name = binding.get("set_name", "")
-            assigned_sets.add(set_name)
+            if name not in overrides:
+                assigned_sets.add(set_name)
             assigned_textures = list(textures_by_set.get(set_name, []))
             material["textures"] = assigned_textures
             material.update(
@@ -51,9 +70,10 @@ def build_material_texture_set_mapping(materials, textures, folder_scan=None, as
         else:
             mapping.append(material_texture_set_entry(material, {"binding_source": "unmatched_material"}, [], "unmatched_material"))
 
+    bound_sets = assigned_sets.union(row["texture_set"] for row in mapping if row["status"] == "bound")
     for item in selected_sets:
         set_name = item.get("set_name", "")
-        if set_name in assigned_sets:
+        if set_name in bound_sets:
             continue
         mapping.append(
             {
@@ -71,6 +91,21 @@ def build_material_texture_set_mapping(materials, textures, folder_scan=None, as
     return {"materials": material_entries, "material_texture_sets": mapping}
 
 
+def _competing_texture_sets(textures_by_set):
+    # Complementary maps can share a slot. Two named sets supplying the same role need a choice.
+    sets_by_usage = {}
+    for set_name, textures in textures_by_set.items():
+        for texture in textures:
+            usage = texture.get("usage")
+            if set_name and usage:
+                sets_by_usage.setdefault(usage, set()).add(set_name)
+    competing = set()
+    for names in sets_by_usage.values():
+        if len(names) > 1:
+            competing.update(names)
+    return sorted(competing)
+
+
 def infer_texture_set_token_from_materials(materials, texture_sets):
     if not materials or not texture_sets:
         return ""
@@ -85,7 +120,12 @@ def infer_texture_set_token_from_materials(materials, texture_sets):
         match = match_material_to_texture_set(material.get("name", ""), candidates, selected_names)
         if not match:
             continue
-        set_name = match.get("set_name", "")
+        if "candidates" in match:
+            for candidate in match["candidates"]:
+                if candidate not in selected:
+                    selected.append(candidate)
+            continue
+        set_name = match["set_name"]
         short_name = match.get("short_name", "") or short_texture_set_name(set_name)
         selected_names.add(set_name)
         selected.append(short_name or set_name)
@@ -115,16 +155,20 @@ def texture_set_info(texture_sets, set_name):
 
 def match_material_to_texture_set(material_name, selected_sets, assigned_sets, allow_assigned=False):
     normalized_material = tokenize_for_binding(material_name)
+    matches = {}
     for item in selected_sets:
         set_name = item.get("set_name", "")
-        if set_name in assigned_sets and not allow_assigned:
-            continue
+        normalized_set = tokenize_for_binding(set_name)
         short_name = item.get("short_name", "")
         if short_name and "|{0}|".format(short_name.lower()) in normalized_material:
-            return dict(item, binding_source="material_name_short_token")
-        normalized_set = tokenize_for_binding(set_name)
-        if normalized_set and normalized_set in normalized_material:
-            return dict(item, binding_source="material_name_full_set")
+            matches[set_name] = dict(item, binding_source="material_name_short_token")
+        elif normalized_set and normalized_set in normalized_material:
+            matches[set_name] = dict(item, binding_source="material_name_full_set")
+    if len(matches) > 1:
+        return {"binding_source": "ambiguous_material_texture_set", "candidates": sorted(matches)}
+    for set_name, match in matches.items():
+        if allow_assigned or set_name not in assigned_sets:
+            return match
     return None
 
 

@@ -536,7 +536,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["material_profile_validation"]["status"], "warning")
         self.assertIn("normal", report["material_profile_validation"]["missing_usages"])
         self.assertEqual(report["material_binding_plan"]["target_dir"], "/Game/Props/Materials")
-        self.assertEqual(report["material_binding_plan"]["master_material"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(report["material_binding_plan"]["master_material"], "/AssetForge/Materials/M_AF_Props_Opaque_Master")
         self.assertEqual(report["material_binding_plan"]["materials"][0]["target_asset_path"], "/Game/Props/Materials/MI_M_Crate")
         self.assertEqual(report["imported_textures"], [])
         self.assertEqual(report["texture_import_issues"], [])
@@ -1046,8 +1046,8 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["status"], UNREAL_IMPORT_STATUS_SUCCESS)
         self.assertEqual(report["created_material_instances"], ["/Game/Props/Materials/MI_M_Crate"])
         material = material_creator.plans[0]["materials"][0]
-        self.assertEqual(material["parent_material"], "/AssetForge/Materials/M_AF_Props_Master")
-        self.assertEqual(material["selected_material_variant"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(material["parent_material"], "/AssetForge/Materials/M_AF_Props_Opaque_Master")
+        self.assertEqual(material["selected_material_variant"], "/AssetForge/Materials/M_AF_Props_Opaque_Master")
         self.assertIn("base_color", material["detected_features"])
         self.assertEqual(material["parameter_api_mapping"]["BaseColor"], "Base Color")
 
@@ -1101,7 +1101,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         ).import_from_manifest(textured_manifest_path)
         material = material_creator.plans[0]["materials"][0]
 
-        self.assertEqual(material["parent_material"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(material["parent_material"], "/AssetForge/Materials/M_AF_Props_Opaque_Master")
         self.assertFalse(material["uses_virtual_texture_sampling"])
         self.assertEqual(report["material_variant_selection"]["status"], "standard_variant_selected")
         self.assertEqual(report["material_sampler_policy_validation"]["status"], "warning")
@@ -1256,11 +1256,11 @@ class Phase2UnrealImportTest(unittest.TestCase):
         ).import_from_manifest(manifest_path)
 
         material = report["material_binding_plan"]["materials"][0]
-        self.assertEqual(material["parent_material"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(material["parent_material"], "/AssetForge/Materials/M_AF_Props_Opaque_Master")
         self.assertFalse(material["uses_virtual_texture_sampling"])
         self.assertEqual(report["material_variant_selection"]["status"], "standard_variant_selected")
         self.assertEqual(report["material_sampler_policy_validation"]["status"], "warning")
-        self.assertEqual(material_creator.plans[0]["materials"][0]["parent_material"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(material_creator.plans[0]["materials"][0]["parent_material"], "/AssetForge/Materials/M_AF_Props_Opaque_Master")
 
     def test_pipeline_blocks_force_on_vt_when_verified_vt_parent_is_unavailable(self):
         texture_path = self._write_packaged_texture()
@@ -1280,7 +1280,7 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(report["material_variant_selection"]["status"], "vt_sampler_required_unavailable")
         self.assertTrue(material["requires_virtual_texture_sampling"])
         self.assertFalse(material["uses_virtual_texture_sampling"])
-        self.assertEqual(material["parent_material"], "/AssetForge/Materials/M_AF_Props_Master")
+        self.assertEqual(material["parent_material"], "/AssetForge/Materials/M_AF_Props_Opaque_Master")
         self.assertEqual(report["created_material_instances"], [])
         self.assertTrue(report["material_instance_issues"])
         self.assertEqual(material_creator.plans, [])
@@ -1400,6 +1400,61 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(created, ["/Game/Props/Materials/MI_B_a1"])
         self.assertEqual(len(fake_unreal.AssetToolsHelpers.asset_tools.assets), 1)
         self.assertEqual(creator.last_creation_report["actions"][-1]["action"], "reused_in_plan")
+
+    def test_reused_mi_turns_off_only_managed_switches_declared_by_its_parent(self):
+        class DeclaredSwitches(FakeUnreal.MaterialEditingLibrary):
+            scalar_calls = []
+            static_switch_calls = []
+            get_scalar_parameter_names = staticmethod(lambda parent: ["UseEmissive", "TeamScalar"])
+            get_static_switch_parameter_names = staticmethod(lambda parent: ["UseOpacityMask", "UseSeparateOpacityMask", "TeamSwitch"])
+
+        runtime = FakeUnreal()
+        runtime.MaterialEditingLibrary = DeclaredSwitches
+        path = "/Game/TestSwitchBindings/MI_Same"
+        mi = FakeMaterialInstance()
+        mi.parent = "asset:/Game/TestSwitchBindings/M_Project"
+        mi.scalar_parameter_values = []
+        runtime.EditorAssetLibrary.assets[path] = mi
+        self.addCleanup(runtime.EditorAssetLibrary.assets.pop, path, None)
+        creator = UnrealMaterialInstanceCreator(runtime)
+        material = {
+            "target_asset_path": path, "parent_material": "/Game/TestSwitchBindings/M_Project",
+            "static_switch_parameters": {"UseEmissive": True, "UseOpacityMask": True, "UseSeparateOpacityMask": True},
+        }
+        creator.create_from_plan({"materials": [material]})
+        self.assertEqual(DeclaredSwitches.scalar_calls, [(mi, "UseEmissive", 1.0)])
+        self.assertEqual({name: value for _, name, value in DeclaredSwitches.static_switch_calls},
+                         {"UseOpacityMask": True, "UseSeparateOpacityMask": True})
+        material["static_switch_parameters"] = {}
+        DeclaredSwitches.scalar_calls.clear()
+        DeclaredSwitches.static_switch_calls.clear()
+        creator.create_from_plan({"materials": [material]})
+        self.assertEqual(DeclaredSwitches.scalar_calls, [(mi, "UseEmissive", 0.0)])
+        self.assertEqual({name: value for _, name, value in DeclaredSwitches.static_switch_calls},
+                         {"UseOpacityMask": False, "UseSeparateOpacityMask": False})
+        material["existing_material_strategy"] = "skip"
+        DeclaredSwitches.scalar_calls.clear()
+        DeclaredSwitches.static_switch_calls.clear()
+        creator.create_from_plan({"materials": [material]})
+        self.assertFalse(DeclaredSwitches.scalar_calls or DeclaredSwitches.static_switch_calls)
+
+    def test_scalar_switch_does_not_require_static_switch_setter(self):
+        class ScalarOnly(FakeUnreal.MaterialEditingLibrary):
+            scalar_calls = []
+            get_scalar_parameter_names = staticmethod(lambda parent: ["UseEmissive"])
+            get_static_switch_parameter_names = staticmethod(lambda parent: [])
+            set_material_instance_static_switch_parameter_value = None
+
+        runtime = FakeUnreal()
+        runtime.MaterialEditingLibrary = ScalarOnly
+        creator = UnrealMaterialInstanceCreator(runtime)
+        creator.create_from_plan({"materials": [{
+            "target_asset_path": "/Game/TestSwitchBindings/MI_New",
+            "parent_material": "/Game/TestSwitchBindings/M_Scalar",
+            "static_switch_parameters": {"UseEmissive": True},
+        }]})
+        self.assertEqual([(name, value) for _, name, value in ScalarOnly.scalar_calls], [("UseEmissive", 1.0)])
+        self.assertFalse(creator.last_parameter_report["issues"])
 
     def test_material_instance_creator_records_parameter_report(self):
         fake_unreal = FakeUnreal()
@@ -1538,6 +1593,108 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(created, ["/Game/Props/Materials/M_Crate"])
         self.assertEqual(creator.last_creation_report["actions"][0]["action"], "reused")
         self.assertEqual(fake_unreal.AssetToolsHelpers.asset_tools.assets, [])
+
+    def test_material_instance_reimport_updates_texture_without_replaying_artist_values(self):
+        from unittest.mock import patch
+
+        class Editing(FakeUnreal.MaterialEditingLibrary):
+            @staticmethod
+            def set_material_instance_texture_parameter_value(instance, name, value):
+                instance.textures[name] = value
+                return True
+
+            @staticmethod
+            def set_material_instance_scalar_parameter_value(instance, name, value):
+                instance.scalars[name] = value
+                return True
+
+            @staticmethod
+            def set_material_instance_vector_parameter_value(instance, name, value):
+                instance.vectors[name] = value
+                return True
+
+        runtime = FakeUnreal()
+        runtime.MaterialEditingLibrary = Editing
+        path = "/Game/Reuse/Materials/MI_HuMu"
+        parent_path = "/AssetForge/Materials/M_AF_Props_Opaque_Master"
+        arm_path = "/Game/Reuse/Textures/T_HuMu_ARM"
+        placeholder_path = "/AssetForge/Textures/T_AF_Default_ARM"
+        mi = FakeMaterialInstance()
+        mi.parent = "parent"
+        mi.textures = {"ARM": "placeholder", "Normal": "artist-normal"}
+        mi.scalars = {"RoughnessIntensity": 0.37}
+        mi.vectors = {"BaseColorTint": [0.2, 0.4, 0.8, 1.0]}
+        assets = {path: mi, parent_path: mi.parent, arm_path: "real-arm", placeholder_path: "placeholder"}
+        creator = UnrealMaterialInstanceCreator(runtime)
+        material = {
+            "target_asset_path": path, "parent_material": parent_path,
+            "texture_parameters": {"ARM": arm_path}, "scalar_parameters": {"RoughnessIntensity": 1.0},
+            "vector_parameters": {"BaseColorTint": [1.0, 1.0, 1.0, 1.0]},
+        }
+        with patch.object(runtime.EditorAssetLibrary, "assets", assets), patch.object(runtime.EditorAssetLibrary, "saved", []):
+            for incoming in (arm_path, placeholder_path):
+                material["texture_parameters"]["ARM"] = incoming
+                self.assertEqual(creator.create_from_plan({"materials": [material]}), [path])
+                self.assertIs(assets[path], mi)
+                self.assertEqual(mi.scalars, {"RoughnessIntensity": 0.37})
+                self.assertEqual(mi.vectors, {"BaseColorTint": [0.2, 0.4, 0.8, 1.0]})
+                self.assertEqual(mi.textures, {"ARM": "real-arm", "Normal": "artist-normal"})
+
+    def test_reuse_upgrades_only_compatible_unmasked_builtin_parent(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        legacy = "/AssetForge/Materials/M_AF_Props_Master"
+        opaque = "/AssetForge/Materials/M_AF_Props_Opaque_Master"
+        arm = "/Game/Reuse/Textures/T_HuMu_ARM"
+        path = "/Game/Reuse/Materials/MI_HuMu"
+
+        def override(name, index=-1):
+            return SimpleNamespace(parameter_info=SimpleNamespace(name=name, index=index))
+
+        class Editing(FakeUnreal.MaterialEditingLibrary):
+            get_scalar_parameter_names = staticmethod(lambda parent: ["RoughnessIntensity"])
+            get_vector_parameter_names = staticmethod(
+                lambda parent: ["BaseColorTint", "OnlyInLegacy"] if parent == legacy else ["BaseColorTint"])
+            get_texture_parameter_names = staticmethod(lambda parent: ["ARM", "BaseColor"])
+            get_static_switch_parameter_names = staticmethod(
+                lambda parent: ["UseOpacityMask", "UseSeparateOpacityMask"] if parent == legacy else [])
+            get_material_instance_static_switch_parameter_value = staticmethod(
+                lambda instance, name: instance.masked and name.casefold() == "useopacitymask")
+
+            @staticmethod
+            def set_material_instance_texture_parameter_value(instance, name, texture):
+                instance.textures[name] = texture
+                return True
+
+        runtime = FakeUnreal()
+        runtime.MaterialEditingLibrary = Editing
+        creator = UnrealMaterialInstanceCreator(runtime)
+        plan = {"materials": [{"target_asset_path": path, "parent_material": opaque, "texture_parameters": {"ARM": arm}}]}
+        for masked, vector, blend_override, expected in (
+            (False, override("BaseColorTint"), False, opaque),
+            (True, override("BaseColorTint"), False, legacy),
+            (False, override("OnlyInLegacy"), False, legacy),
+            (False, override("BaseColorTint", index=0), False, legacy),
+            (False, override("BaseColorTint"), True, legacy),
+        ):
+            with self.subTest(masked=masked, vector=vector, blend_override=blend_override):
+                mi = FakeMaterialInstance()
+                mi.parent = legacy
+                mi.masked = masked
+                mi.base_property_overrides = SimpleNamespace(override_blend_mode=blend_override)
+                mi.scalar_parameter_values = [override("RoughnessIntensity")]
+                mi.vector_parameter_values = [vector]
+                mi.texture_parameter_values = []
+                mi.textures = {}
+                assets = {path: mi, legacy: legacy, opaque: opaque, arm: "real-arm"}
+                with patch.object(runtime.EditorAssetLibrary, "assets", assets), patch.object(runtime.EditorAssetLibrary, "saved", []):
+                    self.assertEqual(creator.create_from_plan(plan), [path])
+                self.assertEqual(mi.parent, expected)
+                self.assertEqual(mi.vector_parameter_values, [vector])
+                self.assertEqual(mi.textures, {"ARM": "real-arm"})
+                action = creator.last_creation_report["actions"][-1]["action"]
+                self.assertEqual(action, "parent_upgraded" if expected == opaque else "parent_retained")
 
     def test_material_instance_creator_skips_existing_asset_when_requested(self):
         fake_unreal = FakeUnreal()
@@ -1748,6 +1905,38 @@ class Phase2UnrealImportTest(unittest.TestCase):
         self.assertEqual(importer.last_configuration_report["configured"][0]["usage"], "base_color")
         self.assertEqual(importer.last_import_policy_report["actions"][0]["action"], "queued")
         self.assertIn("/Game/Props/Textures/T_Crate_BaseColor", fake_unreal.EditorAssetLibrary.saved)
+
+    def test_normal_texture_format_is_applied_and_read_back_without_touching_reused_flip(self):
+        from asset_forge.unreal.texture_importer import preview_texture_import_policy_report
+        from asset_forge.unreal.texture_import_planner import UnrealTextureImportPlanner
+
+        fake_unreal = FakeUnreal()
+        fake_unreal.AssetToolsHelpers.asset_tools = FakeAssetTools()
+        fake_unreal.EditorAssetLibrary.assets = {}
+        fake_unreal.EditorAssetLibrary.saved = []
+        texture = {"package_path": self._write_packaged_texture(), "copied": True, "usage": "normal"}
+        manifest = {"target_path": "/Game/Props", "textures": [texture]}
+        planner = UnrealTextureImportPlanner()
+        importer = UnrealTextureImporter(fake_unreal)
+
+        legacy_dx = planner.plan(manifest)
+        self.assertEqual(legacy_dx["textures"][0]["normal_format"], "directx")
+        self.assertFalse(legacy_dx["textures"][0]["flip_green_channel"])
+        texture["normal_format"] = "OpenGL"
+        opengl = planner.plan(manifest)
+        self.assertTrue(opengl["textures"][0]["flip_green_channel"])
+        preview = preview_texture_import_policy_report(opengl)["actions"][0]["policy_report"]
+        self.assertTrue(preview["actual_policy"]["flip_green_channel"])
+
+        path, = importer.import_textures(opengl)
+        self.assertTrue(fake_unreal.EditorAssetLibrary.assets[path].flip_green_channel)
+        policy = importer.last_configuration_report["configured"][0]["policy_report"]
+        self.assertTrue(policy["actual_policy"]["flip_green_channel"])
+
+        legacy_dx["textures"][0]["existing_texture_strategy"] = "reuse"
+        importer.import_textures(legacy_dx)
+        self.assertTrue(fake_unreal.EditorAssetLibrary.assets[path].flip_green_channel)
+        self.assertIn("法线", " ".join(importer.last_configuration_report["issues"]))
 
     def test_texture_importer_reuses_existing_texture_when_requested(self):
         fake_unreal = FakeUnreal()

@@ -11,8 +11,8 @@ class UnrealPluginMountPreflight(object):
     def __init__(self, unreal_module=None, descriptor_path=None, content_bootstrap=None):
         self.content_bootstrap = content_bootstrap or UnrealPluginContentBootstrap(unreal_module, descriptor_path)
 
-    def check(self):
-        validation = self.content_bootstrap.validate()
+    def check(self, content_validation=None):
+        validation = self.content_bootstrap.validate() if content_validation is None else content_validation
         mount_check = self._mount_check(validation)
         descriptor_check = self._first_check(validation, "plugin_descriptor")
         directory_checks = [item for item in validation.get("checks", []) if item.get("id") == "plugin_directory"]

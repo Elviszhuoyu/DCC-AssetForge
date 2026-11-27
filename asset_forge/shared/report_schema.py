@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
 """End-to-end DCC AssetForge report schema."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import io
 import json
@@ -8,6 +9,7 @@ import os
 
 from asset_forge.shared.manifest_schema import ASSET_FORGE_SCHEMA_VERSION
 from asset_forge.shared.path_utils import normalize_path
+from asset_forge.shared.python_compat import replace_file, to_text, write_utf8_json
 from asset_forge.shared.report_artifacts import ensure_report_parent
 
 try:
@@ -444,10 +446,8 @@ def write_report(path, report):
     ensure_report_parent(path)
     report = normalize_report_value(report)
     temp_path = path + ".tmp"
-    with io.open(temp_path, "w", encoding="utf-8") as stream:
-        stream.write(json.dumps(report, ensure_ascii=False, indent=2))
-        stream.write("\n")
-    os.replace(temp_path, path)
+    write_utf8_json(temp_path, report, indent=2)
+    replace_file(temp_path, path)
     return path
 
 
@@ -474,7 +474,7 @@ def normalize_report_value(value):
         return value
     if hasattr(value, "name") and isinstance(getattr(value, "name"), text_type):
         return getattr(value, "name")
-    return str(value)
+    return to_text(value)
 
 
 def _normalize_report_value(value):
@@ -571,28 +571,28 @@ def _message_text(item):
     if isinstance(item, dict):
         parts = []
         if item.get("source"):
-            parts.append(str(item.get("source")))
+            parts.append(to_text(item.get("source")))
         if item.get("path"):
-            parts.append(str(item.get("path")))
+            parts.append(to_text(item.get("path")))
         message = item.get("message", item.get("name", ""))
         if message:
-            parts.append(str(message))
+            parts.append(to_text(message))
         return ": ".join(parts)
-    return str(item) if item else ""
+    return to_text(item) if item else ""
 
 
 def _repair_report_mojibake(value):
     if not isinstance(value, text_type):
         return value
     markers = [
-        chr(0x5A34),
-        chr(0x762F),
-        chr(0x9365),
-        chr(0x74BA),
-        chr(0x93B5),
-        chr(0x7035),
-        chr(0x95C3),
-        chr(0x74A7),
+        "\u5a34",
+        "\u762f",
+        "\u9365",
+        "\u74ba",
+        "\u93b5",
+        "\u7035",
+        "\u95c3",
+        "\u74a7",
     ]
     if not any(marker in value for marker in markers):
         return value
@@ -636,7 +636,7 @@ def _plain_messages(source, items):
         if isinstance(item, dict):
             result.append(_message(source, item))
         else:
-            result.append({"source": source, "message": str(item)})
+            result.append({"source": source, "message": to_text(item)})
     return result
 
 
@@ -648,7 +648,7 @@ def _message(source, item):
             "path": item.get("path", ""),
             "message": item.get("message", item.get("name", "")),
         }
-    return {"source": source, "message": str(item)}
+    return {"source": source, "message": to_text(item)}
 
 
 def _summary_status(status, warnings, errors):
@@ -662,7 +662,7 @@ def _summary_status(status, warnings, errors):
 
 
 def _status_blocks_acceptance(status):
-    return str(status or "").lower() in ("error", "failed", "fail")
+    return to_text(status or "").lower() in ("error", "failed", "fail")
 
 
 def _field_check(data, field, prefix="report"):

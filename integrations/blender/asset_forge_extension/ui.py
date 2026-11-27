@@ -37,6 +37,7 @@ _STATUS_ICON_COLORS = {
 class ASSETFORGE_PG_settings(bpy.types.PropertyGroup):
     target_platform: bpy.props.EnumProperty(name="目标平台", items=[(TARGET_PLATFORM_PC, "pc", "PC"), (TARGET_PLATFORM_HIGH_END_MOBILE, "high_end_mobile", "高端移动"), (TARGET_PLATFORM_MOBILE, "mobile", "移动")], default=TARGET_PLATFORM_PC)  # type: ignore
     export_root: bpy.props.StringProperty(name="导出根目录", subtype="DIR_PATH", default="")  # type: ignore
+    target_engine_version: bpy.props.StringProperty(name="目标 UE 版本", description="例如 5.6 或 5.8。留空时在 UE 中确认。", default="")  # type: ignore
     target_path: bpy.props.StringProperty(name="UE 目标路径", default=DEFAULT_TARGET_PATH)  # type: ignore
     material_profile: bpy.props.StringProperty(name="材质匹配规则", default=DEFAULT_MATERIAL_PROFILE)  # type: ignore
     asset_name_override: bpy.props.StringProperty(name="包体/文件夹名", default="")  # type: ignore
@@ -367,6 +368,7 @@ class ASSETFORGE_PT_target_panel(bpy.types.Panel):
         layout.prop(s, "target_platform")
         layout.prop(s, "material_profile")
         layout.prop(s, "target_path")
+        layout.prop(s, "target_engine_version")
         layout.prop(s, "export_root")
 
 
@@ -590,6 +592,7 @@ def _project_settings_from_blender(s):
             "texture_prefix": getattr(s, "texture_prefix", "T_") or "T_",
             "texture_set_token": getattr(s, "texture_set_token", ""),
             "ue_target_path": getattr(s, "target_path", DEFAULT_TARGET_PATH) or DEFAULT_TARGET_PATH,
+            "target_engine_version": getattr(s, "target_engine_version", ""),
             "target_platform": getattr(s, "target_platform", TARGET_PLATFORM_PC),
             "material_profile": getattr(s, "material_profile", DEFAULT_MATERIAL_PROFILE) or DEFAULT_MATERIAL_PROFILE,
             "virtual_texture_policy": getattr(s, "virtual_texture_policy", "project_default") or "project_default",
@@ -614,6 +617,7 @@ def _apply_project_settings_to_blender(s, settings):
     s.texture_prefix = active["texture_prefix"]
     s.texture_set_token = active["texture_set_token"]
     s.target_path = active["ue_target_path"]
+    s.target_engine_version = active["target_engine_version"]
     s.target_platform = active["target_platform"]
     s.material_profile = active["material_profile"]
     s.virtual_texture_policy = active["virtual_texture_policy"]
@@ -1169,7 +1173,7 @@ def _clip(text, limit):
 
 
 def _write_ui_report(action, payload):
-    report_dir = os.path.join(_repo_root(), "AssetForgeReports", "blender_ui")
+    report_dir = os.path.join(_reports_root(), "blender_ui")
     if not os.path.isdir(report_dir):
         os.makedirs(report_dir)
     path = os.path.join(report_dir, "{0}_{1}.json".format(action, time.strftime("%Y%m%d_%H%M%S")))
@@ -1183,12 +1187,18 @@ def _repo_root():
     return os.environ.get("ASSET_FORGE_REPO_ROOT") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 
+def _reports_root():
+    from . import user_report_root
+
+    return user_report_root(_repo_root())
+
+
 def _default_export_root():
-    return os.path.join(_repo_root(), "AssetForgeReports", "dcc_packages", "blender")
+    return os.path.join(_reports_root(), "dcc_packages", "blender")
 
 
 def _default_log_path():
-    return os.path.join(_repo_root(), "AssetForgeReports", "logs", "latest_blender.log")
+    return os.path.join(_reports_root(), "logs", "latest_blender.log")
 
 
 def _register_previews():
@@ -1209,7 +1219,7 @@ def _register_previews():
 
 
 def _register_status_icons(previews):
-    icon_dir = os.path.join(_repo_root(), "AssetForgeReports", "blender_ui", "status_icons")
+    icon_dir = os.path.join(_reports_root(), "blender_ui", "status_icons")
     if not os.path.isdir(icon_dir):
         os.makedirs(icon_dir)
     for state, color in _STATUS_ICON_COLORS.items():

@@ -12,8 +12,8 @@ class UnrealMaterialLibraryTest(unittest.TestCase):
 
     def test_selects_prebuilt_optional_variants_from_texture_usages(self):
         cases = [
-            ("emissive", "/AssetForge/Materials/M_AF_Props_Master"),
-            ("imperfection_mask", "/AssetForge/Materials/M_AF_Props_Master"),
+            ("emissive", "/AssetForge/Materials/M_AF_Props_Opaque_Master"),
+            ("imperfection_mask", "/AssetForge/Materials/M_AF_Props_Opaque_Master"),
         ]
         for usage, expected in cases:
             result = resolve_material_variant(self.profile, [{"usage": usage}])
@@ -22,7 +22,13 @@ class UnrealMaterialLibraryTest(unittest.TestCase):
     def test_special_variants_are_not_selected_without_profile_opt_in(self):
         for usage in ("height", "decal", "glass", "world_aligned"):
             result = resolve_material_variant(self.profile, [{"usage": usage}])
-            self.assertEqual(result["selected_material_variant"], "/AssetForge/Materials/M_AF_Props_Master")
+            self.assertEqual(result["selected_material_variant"], "/AssetForge/Materials/M_AF_Props_Opaque_Master")
+
+    def test_separate_mask_does_not_change_an_opaque_painter_asset_to_masked(self):
+        textures = [{"usage": "opacity_mask"}]
+        masked = get_default_material_profile("Props_Masked_PainterUE_ARM")
+        self.assertEqual(resolve_material_variant(self.profile, textures)["variant_key"], "opaque")
+        self.assertEqual(resolve_material_variant(masked, textures)["variant_key"], "masked")
 
     def test_special_variants_can_be_selected_with_explicit_profile_opt_in(self):
         profile = dict(self.profile)

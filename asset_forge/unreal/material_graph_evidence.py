@@ -2,6 +2,7 @@
 
 from __future__ import absolute_import
 
+from asset_forge.unreal.material_texture_binding_validator import is_official_texture_default, texture_binding_check_status
 
 REQUIRED_TEXTURE_PARAMETERS = {
     "BaseColor": "color",
@@ -19,6 +20,7 @@ def build_material_graph_evidence_report(
     material_sampler_policy_validation=None,
     compile_log_evidence=None,
     real_ue_material_graph=None,
+    material_texture_binding_validation=None,
 ):
     """Build a report that links parent graph, MI overrides and slot binding."""
     material_binding_plan = material_binding_plan or {}
@@ -34,7 +36,15 @@ def build_material_graph_evidence_report(
     checks.extend(_parent_material_checks(material_binding_plan, parent_material_validation))
     checks.extend(_required_parameter_checks(material_binding_plan, material_network_reports))
     checks.extend(_sampler_policy_checks(material_sampler_policy_validation))
-    checks.extend(_mi_texture_override_checks(material_binding_plan, material_parameter_report))
+    texture_validation = material_texture_binding_validation or {}
+    binding_checks = [dict(row, status=texture_binding_check_status(texture_validation, row))
+                      for row in texture_validation.get("checks", [])
+                      if row["id"] in {"required_texture_parameter_missing", "material_instance_texture_readback"}
+                      and row["status"] != "pass"]
+    failed_parameters = {(row["material_instance_path"], row["parameter"]) for row in binding_checks}
+    checks.extend(row for row in _mi_texture_override_checks(material_binding_plan, material_parameter_report)
+                  if row["status"] != "pass" or (row.get("material_instance_path"), row.get("parameter")) not in failed_parameters)
+    checks.extend(binding_checks)
     checks.extend(_slot_binding_checks(material_binding_plan, material_assignment_report))
     checks.extend(_compile_log_checks(compile_log_evidence, real_ue_material_graph))
 
@@ -49,7 +59,10 @@ def build_material_graph_evidence_report(
         "stage": "material_graph_evidence",
         "status": "error" if errors else ("warning" if warnings else "pass"),
         "real_ue_evidence": "provided" if _has_real_ue_evidence(compile_log_evidence, real_ue_material_graph) else "not_provided",
-        "required_texture_parameters": sorted(REQUIRED_TEXTURE_PARAMETERS.keys()),
+        "required_texture_parameters": sorted({
+            parameter for parent, parameters in planned_parent_parameters(material_binding_plan).items()
+            for parameter in (REQUIRED_TEXTURE_PARAMETERS if parent.startswith("/AssetForge/") else parameters)
+        }),
         "ta_visual_review": visual_review,
         "checks": checks,
         "warnings": warnings,
@@ -63,10 +76,15 @@ def _parent_material_checks(material_binding_plan, parent_material_validation):
     checks = []
     missing = set(parent_material_validation.get("missing_parent_materials", []) or [])
     for item in parent_material_validation.get("checks", []) or []:
-        if item.get("status") == "error" and item.get("parent_material"):
-            missing.add(item.get("parent_material", ""))
+        if item.get("status") != "error" or not item.get("parent_material"):
+            continue
+        if item.get("id") == "parent_texture_parameters":
+            checks.append(_check("parent_texture_parameters", "error", item.get("message", ""),
+                                 parent_material=item["parent_material"], missing_parameters=item.get("missing_parameters", [])))
+        else:
+            missing.add(item["parent_material"])
 
-    parent_paths = _parent_material_paths(material_binding_plan)
+    parent_paths = planned_parent_parameters(material_binding_plan)
     if not parent_paths:
         return [
             _check(
@@ -80,9 +98,9 @@ def _parent_material_checks(material_binding_plan, parent_material_validation):
 
     validation_status = parent_material_validation.get("status", "")
     for parent_path in parent_paths:
-        if parent_path in missing or validation_status == "error":
+        if parent_path in missing or (validation_status == "error" and not parent_material_validation.get("checks") and not missing):
             checks.append(_check("parent_material_exists", "error", "Missing parent material: {0}".format(parent_path), parent_material=parent_path))
-        elif not validation_status:
+        elif validation_status not in ("pass", "success", "error"):
             checks.append(
                 _check(
                     "parent_material_exists",
@@ -101,7 +119,9 @@ def _parent_material_checks(material_binding_plan, parent_material_validation):
 def _required_parameter_checks(material_binding_plan, material_network_reports):
     checks = []
     networks = _network_by_material_path(material_network_reports)
-    for parent_path in _parent_material_paths(material_binding_plan):
+    for parent_path in planned_parent_parameters(material_binding_plan):
+        if not parent_path.startswith("/AssetForge/"):
+            continue
         network = networks.get(parent_path, {})
         if not network:
             checks.append(
@@ -171,7 +191,7 @@ def _mi_texture_override_checks(material_binding_plan, material_parameter_report
             _check(
                 "mi_texture_overrides",
                 "warning",
-                "No BaseColor/Normal/ARM texture override is planned for this material instance.",
+                "No texture override is planned for this material instance.",
                 evidence_status="not_provided",
                 manual_validation_required=["import package with texture maps to validate MI overrides"],
             )
@@ -454,6 +474,8 @@ def _material_comment_block_checks(real_ue_material_graph):
                 )
             )
             continue
+        if status == "not_applicable":
+            continue
         if status == "error":
             expected = int(comment_blocks.get("expected_af_comments") or 0)
             expressions = int(comment_blocks.get("expression_comments") or 0)
@@ -549,7 +571,14 @@ def _ta_visual_review_summary(checks, real_ue_material_graph):
     next_steps = []
     manual_validation = []
 
-    if blocking_comments or blocking_persistence:
+    materials = real_ue_material_graph.get("materials", []) or []
+    project_only = bool(materials) and all(
+        item.get("comment_blocks", {}).get("status") == "not_applicable" for item in materials
+    )
+    if project_only:
+        status = "manual_validation_required"
+        decision_label = "按项目标准复核材质外观"
+    elif blocking_comments or blocking_persistence:
         status = "blocked"
         decision_label = "材质图注释结构需修复"
         next_steps.append("repair DCC AssetForge material comment blocks before TA visual review")
@@ -582,7 +611,7 @@ def _ta_visual_review_summary(checks, real_ue_material_graph):
         "comment_block_checks": len(comment_checks),
         "comment_block_warnings": len(risky_comments),
         "comment_block_errors": len(blocking_comments),
-        "comment_box_persistence_status": _comment_box_persistence_summary_status(persistence_checks),
+        "comment_box_persistence_status": "not_applicable" if project_only else _comment_box_persistence_summary_status(persistence_checks),
         "comment_box_persistence_checks": len(persistence_checks),
         "comment_box_persistence_warnings": len(risky_persistence),
         "comment_box_persistence_errors": len(blocking_persistence),
@@ -615,7 +644,7 @@ def _material_comment_box_persistence_checks(real_ue_material_graph):
     for material in materials:
         comment_blocks = material.get("comment_blocks", {}) or {}
         status = comment_blocks.get("status", "")
-        if not status or status == "not_provided":
+        if not status or status in ("not_provided", "not_applicable"):
             continue
         cold_start_status = _comment_block_cold_start_status(comment_blocks)
         current_status = comment_blocks.get("current_session_readback_status") or ("provided" if status in ("pass", "warning") else "error")
@@ -778,16 +807,16 @@ def _sampler_check(parent_path, parameter, expected_sampler, actual_sampler):
     )
 
 
-def _parent_material_paths(material_binding_plan):
-    paths = []
+def planned_parent_parameters(material_binding_plan):
+    """Group texture parameters by the parent actually selected for each MI."""
+    parents = {}
     for material in material_binding_plan.get("materials", []) or []:
         parent = material.get("parent_material") or material.get("parent_material_path")
-        if parent and parent not in paths:
-            paths.append(parent)
-    master = material_binding_plan.get("master_material", "")
-    if master and master not in paths:
-        paths.append(master)
-    return paths
+        if parent:
+            parents.setdefault(parent, set()).update(material.get("texture_parameters") or {})
+    if not parents and material_binding_plan.get("master_material"):
+        parents[material_binding_plan["master_material"]] = set()
+    return parents
 
 
 def _network_by_material_path(material_network_reports):
@@ -814,7 +843,7 @@ def _planned_texture_overrides(material_binding_plan):
     for material in material_binding_plan.get("materials", []) or []:
         material_path = material.get("target_asset_path", "") or material.get("material_instance_path", "")
         for parameter, texture_path in sorted((material.get("texture_parameters", {}) or {}).items()):
-            if parameter in REQUIRED_TEXTURE_PARAMETERS and texture_path:
+            if texture_path and not is_official_texture_default(texture_path):
                 planned.append(
                     {
                         "material_instance_path": material_path,

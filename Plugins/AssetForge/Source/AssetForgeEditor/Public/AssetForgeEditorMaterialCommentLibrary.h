@@ -5,6 +5,7 @@
 #include "AssetForgeEditorMaterialCommentLibrary.generated.h"
 
 class UMaterial;
+class UMaterialInterface;
 
 UCLASS()
 class ASSETFORGEEDITOR_API UAssetForgeEditorMaterialCommentLibrary : public UBlueprintFunctionLibrary
@@ -17,4 +18,10 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "DCC AssetForge|Material")
 	static FString DescribeAssetForgeCommentBlocks(UMaterial* Material);
+
+	UFUNCTION(BlueprintCallable, Category = "DCC AssetForge|Material")
+	static FString ReadAssetForgeCommentBlocks(UMaterial* Material);
+
+	UFUNCTION(BlueprintCallable, Category = "DCC AssetForge|Material")
+	static bool TryReadAssetForgeMaterialCompileErrors(const UMaterialInterface* Material, TArray<FString>& OutErrors);
 };

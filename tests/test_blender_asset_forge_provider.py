@@ -10,6 +10,7 @@ import asset_forge.blender.provider_asset_forge as provider_module
 from asset_forge.blender.provider_asset_forge import BlenderAssetForgeProvider, _write_png_rgba
 from asset_forge.blender.scanner import BlenderStaticPropScanner
 from asset_forge.shared.manifest_schema import read_manifest
+from asset_forge.shared.rule_validator import StaticPropRuleValidator
 from integrations.blender.asset_forge_extension import bridge
 from integrations.blender_mcp.client import BlenderBridgeClient
 from integrations.blender_mcp.protocol import ALL_ACTIONS
@@ -87,6 +88,7 @@ class FakeNodeTree(object):
 class FakeUvLayer(object):
     def __init__(self, name):
         self.name = name
+        self.uv = [(0.0, 0.0)] * 6
 
 
 class FakePolygon(object):
@@ -207,6 +209,46 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertTrue(scan["has_uv0"])
         self.assertTrue(scan["has_lightmap_uv"])
         self.assertTrue(scan["frozen_transform"])
+
+    def test_missing_and_empty_uv_layers_report_the_render_mesh(self):
+        body = FakeObject("Body")
+        trim = FakeObject("Trim")
+        collider = FakeObject("UCX_SM_Prop_00")
+        collider.data.uv_layers = []
+        root = FakeObject("SM_Prop", object_type="EMPTY", children=[body, trim, collider])
+        scanner = BlenderStaticPropScanner(bpy_module=FakeBpy(selected=[root], objects=[root, body, trim, collider]))
+        validator = StaticPropRuleValidator()
+
+        for layers in ([], [FakeUvLayer("UVMap"), FakeUvLayer("Lightmap")]):
+            trim.data.uv_layers = layers
+            if layers:
+                layers[0].uv = []
+            scan = scanner.scan_selection()
+            validation = validator.validate(scan)
+            checks = {item["id"]: item for item in validation["checks"]}
+            self.assertFalse(scan["has_uv0"])
+            self.assertFalse(validation["can_export"])
+            self.assertEqual(checks["uv0"]["affected_meshes"], ["Trim"])
+            self.assertEqual(scan["has_lightmap_uv"], bool(layers))
+        trim.data.uv_layers[0].uv = [(0.0, 0.0)] * 6
+        self.assertTrue(validator.validate(scanner.scan_selection())["can_export"])
+
+    def test_edit_mode_uv_coverage_reads_live_bmesh(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        mesh = FakeObject("SM_Prop")
+        mesh.data.is_editmode = True
+        mesh.data.uv_layers = []
+        bmesh = SimpleNamespace(
+            loops=SimpleNamespace(layers=SimpleNamespace(uv={"UVMap": 0, "Lightmap": 1})),
+            faces=[SimpleNamespace(verts=(0, 1, 2))],
+        )
+        scanner = BlenderStaticPropScanner(bpy_module=FakeBpy(selected=[mesh], objects=[mesh]))
+        with patch.dict(sys.modules, {"bmesh": SimpleNamespace(from_edit_mesh=lambda data: bmesh)}):
+            scan = scanner.scan_selection()
+        self.assertEqual(scan["uv_coordinate_counts"][mesh.name], [3, 3])
+        self.assertTrue(scan["has_lightmap_uv"])
 
     def test_scanner_reads_image_texture_nodes_from_blender_materials(self):
         base_color = os.path.join(self.temp_dir, "T_Body_BaseColor.png")
@@ -485,7 +527,7 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
                 "export_root": self.temp_dir,
                 "source_name_suffix": "Blender",
                 "package_version_mode": "auto_increment",
-                "project_preset": {"preset_name": "Team", "preset_version": "0.3"},
+                "project_preset": {"preset_name": "Team", "preset_version": "0.3", "target_engine_version": "5.8"},
             }
         )
         manifest = read_manifest(result["manifest_path"])
@@ -494,6 +536,7 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertEqual(manifest["package_naming"]["package_name"], "SM_B_Blender_v002")
         self.assertEqual(manifest["package_naming"]["version_mode"], "auto_increment")
         self.assertEqual(manifest["project_preset"]["preset_name"], "Team")
+        self.assertEqual(manifest["target_engine_version"], "5.8")
         self.assertTrue(result["package_dir"].endswith("/SM_B_Blender_v002"))
 
     def test_export_result_includes_scan_for_ui_status_counts(self):
@@ -582,6 +625,30 @@ class BlenderAssetForgeProviderTest(unittest.TestCase):
         self.assertTrue(result["texture_folder_scan"]["requires_texture_set_selection"])
         self.assertIn("texture_set_selection", checks)
         self.assertEqual(checks["texture_set_selection"]["status"], "error")
+
+    def test_export_blocks_generic_slot_with_two_selected_painter_sets(self):
+        texture_root = os.path.join(self.temp_dir, "Painter")
+        for name in ("Body", "Trim"):
+            for suffix in ("BaseColor", "Normal", "ORM"):
+                path = os.path.join(texture_root, "Prop_{0}_{1}.png".format(name, suffix))
+                _write_png_rgba(path, 1, 1, [(128, 128, 128, 255)])
+        mesh = FakeObject("SM_Panel", materials=["M_Generic"])
+        exporter = FakeExporter()
+        provider = BlenderAssetForgeProvider(bpy_module=FakeBpy(selected=[mesh], objects=[mesh]), exporter=exporter)
+        params = {"export_root": self.temp_dir, "texture_folder": texture_root}
+        for token in ("Body,Trim", "Trim,Body"):
+            result = provider.export_static_prop_package(dict(params, texture_set_token=token))
+            self.assertEqual(result["status"], "blocked")
+            self.assertFalse(result["can_continue_to_ue"])
+            self.assertFalse(exporter.called)
+            risk = next(item for item in result["scan"]["material_texture_binding_risks"]
+                        if item["id"] == "ambiguous_material_texture_set")
+            self.assertEqual(risk["candidates"], ["Prop_Body", "Prop_Trim"])
+        selected = provider.preflight_static_prop(dict(params, texture_set_token="Trim"))
+        self.assertTrue(selected["can_export"])
+        binding = selected["scan"]["material_texture_bindings"][0]
+        self.assertEqual(binding["texture_set"], "Prop_Trim")
+        self.assertEqual(binding["texture_count"], 3)
 
     def test_export_blocks_ambiguous_texture_folder_before_fbx_export(self):
         texture_root = os.path.join(self.temp_dir, "textures")
